@@ -49,8 +49,8 @@ async def on_message(message):
     prompt = build_prompt(cid)
 
     response = gen.models.generate_content(
-        model="gemini-1.5-flash-latest",
-        contents=prompt
+        model="gemini-1.5-flash",
+        contents=[prompt]
     )
 
     reply = response.text or ""
