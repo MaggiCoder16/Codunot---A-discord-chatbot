@@ -1,5 +1,6 @@
 import random
 
+# ---------- Mood detection ----------
 def detect_mood(text):
     text = text.lower()
     if any(w in text for w in ["lol", "lmao", "xd"]):
@@ -10,9 +11,17 @@ def detect_mood(text):
         return "angry"
     return "neutral"
 
+# ---------- Typing delays ----------
 def human_delay():
-    return random.uniform(1.2, 3.4)
+    """Random human-like delay for typing."""
+    return random.uniform(1.0, 2.0)
 
+def random_typing_delay(length):
+    """Return a realistic typing delay based on message length."""
+    base = random.uniform(0.05, 0.12)  # seconds per character
+    return max(0.3, length * base)
+
+# ---------- Typos and corrections ----------
 def maybe_typo(text):
     if random.random() < 0.12:
         pos = random.randint(0, len(text) - 1)
@@ -27,10 +36,18 @@ def maybe_correction(text):
     return text
 
 def humanize(text):
+    """Apply typos and corrections to text."""
     text = maybe_typo(text)
     text = maybe_correction(text)
     return text
 
+def humanize_response(text):
+    """Function used by bot.py to humanize Gemini responses."""
+    text = maybe_typo(text)
+    text = maybe_correction(text)
+    return text
+
+# ---------- Roast helpers ----------
 def is_roast_trigger(text):
     text = text.lower()
     return any(trigger in text for trigger in ["roast me", "roast him", "roast her", "roast this", "insult me", "diss me"])
