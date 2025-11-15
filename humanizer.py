@@ -14,11 +14,11 @@ def detect_mood(text):
 # ---------- Typing delays ----------
 def human_delay():
     """Random human-like delay for typing."""
-    return random.uniform(1.0, 2.0)
+    return random.uniform(0.1, 0.2)
 
 def random_typing_delay(length):
     """Return a realistic typing delay based on message length."""
-    base = random.uniform(0.05, 0.12)  # seconds per character
+    base = random.uniform(0.1, 0.2)  # seconds per character
     return max(0.3, length * base)
 
 # ---------- Typos and corrections ----------
