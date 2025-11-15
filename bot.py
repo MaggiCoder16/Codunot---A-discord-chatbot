@@ -25,14 +25,20 @@ Keep your reply SHORT: 1 line max 30 characters.
 
 async def generate_response(prompt):
     loop = asyncio.get_running_loop()
-    # Run blocking GenAI call in a separate thread
-    response = await loop.run_in_executor(None, lambda: gen.models.generate_content(
-        model="gemini-2.5-flash",
-        contents=prompt
-    ))
-    # take first line and truncate to 30 characters
-    reply = (response.text or "").strip().splitlines()[0][:30]
-    return reply
+    try:
+        # Run blocking GenAI call safely with timeout
+        response = await asyncio.wait_for(
+            loop.run_in_executor(None, lambda: gen.models.generate_content(
+                model="gemini-2.5-flash",
+                contents=prompt
+            )),
+            timeout=10  # seconds
+        )
+        reply = (response.text or "").strip().splitlines()[0][:30]
+        return reply
+    except Exception as e:
+        # fallback short reply if API fails
+        return "Oops, try again later 😅"
 
 @client.event
 async def on_message(message):
