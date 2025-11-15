@@ -1,17 +1,41 @@
+print("Starting bot.py...")
+
 import os
+print("Imported os")
+
 import asyncio
+print("Imported asyncio")
+
 import random
+print("Imported random")
+
 import re
+print("Imported re")
+
 from datetime import datetime, timedelta
+print("Imported datetime")
 
 import discord
+print("Imported discord")
+
 from discord import Message
+print("Imported Message")
+
 from dotenv import load_dotenv
+print("Imported dotenv")
 
 from memory import MemoryManager
+print("Imported MemoryManager")
+
 from humanizer import humanize_response, random_typing_delay, maybe_typo
+print("Imported humanizer functions")
+
 from gemini_client import call_gemini
+print("Imported gemini_client")
+
 from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
+print("Imported VADER")
+
 
 load_dotenv()
 
