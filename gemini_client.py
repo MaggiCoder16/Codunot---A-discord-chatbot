@@ -2,12 +2,12 @@
 import aiohttp
 from config import GEMINI_API_KEY
 
-# Correct Google Generative Language API endpoint
-API_URL = "https://generativelanguage.googleapis.com/v1beta2/models/text-bison-001:generate"
+# Gemini 2.5 Flash endpoint
+API_URL = "https://generativelanguage.googleapis.com/v1beta2/models/gemini-2.5-flash:generate"
 
 async def call_gemini(prompt: str) -> str:
     """
-    Call Google Gemini / Text-Bison API asynchronously.
+    Call Gemini-2.5-Flash API asynchronously.
     Returns generated text, or a safe placeholder if the API/network fails.
     """
     headers = {
@@ -15,8 +15,9 @@ async def call_gemini(prompt: str) -> str:
         "Content-Type": "application/json"
     }
 
+    # Correct JSON payload for Gemini-2.5-Flash
     json_data = {
-        "prompt": {"text": prompt},  # correct format
+        "input": [{"content": prompt, "type": "text"}],
         "temperature": 0.7,
         "max_output_tokens": 150
     }
@@ -26,8 +27,11 @@ async def call_gemini(prompt: str) -> str:
             async with session.post(API_URL, headers=headers, json=json_data) as resp:
                 if resp.status != 200:
                     print(f"[Gemini API] HTTP error: {resp.status}")
+                    text = await resp.text()
+                    print(f"[Gemini API] Response text: {text}")
                     return "(couldn't generate response)"
                 data = await resp.json()
+                # Gemini-2.5-Flash uses 'candidates' list with 'content' field
                 return data.get("candidates", [{}])[0].get("content", "(empty response)")
     except aiohttp.ClientConnectorError as e:
         print(f"[Gemini API] Connection error: {e}")
