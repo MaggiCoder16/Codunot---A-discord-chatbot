@@ -5,7 +5,8 @@ from config import GEMINI_API_KEY, DISCORD_TOKEN
 from memory import add_message_to_memory, add_topic, update_mood, memory
 from humanizer import humanize, detect_mood, human_delay, is_roast_trigger, generate_safe_roast
 
-client = discord.Client(intents=discord.Intents.all())
+intents = discord.Intents.all()
+client = discord.Client(intents=intents)
 gen = genai.Client(api_key=GEMINI_API_KEY)
 
 def build_prompt(channel_id):
@@ -17,9 +18,9 @@ def build_prompt(channel_id):
     personality = """
 You are Codunot. A normal human teen in Discord chats.
 You talk casually, freely, without being mentioned.
-You use emojis, typos, slang, sarcasm, randomness.
+You use emojis, typos, slang, sarcasm, chaos, jokes.
 You never say you're a bot or AI.
-Stay natural and messy like a real human.
+Stay natural, messy, emotional, reactive, human.
 """
     return f"{personality}\nTopics: {topics}\nMoods:\n{mood_lines}\nChat:\n{msgs}\nReply like a real human teen."
 
@@ -43,18 +44,18 @@ async def on_message(message):
         add_message_to_memory(cid, "Codunot", roast)
         return
 
-    if any(word in msg.lower() for word in ["today", "topic", "talk"]):
+    sm = msg.lower()
+    if any(word in sm for word in ["today", "topic", "talk"]):
         add_topic(cid, msg)
 
     prompt = build_prompt(cid)
 
     response = gen.models.generate_content(
-        model="gemini-1.5-flash",
+        model="gemini-2.5-flash",
         contents=[prompt]
     )
 
-    reply = response.text or ""
-    reply = reply.strip()
+    reply = response.text.strip()
     reply = humanize(reply)
 
     await asyncio.sleep(human_delay())
