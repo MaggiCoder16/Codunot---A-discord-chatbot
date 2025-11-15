@@ -1,154 +1,164 @@
 import os
+import discord
+from discord.ext import commands, tasks
+from collections import deque
+import aiohttp
 import asyncio
 import random
+from datetime import datetime, timedelta, timezone
 import re
-from datetime import datetime, timedelta
 
-import discord
-from discord import Message
-from dotenv import load_dotenv
-
-from memory import MemoryManager
-from humanizer import humanize_response, maybe_typo, is_roast_trigger
-from gemini_client import call_gemini
-
-load_dotenv()
-
-DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
-GEN_API_KEY = os.getenv("GEMINI_API_KEY")
+# --- CONFIG ---
+TOKEN = os.getenv("DISCORD_TOKEN")
+API_KEY = os.getenv("GEN_API_KEY")  # Gemini or your LLM
 BOT_NAME = os.getenv("BOT_NAME", "Codunot")
-CONTEXT_LENGTH = int(os.getenv("CONTEXT_LENGTH", "18"))
+MAX_MEMORY = 30
 
-if not DISCORD_TOKEN or not GEN_API_KEY:
-    raise SystemExit("Set DISCORD_TOKEN and GEMINI_API_KEY before running.")
+intents = discord.Intents.all()
+bot = commands.Bot(command_prefix="!", intents=intents)
 
-intents = discord.Intents.default()
-intents.message_content = True
-client = discord.Client(intents=intents)
+OWNER_IDS = {1020353220641558598, 1167443519070290051}
 
-memory = MemoryManager(limit=60)
+# --- STATE ---
+channel_memory = {}  # channel_id: deque(messages)
+shushed_channels = {}  # channel_id: datetime to resume
+current_mode = "funny"  # funny / serious / roast
 
-# ----------------- Bot State -----------------
-BOT_MODE = "funny"  # default
-DEAD_CHAT_CHANNELS = {
-    "ROYALRACER FANS": ["testing", "coders", "general"],
-    "OPEN TO ALL": ["general"]
-}
+# --- UTILITY ---
+def is_owner(member: discord.Member):
+    return member.id in OWNER_IDS
 
-# ---------- Send reply instantly ----------
-async def send_human_reply(channel, reply_text, original_message: Message = None):
-    await asyncio.sleep(0.05)  # tiny delay to avoid API spam
-    await channel.send(reply_text)
+def extract_time(text: str):
+    match = re.search(r"(\d+)(s|m|h|d)", text)
+    if not match: return None
+    num, unit = int(match.group(1)), match.group(2)
+    return num * {"s":1, "m":60, "h":3600, "d":86400}[unit]
 
-# ---------- Proactive starter ----------
-async def proactive_chat_start():
-    await client.wait_until_ready()
-    for guild in client.guilds:
-        for channel in guild.text_channels:
-            chan_id = str(channel.id)
-            if not memory.get_last_timestamp(chan_id):
-                starter = "Heyyy, anyone up for a chat? 😎"
-                await send_human_reply(channel, starter)
-                memory.add_message(chan_id, BOT_NAME, starter)
-    while True:
-        await asyncio.sleep(60)  # check every 60 sec
-        for guild in client.guilds:
-            for channel in guild.text_channels:
-                chan_id = str(channel.id)
-                last_ts = memory.get_last_timestamp(chan_id)
-                if not last_ts or datetime.utcnow() - last_ts > timedelta(minutes=3):
-                    msg = "its dead in here... anyone wanna talk?"
-                    await send_human_reply(channel, msg)
-                    memory.add_message(chan_id, BOT_NAME, msg)
+def random_delay():
+    return random.uniform(0.05, 0.1)
 
-# ---------- Prompt builders ----------
-def build_general_prompt(mem_manager: MemoryManager, channel_id: str) -> str:
-    recent = mem_manager.get_recent_flat(channel_id, n=CONTEXT_LENGTH)
-    history_text = "\n".join(recent)
-    if BOT_MODE == "serious":
-        persona = (
-            "You are Codunot, a helpful, professional human friend. "
-            "Provide short, clear, accurate answers. Use code blocks for code. "
-            "No slang, no emojis, no jokes."
-        )
-    else:
-        persona = (
-            "You are Codunot, a witty, funny human friend in chat. "
-            "Keep replies short, playful, with slang and emojis."
-        )
-    return f"{persona}\n\nRecent chat:\n{history_text}\n\nReply as Codunot (one short message):"
+async def fetch_ai_response(prompt: str, channel: discord.TextChannel):
+    """
+    Dummy AI call; replace with Gemini/HF API call.
+    """
+    # Add memory for context
+    mem = channel_memory.get(channel.id, deque(maxlen=MAX_MEMORY))
+    context = "\n".join(mem)
+    full_prompt = f"[{current_mode.upper()} MODE]\n{prompt}\nContext:\n{context}"
+    # Simulate AI delay
+    await asyncio.sleep(random_delay())
+    # Dummy AI response
+    if current_mode == "funny":
+        return random.choice([
+            f"lol {BOT_NAME} says hi! 😂",
+            f"what's up? 😎",
+            f"bruh, let's chat 😏"
+        ])
+    elif current_mode == "serious":
+        return random.choice([
+            "🤔 Here's a thoughtful answer for you.",
+            "Sure, let me explain this clearly.",
+            "This is a serious response: pay attention."
+        ])
+    elif current_mode == "roast":
+        return random.choice([
+            "bro, u talk like a broken bot 💀",
+            "lol nice try, but u fail 😎",
+            "ur typing is slower than dial-up 😂"
+        ])
 
-def build_roast_prompt(mem_manager: MemoryManager, channel_id: str, target_name: str):
-    recent = mem_manager.get_recent_flat(channel_id, n=12)
-    history_text = "\n".join(recent)
-    persona = (
-        "You are Codunot, a witty human friend who roasts playfully. "
-        "Write a short, funny, non-malicious roast. Use slang and emojis."
-    )
-    return f"{persona}\nTarget: {target_name}\nRecent chat:\n{history_text}\n\nGive one playful roast as Codunot:"
+# --- COMMANDS ---
+@bot.command(name="seriousmode")
+async def serious_mode(ctx):
+    global current_mode
+    if not is_owner(ctx.author):
+        return await ctx.send("🚫 Only owner can change mode!")
+    current_mode = "serious"
+    await ctx.send("✅ Serious/helpful mode activated!")
 
-def humanize_and_safeify(text: str) -> str:
-    t = maybe_typo(text)
-    if BOT_MODE == "funny" and random.random() < 0.45:
-        t = random.choice(["lol", "bruh", "ngl"]) + " " + t
-    return t
+@bot.command(name="funnymode")
+async def funny_mode(ctx):
+    global current_mode
+    if not is_owner(ctx.author):
+        return await ctx.send("🚫 Only owner can change mode!")
+    current_mode = "funny"
+    await ctx.send("✅ Funny/playful mode activated!")
 
-# ---------- Events ----------
-@client.event
+@bot.command(name="roastmode")
+async def roast_mode(ctx):
+    global current_mode
+    if not is_owner(ctx.author):
+        return await ctx.send("🚫 Only owner can change mode!")
+    current_mode = "roast"
+    await ctx.send("🔥 Roast mode activated!")
+
+@bot.command(name="shush")
+async def shush(ctx, *args):
+    if not is_owner(ctx.author):
+        return await ctx.send("🚫 Only owner can shush me!")
+    seconds = 600
+    if args:
+        t = extract_time(args[0])
+        if t: seconds = t
+    shushed_channels[ctx.channel.id] = datetime.now(timezone.utc) + timedelta(seconds=seconds)
+    await ctx.send(f"🔇 I'll be quiet for {seconds} seconds.")
+
+@bot.command(name="rshush")
+async def rshush(ctx):
+    shushed_channels.pop(ctx.channel.id, None)
+    await ctx.send("🔊 Mute lifted!")
+
+# --- EVENTS ---
+@bot.event
 async def on_ready():
-    print(f"{BOT_NAME} is ready!")
-    asyncio.create_task(proactive_chat_start())
+    print(f"{BOT_NAME} ready as {bot.user}")
+    proactive_chat.start()
 
-@client.event
-async def on_message(message: Message):
-    global BOT_MODE
-    if message.author == client.user or message.author.bot:
+@bot.event
+async def on_message(message):
+    if message.author.bot:
+        # Optional: bot talks to other bots
+        pass
+
+    if message.author == bot.user:
         return
 
-    chan_id = str(message.channel.id)
-    memory.add_message(chan_id, message.author.display_name, message.content)
+    await bot.process_commands(message)
 
-    # ---------- Mode Commands ----------
-    if message.content.lower().startswith("!seriousmode"):
-        BOT_MODE = "serious"
-        await send_human_reply(message.channel, "🤓 Serious/helpful mode activated!")
-        return
-    if message.content.lower().startswith("!roastmode"):
-        BOT_MODE = "funny"
-        await send_human_reply(message.channel, "😂 Roast/funny mode activated!")
-        return
-
-    # ---------- Roast triggers ----------
-    if BOT_MODE == "funny":
-        roast_target = memory.get_roast_target(chan_id)
-        if not roast_target:
-            trigger_target = is_roast_trigger(message.content)
-            if trigger_target:
-                memory.set_roast_target(chan_id, trigger_target)
-                roast_target = trigger_target
-        if roast_target:
-            roast_prompt = build_roast_prompt(memory, chan_id, roast_target)
-            raw = await call_gemini(roast_prompt)
-            roast_text = humanize_and_safeify(raw)
-            if len(roast_text) > 200:
-                roast_text = roast_text[:200] + "..."
-            await send_human_reply(message.channel, roast_text, message)
-            memory.add_message(chan_id, BOT_NAME, roast_text)
+    # Ignore shushed channels
+    if message.channel.id in shushed_channels:
+        if datetime.now(timezone.utc) < shushed_channels[message.channel.id]:
             return
+        else:
+            del shushed_channels[message.channel.id]
 
-    # ---------- General chat ----------
-    prompt = build_general_prompt(memory, chan_id)
-    raw_resp = await call_gemini(prompt)
-    reply = humanize_response(raw_resp) if raw_resp.strip() else random.choice(["lol", "huh?", "true", "omg", "bruh"])
-    if len(reply) > 200:
-        reply = reply[:200] + "..."
-    await send_human_reply(message.channel, reply, message)
-    memory.add_message(chan_id, BOT_NAME, reply)
-    memory.persist()
+    # Update memory
+    if message.channel.id not in channel_memory:
+        channel_memory[message.channel.id] = deque(maxlen=MAX_MEMORY)
+    channel_memory[message.channel.id].append(f"{message.author.display_name}: {message.content}")
 
-# ---------- Run bot ----------
-def run():
-    client.run(DISCORD_TOKEN)
+    # Generate response
+    reply = await fetch_ai_response(message.content, message.channel)
+    await message.channel.send(reply)
+    channel_memory[message.channel.id].append(f"{BOT_NAME}: {reply}")
 
-if __name__ == "__main__":
-    run()
+# --- PROACTIVE CHAT ---
+@tasks.loop(seconds=180)
+async def proactive_chat():
+    for guild in bot.guilds:
+        for channel in guild.text_channels:
+            if channel.id in shushed_channels: continue
+            mem = channel_memory.get(channel.id, deque(maxlen=MAX_MEMORY))
+            if not mem or (datetime.now(timezone.utc) - datetime.now(timezone.utc)) > timedelta(minutes=3):
+                # Send proactive message
+                await channel.send(random.choice([
+                    f"Hey, anyone up for a chat? 😎",
+                    f"{BOT_NAME} is bored... let's talk! 😂",
+                    "It's quiet here, anyone wanna chat?"
+                ]))
+
+# --- RUN ---
+if TOKEN:
+    bot.run(TOKEN)
+else:
+    print("❌ DISCORD_TOKEN not set")
