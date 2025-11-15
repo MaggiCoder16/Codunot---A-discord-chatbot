@@ -11,7 +11,6 @@ intents.message_content = True
 client = discord.Client(intents=intents)
 
 gen = genai.Client(api_key=GEMINI_API_KEY)
-
 MAX_REPLY_LEN = 67
 
 def build_prompt(channel_id):
@@ -22,8 +21,8 @@ def build_prompt(channel_id):
     mood_lines = "\n".join([f"{u} feels {m}" for u, m in moods.items()])
     personality = """
 You are Codunot. A tired human teen in Discord chats.
-You talk casually, a bit lazy, sometimes sarcastic.
-Use emojis lightly. Keep it short.
+Talk casually, lazy, sometimes sarcastic.
+Keep messages short, max 67 chars.
 Never say you're a bot or AI.
 """
     return f"{personality}\nTopics: {topics}\nMoods:\n{mood_lines}\nChat:\n{msgs}\nReply like a real human teen."
@@ -41,27 +40,31 @@ async def on_message(message):
     update_mood(cid, user, detect_mood(msg))
 
     if is_roast_trigger(msg):
-        roast = generate_safe_roast(user)
-        roast = humanize(roast)[:MAX_REPLY_LEN]
+        roast = generate_safe_roast(user)[:MAX_REPLY_LEN]
+        roast = humanize(roast)
         await asyncio.sleep(human_delay())
-        await message.reply(roast)
+        if random.random() < 0.5:
+            await message.reply(roast)
+        else:
+            await message.channel.send(roast)
         add_message_to_memory(cid, "Codunot", roast)
         return
 
     if any(word in msg.lower() for word in ["today", "topic", "talk"]):
         add_topic(cid, msg)
 
+    prompt = build_prompt(cid)
+    response = gen.models.generate_content(
+        model="gemini-2.5-flash",
+        contents=prompt
+    )
+    reply = (response.text or "").strip()[:MAX_REPLY_LEN]
+    reply = humanize(reply)
+    await asyncio.sleep(human_delay())
     if random.random() < 0.5:
-        prompt = build_prompt(cid)
-        response = gen.models.generate_content(
-            model="gemini-2.5-flash",
-            contents=prompt
-        )
-        reply = (response.text or "").strip()[:MAX_REPLY_LEN]
-        reply = humanize(reply)
-
-        await asyncio.sleep(human_delay())
         await message.reply(reply)
-        add_message_to_memory(cid, "Codunot", reply)
+    else:
+        await message.channel.send(reply)
+    add_message_to_memory(cid, "Codunot", reply)
 
 client.run(DISCORD_TOKEN)
