@@ -9,7 +9,7 @@ from discord import Message
 from dotenv import load_dotenv
 
 from memory import MemoryManager
-from humanize import humanize_response, random_typing_delay, maybe_typo
+from humanizer import humanize_response, random_typing_delay, maybe_typo
 from gemini_client import call_gemini
 from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
 
