@@ -10,18 +10,18 @@ from dotenv import load_dotenv
 
 from memory import MemoryManager
 from humanize import humanize_response, random_typing_delay, maybe_typo
-from gemini_client import call_gemini  # async Gemini wrapper
+from gemini_client import call_gemini
 from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
 
 load_dotenv()
 
 DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
-GEN_API_KEY = os.getenv("GEN_API_KEY")
+GEN_API_KEY = os.getenv("GEMINI_API_KEY")
 BOT_NAME = os.getenv("BOT_NAME", "Codunot")
 CONTEXT_LENGTH = int(os.getenv("CONTEXT_LENGTH", "18"))
 
 if not DISCORD_TOKEN or not GEN_API_KEY:
-    raise SystemExit("Set DISCORD_TOKEN and GEN_API_KEY before running.")
+    raise SystemExit("Set DISCORD_TOKEN and GEMINI_API_KEY before running.")
 
 intents = discord.Intents.default()
 intents.message_content = True
@@ -52,6 +52,7 @@ async def send_human_reply(channel, reply_text, original_message: Message = None
             await asyncio.sleep(random.uniform(0.4, 1.8))
             await channel.send(parts[1].strip())
             return
+
     await channel.send(reply_text)
 
 # ---------- dead channel check ----------
@@ -76,7 +77,7 @@ async def on_message(message: Message):
     chan_id = str(message.channel.id)
     memory.add_message(chan_id, message.author.display_name, message.content)
 
-    # Roast logic: almost always roast Ardunot if mentioned
+    # Roast logic
     is_roast = bool(re.search(r"\broast\b", message.content, re.I) or "ardunot" in message.content.lower())
     if is_roast:
         roast_target = "Ardunot"
@@ -110,7 +111,7 @@ def build_general_prompt(mem_manager: MemoryManager, channel_id: str) -> str:
     )
     return f"{persona}\n\nRecent chat:\n{history_text}\n\nReply as Codunot (one short message):"
 
-def build_roast_prompt(mem_manager: MemoryManager, channel_id: str, target_name: str|None):
+def build_roast_prompt(mem_manager: MemoryManager, channel_id: str, target_name: str | None):
     recent = mem_manager.get_recent_flat(channel_id, n=12)
     history_text = "\n".join(recent)
     target_line = f"Target: {target_name}\n" if target_name else ""
