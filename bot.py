@@ -173,20 +173,29 @@ async def on_message(message: Message):
         # Always talk in #talk-with-bots
         if message.channel.name.lower() == ALWAYS_TALK_CHANNEL.lower():
             allowed_channel = True
-        # Only talk in #general under OPEN TO ALL if pinged
+        # Only respond in #general under OPEN TO ALL if pinged or replied
         elif (
             message.guild
             and message.guild.name.lower() == ALLOWED_SERVER.lower()
             and message.channel.name.lower() == ALLOWED_OPEN_GENERAL.lower()
             and message.channel.category
             and message.channel.category.name.lower() == ALLOWED_OPEN_CATEGORY.lower()
-            and (
-                client.user in message.mentions
-                or f"<@{client.user.id}>" in message.content
-                or f"<@!{client.user.id}>" in message.content
-            )
         ):
-            allowed_channel = True
+            # Check if mentioned or replied to bot
+            mentioned = client.user in message.mentions or f"<@{client.user.id}>" in message.content or f"<@!{client.user.id}>" in message.content
+            replied = False
+            if message.reference:
+                try:
+                    ref = message.reference
+                    if isinstance(ref.resolved, discord.Message):
+                        replied = ref.resolved.author.id == client.user.id
+                    else:
+                        ref_msg = await message.channel.fetch_message(ref.message_id)
+                        replied = ref_msg.author.id == client.user.id if ref_msg else False
+                except:
+                    replied = False
+            if mentioned or replied:
+                allowed_channel = True
 
     if not allowed_channel:
         return  # do not respond
