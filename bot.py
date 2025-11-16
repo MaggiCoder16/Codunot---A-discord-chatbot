@@ -11,7 +11,7 @@ from dotenv import load_dotenv
 
 from memory import MemoryManager
 from humanizer import humanize_response, maybe_typo, is_roast_trigger
-from gemini_client import call_gemini
+from gemini_client import call_gemini  # your Gemini API wrapper
 
 load_dotenv()
 
@@ -39,7 +39,7 @@ owner_mute_until = None
 
 # ---------- allowed channels ----------
 ALLOWED_SERVER_ID = 1435926772972519446
-GENERAL_ID = 1436339326509383820
+GENERAL_CHANNEL_ID = 1436339326509383820
 TALK_WITH_BOTS_ID = 1439269712373485589
 
 message_queue = asyncio.Queue()
@@ -88,6 +88,7 @@ def humanize_and_safeify(text, short=False):
     if random.random() < 0.1 and not MODES["serious"]:
         text = maybe_typo(text)
     if short:
+        # keep ~100 chars max for fun/roast mode; sentence completes naturally
         text = text.strip()[:100]
         if not text.endswith(('.', '!', '?')):
             text += '.'
@@ -107,11 +108,10 @@ def build_general_prompt(mem_manager, channel_id):
             "You are Codunot, a precise and knowledgeable helper. "
             "You answer with direct factual information. No emojis, no slang."
         )
-    elif MODES["roast"]:
+    elif MODES["roast"] or MODES["funny"]:
         persona = (
-            "You are Codunot, a savage roast-master. "
-            "NEVER roast yourself. Only roast non-bot users. "
-            "Roasts are nuclear-level, offensive but NOT targeting protected classes."
+            "You are Codunot, a playful, witty friend. "
+            "Reply in 1–2 lines, max 100 characters. Use slang and emojis, complete the sentence."
         )
     else:
         persona = (
@@ -134,11 +134,12 @@ def build_roast_prompt(mem_manager, channel_id, target_name):
     if MODES["roast"]:
         persona = (
             "You are Codunot, a feral, brutal roast-master. "
-            "Roast HARD. HARD. 1–3 brutal lines. No protected classes. No self-roasting."
+            "Write a short, 1–2 line roast, max 100 characters. "
+            "Roast HARD, avoid protected classes, never roast yourself."
         )
     else:
-        persona = "Friendly, playful one-line roast with emojis."
-    return f"{persona}\nTarget: {target_name}\nChat:\n{history_text}\nRoast:"
+        persona = "Friendly, playful one-line roast with emojis (max 100 characters)."
+    return f"{persona}\nTarget: {target_name}\nRecent chat:\n{history_text}\nRoast:"
 
 
 # ---------- on_ready ----------
@@ -159,6 +160,7 @@ async def on_message(message: Message):
 
     # ---------- OWNER COMMANDS ----------
     if message.author.id == OWNER_ID:
+        # !quiet
         if message.content.startswith("!quiet"):
             match = re.search(r"!quiet (\d+)([smhd])", message.content.lower())
             if match:
@@ -171,11 +173,13 @@ async def on_message(message: Message):
                     f"I'll stop yapping for {format_duration(num, unit)} as my owner shushed me up. Cyu guys!"
                 )
             return
+        # !speak
         if message.content.startswith("!speak"):
             owner_mute_until = None
             await send_human_reply(message.channel, "YOOO I'M BACK FROM MY TIMEOUT WASSUP GUYS!!!!")
             return
 
+    # Muted, do nothing
     if owner_mute_until and now < owner_mute_until:
         return
 
@@ -186,23 +190,8 @@ async def on_message(message: Message):
     if is_dm:
         allowed_channel = True
     else:
-        if message.channel.id == TALK_WITH_BOTS_ID:
+        if message.channel.id in [TALK_WITH_BOTS_ID, GENERAL_CHANNEL_ID]:
             allowed_channel = True
-        elif (
-            message.guild
-            and message.guild.id == ALLOWED_SERVER_ID
-            and message.channel.id in [GENERAL_ID, TALK_WITH_BOTS_ID]
-        ):
-            mentioned = client.user in message.mentions or f"<@{BOT_USER_ID}>" in message.content
-            replied = False
-            if message.reference:
-                try:
-                    ref_msg = await message.channel.fetch_message(message.reference.message_id)
-                    replied = ref_msg.author.id == BOT_USER_ID
-                except:
-                    replied = False
-            if mentioned or replied:
-                allowed_channel = True
 
     if not allowed_channel:
         return
