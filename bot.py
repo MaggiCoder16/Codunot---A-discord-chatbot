@@ -158,13 +158,10 @@ async def on_message(message: Message):
         return
 
     now = datetime.utcnow()
-
-    # Respect owner mute
     if owner_mute_until and now < owner_mute_until:
-        if message.author.id != OWNER_ID:
-            return  # do not respond while muted
+        return
 
-    # Check if this is a DM
+    # ---------------- SERVER LOGIC ----------------
     is_dm = isinstance(message.channel, discord.DMChannel)
     allowed_channel = False
 
@@ -172,18 +169,17 @@ async def on_message(message: Message):
         allowed_channel = True
     else:
         # Always talk in #talk-with-bots
-        if message.channel.name.lower() == ALWAYS_TALK_CHANNEL.lower():
+        if message.channel.name.lower() == "talk-with-bots":
             allowed_channel = True
-
-        # Only respond in allowed server and channels
+        # Only respond in specific server/channel
         elif (
             message.guild
-            and message.guild.name.lower() == ALLOWED_SERVER.lower()
-            and message.channel.name.lower() == ALLOWED_OPEN_GENERAL.lower()
+            and message.guild.name.lower() == "royalracer fans"
+            and message.channel.name.lower() == "general"
             and message.channel.category
-            and message.channel.category.name.lower() == ALLOWED_OPEN_CATEGORY.lower()
+            and message.channel.category.name.lower() == "open to all"
         ):
-            # Check if mentioned or replied
+            # Check if bot is mentioned or message is a reply to bot
             mentioned = (
                 client.user in message.mentions
                 or f"<@{client.user.id}>" in message.content
@@ -204,7 +200,8 @@ async def on_message(message: Message):
                 allowed_channel = True
 
     if not allowed_channel:
-        return
+        return  # do not respond in disallowed channels
+    # ---------------------------------------------------
 
     chan_id = str(message.channel.id) if not is_dm else f"dm_{message.author.id}"
     memory.add_message(chan_id, message.author.display_name, message.content)
