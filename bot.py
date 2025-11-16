@@ -16,7 +16,7 @@ from humanizer import humanize_response, maybe_typo, is_roast_trigger
 load_dotenv()
 
 DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+OPENAI_API_KEY = os.getenv("GEMINI_API_KEY")
 BOT_NAME = os.getenv("BOT_NAME", "Codunot")
 CONTEXT_LENGTH = int(os.getenv("CONTEXT_LENGTH", "18"))
 
