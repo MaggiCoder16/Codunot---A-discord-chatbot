@@ -4,7 +4,7 @@ import os
 import asyncio
 import random
 import re
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import discord
 from discord import Message
 from dotenv import load_dotenv
@@ -23,7 +23,7 @@ CONTEXT_LENGTH = int(os.getenv("CONTEXT_LENGTH", "18"))
 if not DISCORD_TOKEN or not GEN_API_KEY:
     raise SystemExit("Set DISCORD_TOKEN and GEMINI_API_KEY before running.")
 
-intents = discord.Intents.default()
+intents = discord.Intents.all()
 intents.message_content = True
 client = discord.Client(intents=intents)
 
@@ -32,43 +32,74 @@ memory = MemoryManager(limit=60, file_path="codunot_memory.json")
 # ---------------- BOT MODES ----------------
 MODES = {"funny": True, "roast": False, "serious": False}
 MAX_MSG_LEN = 200
-dm_greeted_users = set()  # Track users already greeted in DMs
+
+# ---------------- OWNER QUIET/SPEAK ----------------
+OWNER_ID = 1220934047794987048
+owner_mute_until = None
 
 # ---------- dead chat channels ----------
 DEAD_CHAT_CHANNELS = {
     "ROYALRACER FANS": ["testing", "coders", "general"],
     "OPEN TO ALL": ["general"]
 }
+dead_message_count = {}  # {(guild_id, channel_id): count}
+dm_dead_count = {}  # {user_id: count}
+
+# ---------- message queue for throttling ----------
+message_queue = asyncio.Queue()
 
 # ---------- helper to send long messages ----------
-async def send_long_message(channel, text, original_message: Message = None):
+async def send_long_message(channel, text):
     while len(text) > 0:
         chunk = text[:MAX_MSG_LEN]
         text = text[MAX_MSG_LEN:]
         if len(text) > 0:
             chunk += "..."
             text = "..." + text
-        await channel.send(chunk)
+        await message_queue.put((channel, chunk))
+
+async def process_queue():
+    while True:
+        channel, content = await message_queue.get()
+        try:
+            await channel.send(content)
+        except Exception:
+            pass
+        await asyncio.sleep(0.1)  # slight delay between messages
 
 # ---------- send messages ----------
-async def send_human_reply(channel, reply_text, original_message: Message = None):
+async def send_human_reply(channel, reply_text):
     if len(reply_text) > MAX_MSG_LEN:
-        await send_long_message(channel, reply_text, original_message)
+        await send_long_message(channel, reply_text)
     else:
-        await channel.send(reply_text)
+        await message_queue.put((channel, reply_text))
 
 # ---------- dead channel check ----------
 async def dead_channel_check():
     await client.wait_until_ready()
     while True:
+        now = datetime.utcnow()
         for guild in client.guilds:
             for channel in guild.text_channels:
                 if guild.name in DEAD_CHAT_CHANNELS and channel.name in DEAD_CHAT_CHANNELS[guild.name]:
+                    key = (guild.id, channel.id)
                     last_msg_time = memory.get_last_timestamp(str(channel.id))
-                    if not last_msg_time or datetime.utcnow() - last_msg_time > timedelta(hours=1):
+                    count = dead_message_count.get(key, 0)
+                    if (not last_msg_time or now - last_msg_time > timedelta(hours=3)) and count < 2:
                         msg = "its dead in here... anyone wanna talk?"
                         await send_human_reply(channel, msg)
-        await asyncio.sleep(3600)  # check every 1 hour
+                        dead_message_count[key] = count + 1
+        # DM dead messages
+        for user_id, count in dm_dead_count.items():
+            if count >= 2:
+                continue
+            user = await client.fetch_user(user_id)
+            last_dm_time = memory.get_last_timestamp(f"dm_{user_id}")
+            if not last_dm_time or now - last_dm_time > timedelta(hours=4):
+                msg = "hey bro, wannna talk? im lowk bored rn"
+                await send_human_reply(user, msg)
+                dm_dead_count[user_id] = count + 1
+        await asyncio.sleep(3600)  # check every hour
 
 # ---------- start conversation ----------
 async def initiate_conversation():
@@ -78,8 +109,8 @@ async def initiate_conversation():
             if guild.name in DEAD_CHAT_CHANNELS and channel.name in DEAD_CHAT_CHANNELS[guild.name]:
                 msg = random.choice([
                     "heyyy anyone up for a chat? 😎",
-                    "sup guys, let's talk a bit lol",
-                    "sup everyone, what's up?"
+                    "sup guys, what's up?",
+                    "bruh, let's talk a bit lol"
                 ])
                 await send_human_reply(channel, msg)
 
@@ -87,16 +118,15 @@ async def initiate_conversation():
 def build_general_prompt(mem_manager: MemoryManager, channel_id: str) -> str:
     recent = mem_manager.get_recent_flat(channel_id, n=CONTEXT_LENGTH)
     history_text = "\n".join(recent)
+    persona = (
+        "You are Codunot, a normal human friend in a Discord chat. "
+        "Never say you are a bot. Keep replies short, casual, with slang, emojis, and occasional typos. "
+        "Sometimes use 'idk', 'nvm', 'lol', 'bruh'."
+    )
     if MODES["serious"]:
         persona = (
-            "You are Codunot, friendly, helpful, concise, proper grammar. "
-            "No slang, no emoji. Keep replies professional."
-        )
-    else:
-        persona = (
-            "You are Codunot, a normal human friend in a Discord chat. "
-            "Keep replies short, casual, with slang, emojis, and occasional typos. "
-            "Sometimes use 'idk', 'nvm', 'lol', 'bruh'."
+            "You are Codunot, friendly, helpful, concise, proper grammar. No slang, no emoji. "
+            "Keep replies professional."
         )
     return f"{persona}\n\nRecent chat:\n{history_text}\n\nReply as Codunot (one short message):"
 
@@ -106,11 +136,11 @@ def build_roast_prompt(mem_manager: MemoryManager, channel_id: str, target_name:
     target_line = f"Target: {target_name}\n" if target_name else ""
     persona = (
         "You are Codunot, a witty human friend who can roast playfully. "
-        "Write a short, HARD roast. "
-        "Never attack protected classes or identity. "
+        "Write a short, funny, hard-hitting roast. "
+        "Never attack protected classes or someone's identity. "
         "Use slang and emoji. Keep it short (1-2 lines)."
     )
-    return f"{persona}\n{target_line}\nRecent chat:\n{history_text}\n\nGive one HARD roast as Codunot:"
+    return f"{persona}\n{target_line}\nRecent chat:\n{history_text}\n\nGive one roast as Codunot:"
 
 def humanize_and_safeify(text: str) -> str:
     t = maybe_typo(text)
@@ -124,80 +154,92 @@ async def on_ready():
     print(f"{BOT_NAME} is ready!")
     asyncio.create_task(dead_channel_check())
     asyncio.create_task(initiate_conversation())
+    asyncio.create_task(process_queue())
 
 # ---------- on_message ----------
 @client.event
 async def on_message(message: Message):
+    global owner_mute_until
     if message.author == client.user:
-        return  # ignore self
+        return
 
-    chan_id = str(message.channel.id)
+    now = datetime.utcnow()
+    if owner_mute_until and now < owner_mute_until:
+        return
+
+    chan_id = str(message.channel.id) if not isinstance(message.channel, discord.DMChannel) else f"dm_{message.author.id}"
     memory.add_message(chan_id, message.author.display_name, message.content)
 
-    # --- DM GREETING ---
-    if isinstance(message.channel, discord.DMChannel):
-        if message.author.id not in dm_greeted_users:
-            dm_greeted_users.add(message.author.id)
-            greeting = (
-                "Hi! I'm Codunot, a bot who yaps like a human, but is AI! "
-                "I have 3 modes - !roastmode, !funmode, and !seriousmode. "
-                "They're pretty self-explanatory, you know? Try them all!"
-            )
-            await send_human_reply(message.channel, greeting, message)
+    # DM intro
+    if isinstance(message.channel, discord.DMChannel) and len(memory.get_recent_flat(chan_id, 1)) == 1:
+        intro = ("Hi! I'm Codunot, a bot who yaps like a human, but is AI! "
+                 "I have 3 modes - !roastmode, !funmode, and !seriousmode. They're pretty self-explanatory, you know? Try them all!")
+        await send_human_reply(message.channel, intro)
+
+    # Owner mute commands
+    if message.author.id == OWNER_ID:
+        quiet_match = re.match(r"!quiet (\d+)([smhd])", message.content.lower())
+        if quiet_match:
+            num, unit = int(quiet_match.group(1)), quiet_match.group(2)
+            seconds = num * {"s": 1, "m": 60, "h": 3600, "d": 86400}[unit]
+            owner_mute_until = datetime.utcnow() + timedelta(seconds=seconds)
+            await send_human_reply(message.channel, f"I'll be quiet for {quiet_match.group(1)}{unit} as my owner muted me. Cyu soon, guys!")
+            return
+        if message.content.lower().startswith("!speak"):
+            owner_mute_until = None
+            await send_human_reply(message.channel, "YOOO I'M BACK FROM MY TIMEOUT WASSUP GUYS!!!!")
             return
 
-    # --- MODE COMMANDS ---
+    # Modes commands
     if message.content.startswith("!roastmode"):
         MODES["roast"] = True
         MODES["serious"] = False
-        await message.channel.send("😂 Roast/funny mode activated!")
+        MODES["funny"] = False
+        await send_human_reply(message.channel, "😂 Roast/funny mode activated!")
         return
     elif message.content.startswith("!seriousmode"):
         MODES["serious"] = True
         MODES["roast"] = False
-        await message.channel.send("🤓 Serious/helpful mode activated!")
+        MODES["funny"] = False
+        await send_human_reply(message.channel, "🤓 Serious/helpful mode activated!")
         return
     elif message.content.startswith("!funmode"):
-        MODES["serious"] = False
+        MODES["funny"] = True
         MODES["roast"] = False
-        await message.channel.send("😎 Fun casual mode activated!")
+        MODES["serious"] = False
+        await send_human_reply(message.channel, "😎 Fun casual mode activated!")
         return
 
-    # --- ROAST MODE ---
+    # ROAST mode
     if MODES["roast"]:
         roast_target = is_roast_trigger(message.content)
         if roast_target:
             memory.set_roast_target(chan_id, roast_target)
-
         target = memory.get_roast_target(chan_id)
         if target:
             roast_prompt = build_roast_prompt(memory, chan_id, target)
             try:
                 raw = await call_gemini(roast_prompt)
-            except:
-                return  # silent on API error
-            roast_text = humanize_and_safeify(raw)
-            # Send in DM to target if possible
-            for member in message.channel.members if hasattr(message.channel, "members") else []:
-                if member.display_name == target:
-                    try:
-                        await member.send(roast_text)
-                    except:
-                        pass  # ignore if DM fails
-            await send_human_reply(message.channel, roast_text, message)
-            memory.add_message(chan_id, BOT_NAME, roast_text)
+                roast_text = humanize_and_safeify(raw)
+                await send_human_reply(message.channel, roast_text)
+                memory.add_message(chan_id, BOT_NAME, roast_text)
+            except Exception:
+                pass  # silent on API errors
             return
 
-    # --- GENERAL CONVERSATION ---
-    prompt = build_general_prompt(memory, chan_id)
+    # GENERAL conversation
     try:
+        prompt = build_general_prompt(memory, chan_id)
         raw_resp = await call_gemini(prompt)
-    except:
-        return  # silent on API error
-    reply = humanize_response(raw_resp) if raw_resp.strip() else random.choice(["lol", "huh?", "true", "omg", "bruh"])
-    await send_human_reply(message.channel, reply, message)
-    memory.add_message(chan_id, BOT_NAME, reply)
-    memory.persist()
+        if not raw_resp.strip():
+            reply = random.choice(["lol", "huh?", "true", "omg", "bruh"])
+        else:
+            reply = humanize_response(raw_resp)
+        await send_human_reply(message.channel, reply)
+        memory.add_message(chan_id, BOT_NAME, reply)
+        memory.persist()
+    except Exception:
+        pass  # silent on API errors
 
 # ---------- graceful shutdown ----------
 async def _cleanup():
