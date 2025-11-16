@@ -163,14 +163,6 @@ async def on_message(message: Message):
     chan_id = str(message.channel.id) if not isinstance(message.channel, discord.DMChannel) else f"dm_{message.author.id}"
     memory.add_message(chan_id, message.author.display_name, message.content)
 
-    # ---------- DM intro ----------
-    intro_key = f"dm_intro_{message.author.id}"
-    if isinstance(message.channel, discord.DMChannel) and not memory.get_flag(intro_key):
-        intro = ("Hi! I'm Codunot, a bot who yaps like a human, but is AI! "
-                 "I have 3 modes - !roastmode, !funmode, and !seriousmode. They're pretty self-explanatory, you know? Try them all!")
-        await send_human_reply(message.channel, intro)
-        memory.set_flag(intro_key)
-
     # ---------- Owner commands ----------
     if message.author.id == OWNER_ID:
         # !quiet
