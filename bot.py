@@ -158,12 +158,13 @@ async def on_message(message: Message):
         return
 
     now = datetime.utcnow()
-    # respect quiet mode
+
+    # Respect owner mute
     if owner_mute_until and now < owner_mute_until:
         if message.author.id != OWNER_ID:
-            return  # bot does NOT respond while muted
+            return  # do not respond while muted
 
-    # ---------------- SERVER LOGIC FIX ----------------
+    # Check if this is a DM
     is_dm = isinstance(message.channel, discord.DMChannel)
     allowed_channel = False
 
@@ -173,7 +174,8 @@ async def on_message(message: Message):
         # Always talk in #talk-with-bots
         if message.channel.name.lower() == ALWAYS_TALK_CHANNEL.lower():
             allowed_channel = True
-        # Only respond in #general under OPEN TO ALL if pinged or replied
+
+        # Only respond in allowed server and channels
         elif (
             message.guild
             and message.guild.name.lower() == ALLOWED_SERVER.lower()
@@ -181,8 +183,12 @@ async def on_message(message: Message):
             and message.channel.category
             and message.channel.category.name.lower() == ALLOWED_OPEN_CATEGORY.lower()
         ):
-            # Check if mentioned or replied to bot
-            mentioned = client.user in message.mentions or f"<@{client.user.id}>" in message.content or f"<@!{client.user.id}>" in message.content
+            # Check if mentioned or replied
+            mentioned = (
+                client.user in message.mentions
+                or f"<@{client.user.id}>" in message.content
+                or f"<@!{client.user.id}>" in message.content
+            )
             replied = False
             if message.reference:
                 try:
@@ -198,8 +204,7 @@ async def on_message(message: Message):
                 allowed_channel = True
 
     if not allowed_channel:
-        return  # do not respond
-    # ---------------------------------------------------
+        return
 
     chan_id = str(message.channel.id) if not is_dm else f"dm_{message.author.id}"
     memory.add_message(chan_id, message.author.display_name, message.content)
@@ -212,7 +217,7 @@ async def on_message(message: Message):
         )
         return
 
-    # OWNER COMMANDS
+    # OWNER COMMANDS (!quiet / !speak)
     if "!quiet" in message.content:
         if message.author.id != OWNER_ID:
             await send_human_reply(
@@ -231,14 +236,13 @@ async def on_message(message: Message):
             )
             return
 
-    if "!speak" in message.content.lower():
-        # Only the owner can unmute, silently ignore others
+    if "!speak" in message.content:
         if message.author.id == OWNER_ID:
             owner_mute_until = None
             await send_human_reply(message.channel, "YOOO I'M BACK FROM MY TIMEOUT WASSUP GUYS!!!!")
-        return  # non-owner ignored
+        return
 
-    # MODE SWITCHING
+    # MODE SWITCHING (!roastmode / !seriousmode / !funnymode)
     if "!roastmode" in message.content:
         MODES.update({"roast": True, "serious": False, "funny": False})
         await send_human_reply(message.channel, "🔥 Roast mode ACTIVATED. Hide yo egos.")
@@ -276,7 +280,6 @@ async def on_message(message: Message):
         memory.persist()
     except Exception:
         pass
-
 
 # ---------- owner mute checker ----------
 async def check_owner_mute():
