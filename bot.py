@@ -38,13 +38,13 @@ MAX_MSG_LEN = 3000
 OWNER_ID = 1220934047794987048
 owner_mute_until = None
 
-# ---------- channel rules for "RoyalRacer Fans" ----------
+# ---------- channels settings ----------
 ALWAYS_TALK_CHANNELS = {
     "RoyalRacer Fans": ["talk-with-bots"]
 }
 
 MENTION_ONLY_CHANNELS = {
-    "RoyalRacer Fans": ["general"]
+    "RoyalRacer Fans": ["general"]  # only general in "OPEN TO ALL"
 }
 
 message_queue = asyncio.Queue()
@@ -58,6 +58,29 @@ def format_duration(num: int, unit: str) -> str:
         return f"1 {name}"
     else:
         return f"{num} {name}s"
+
+
+def channel_allowed(message):
+    # DMs always allowed
+    if isinstance(message.channel, discord.DMChannel):
+        return True
+
+    # Only apply channel restrictions on "RoyalRacer Fans"
+    if not message.guild or message.guild.name != "RoyalRacer Fans":
+        return True
+
+    # Always talk channels
+    if message.channel.name in ALWAYS_TALK_CHANNELS.get("RoyalRacer Fans", []):
+        return True
+
+    # Mention-only channels inside "OPEN TO ALL"
+    if (message.channel.category
+        and message.channel.category.name == "OPEN TO ALL"
+        and message.channel.name in MENTION_ONLY_CHANNELS.get("RoyalRacer Fans", [])
+        and client.user in message.mentions):
+        return True
+
+    return False
 
 
 async def send_long_message(channel, text):
@@ -85,26 +108,6 @@ async def send_human_reply(channel, reply_text):
         await send_long_message(channel, reply_text)
     else:
         await message_queue.put((channel, reply_text))
-
-
-def channel_allowed(message):
-    # Always allow DMs
-    if isinstance(message.channel, discord.DMChannel):
-        return True
-
-    # Only restrict channels for "RoyalRacer Fans" server
-    if not message.guild or message.guild.name != "RoyalRacer Fans":
-        return True  # other servers: unrestricted
-
-    # Always-talk channels in the server
-    if message.channel.name in ALWAYS_TALK_CHANNELS.get("RoyalRacer Fans", []):
-        return True
-
-    # Mention-only channels
-    if message.channel.name in MENTION_ONLY_CHANNELS.get("RoyalRacer Fans", []) and client.user in message.mentions:
-        return True
-
-    return False
 
 
 # ---------- PROMPTS ----------
@@ -190,16 +193,15 @@ async def on_message(message: Message):
     if message.author == client.user:
         return
 
+    if not channel_allowed(message):
+        return  # skip if channel not allowed
+
     now = datetime.utcnow()
 
     # respect quiet mode
     if owner_mute_until and now < owner_mute_until:
         if message.author.id != OWNER_ID:
-            return  # bot does NOT respond while muted
-
-    # only respond if channel allowed
-    if not channel_allowed(message):
-        return
+            return
 
     chan_id = str(message.channel.id) if not isinstance(message.channel, discord.DMChannel) else f"dm_{message.author.id}"
     memory.add_message(chan_id, message.author.display_name, message.content)
@@ -293,9 +295,14 @@ async def check_owner_mute():
             owner_mute_until = None
             for guild in client.guilds:
                 for channel in guild.text_channels:
-                    if channel_allowed(channel):
-                        await send_human_reply(channel, "YOOO I'M BACK FROM MY TIMEOUT WASSUP GUYS!!!!")
+                    await send_human_reply(channel, "YOOO I'M BACK FROM MY TIMEOUT WASSUP GUYS!!!!")
         await asyncio.sleep(1)
+
+
+# ---------- graceful shutdown ----------
+async def _cleanup():
+    await memory.close()
+    await asyncio.sleep(0.1)
 
 
 # ---------- run ----------
