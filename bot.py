@@ -74,7 +74,7 @@ async def process_queue():
             await channel.send(content)
         except Exception:
             pass
-        await asyncio.sleep(0.02)  # faster replies
+        await asyncio.sleep(0.02)
 
 
 async def send_human_reply(channel, reply_text):
@@ -84,20 +84,12 @@ async def send_human_reply(channel, reply_text):
         await message_queue.put((channel, reply_text))
 
 
-# ---------- dead channel checks ----------
-async def dead_channel_check():
-    await client.wait_until_ready()
-    while True:
-        now = datetime.utcnow()
-        await asyncio.sleep(3600)
-
-
 # ---------- conversation initiation ----------
 async def initiate_conversation():
     await client.wait_until_ready()
     for guild in client.guilds:
         for channel in guild.text_channels:
-            if channel.name == ALWAYS_TALK_CHANNEL:
+            if channel.name.lower() == ALWAYS_TALK_CHANNEL.lower():
                 msg = random.choice([
                     "heyyy anyone up for a chat? 😎",
                     "sup guys, what's up?",
@@ -155,9 +147,7 @@ def build_roast_prompt(mem_manager, channel_id, target_name):
             "Roast HARD. 1–3 brutal lines. No protected classes. No self-roasting."
         )
     else:
-        persona = (
-            "Friendly, playful one-line roast with emojis."
-        )
+        persona = "Friendly, playful one-line roast with emojis."
 
     return f"{persona}\nTarget: {target_name}\nChat:\n{history_text}\nRoast:"
 
@@ -183,7 +173,6 @@ def humanize_and_safeify(text):
 @client.event
 async def on_ready():
     print(f"{BOT_NAME} is ready!")
-    asyncio.create_task(dead_channel_check())
     asyncio.create_task(initiate_conversation())
     asyncio.create_task(process_queue())
     asyncio.create_task(check_owner_mute())
@@ -197,11 +186,8 @@ async def on_message(message: Message):
         return
 
     now = datetime.utcnow()
-
-    # respect quiet mode
-    if owner_mute_until and now < owner_mute_until:
-        if message.author.id != OWNER_ID:
-            return
+    if owner_mute_until and now < owner_mute_until and message.author.id != OWNER_ID:
+        return
 
     # Determine if bot is allowed to respond
     is_dm = isinstance(message.channel, discord.DMChannel)
@@ -209,22 +195,24 @@ async def on_message(message: Message):
     if is_dm:
         allowed_channel = True
     else:
+        guild_name = message.guild.name.lower() if message.guild else ""
+        channel_name = message.channel.name.lower()
+        category_name = message.channel.category.name.lower() if message.channel.category else ""
+
         # Always talk in talk-with-bots
-        if message.channel.name == ALWAYS_TALK_CHANNEL:
+        if channel_name == ALWAYS_TALK_CHANNEL.lower():
             allowed_channel = True
         # Open general only if pinged
         elif (
-            message.guild
-            and message.guild.name == ALLOWED_SERVER
-            and message.channel.name == ALLOWED_OPEN_GENERAL
-            and message.channel.category
-            and message.channel.category.name == ALLOWED_OPEN_CATEGORY
-            and client.user in message.mentions
+            guild_name == ALLOWED_SERVER.lower()
+            and channel_name == ALLOWED_OPEN_GENERAL.lower()
+            and category_name == ALLOWED_OPEN_CATEGORY.lower()
+            and (client.user in message.mentions or f"<@{client.user.id}>" in message.content)
         ):
             allowed_channel = True
 
     if not allowed_channel:
-        return  # do not respond
+        return
 
     chan_id = str(message.channel.id) if not is_dm else f"dm_{message.author.id}"
     memory.add_message(chan_id, message.author.display_name, message.content)
