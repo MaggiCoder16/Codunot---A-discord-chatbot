@@ -157,7 +157,7 @@ def humanize_and_safeify(text: str) -> str:
         t = random.choice(["lol", "bruh", "ngl"]) + " " + t
     return t
 
-# ---------- GPT call ----------
+# ---------- GPT call using GPT-3.5-turbo ----------
 async def call_openai(prompt: str) -> str:
     try:
         resp = await openai.ChatCompletion.acreate(
