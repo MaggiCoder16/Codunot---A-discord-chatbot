@@ -16,14 +16,14 @@ from humanizer import humanize_response, maybe_typo, is_roast_trigger
 load_dotenv()
 
 DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
-OPENAI_API_KEY = os.getenv("GEMINI_API_KEY")
+GEN_API_KEY = os.getenv("GEMINI_API_KEY")  # just change the value, not the name
 BOT_NAME = os.getenv("BOT_NAME", "Codunot")
 CONTEXT_LENGTH = int(os.getenv("CONTEXT_LENGTH", "18"))
 
-if not DISCORD_TOKEN or not OPENAI_API_KEY:
-    raise SystemExit("Set DISCORD_TOKEN and OPENAI_API_KEY before running.")
+if not DISCORD_TOKEN or not GEN_API_KEY:
+    raise SystemExit("Set DISCORD_TOKEN and GEMINI_API_KEY before running.")
 
-openai.api_key = OPENAI_API_KEY
+openai.api_key = GEN_API_KEY
 
 intents = discord.Intents.all()
 intents.message_content = True
@@ -73,11 +73,10 @@ async def process_queue():
         channel, content = await message_queue.get()
         try:
             await channel.send(content)
-        except Exception:
-            pass
-        await asyncio.sleep(0.1)  # slight delay between messages
+        except Exception as e:
+            print(f"Failed sending message: {e}")
+        await asyncio.sleep(0.1)
 
-# ---------- send messages ----------
 async def send_human_reply(channel, reply_text):
     if len(reply_text) > MAX_MSG_LEN:
         await send_long_message(channel, reply_text)
@@ -109,7 +108,7 @@ async def dead_channel_check():
                 msg = "hey bro, wannna talk? im lowk bored rn"
                 await send_human_reply(user, msg)
                 dm_dead_count[user_id] = count + 1
-        await asyncio.sleep(3600)  # check every hour
+        await asyncio.sleep(3600)
 
 # ---------- start conversation ----------
 async def initiate_conversation():
@@ -163,12 +162,14 @@ async def call_openai(prompt: str) -> str:
         resp = await openai.ChatCompletion.acreate(
             model="gpt-3.5-turbo",
             messages=[{"role": "user", "content": prompt}],
-            max_tokens=200,
-            temperature=0.8
+            max_tokens=600,
+            temperature=0.7
         )
-        return resp.choices[0].message.content.strip()
-    except Exception:
-        return ""  # silent on API errors
+        text = resp.choices[0].message.content.strip()
+        return text if text else "Hmm, not sure what to say!"
+    except Exception as e:
+        print("OpenAI API error:", e)
+        return "Hmm, API is acting up!"
 
 # ---------- on_ready ----------
 @client.event
@@ -192,7 +193,7 @@ async def on_message(message: Message):
     chan_id = str(message.channel.id) if not isinstance(message.channel, discord.DMChannel) else f"dm_{message.author.id}"
     memory.add_message(chan_id, message.author.display_name, message.content)
 
-    # DM intro
+    # DM intro (only first message)
     if isinstance(message.channel, discord.DMChannel) and len(memory.get_recent_flat(chan_id, 1)) == 1:
         intro = ("Hi! I'm Codunot, a bot who yaps like a human, but is AI! "
                  "I have 3 modes - !roastmode, !funmode, and !seriousmode. They're pretty self-explanatory, you know? Try them all!")
@@ -242,19 +243,15 @@ async def on_message(message: Message):
         if target:
             roast_prompt = build_roast_prompt(memory, chan_id, target)
             raw = await call_openai(roast_prompt)
-            if raw:
-                roast_text = humanize_and_safeify(raw)
-                await send_human_reply(message.channel, roast_text)
-                memory.add_message(chan_id, BOT_NAME, roast_text)
+            roast_text = humanize_and_safeify(raw)
+            await send_human_reply(message.channel, roast_text)
+            memory.add_message(chan_id, BOT_NAME, roast_text)
             return
 
     # GENERAL conversation
     prompt = build_general_prompt(memory, chan_id)
     raw_resp = await call_openai(prompt)
-    if not raw_resp.strip():
-        reply = random.choice(["lol", "huh?", "true", "omg", "bruh"])
-    else:
-        reply = humanize_response(raw_resp)
+    reply = humanize_response(raw_resp) if raw_resp.strip() else "Hmm, not sure what to say!"
     await send_human_reply(message.channel, reply)
     memory.add_message(chan_id, BOT_NAME, reply)
     memory.persist()
