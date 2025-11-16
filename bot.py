@@ -11,7 +11,7 @@ from dotenv import load_dotenv
 
 from memory import MemoryManager
 from humanizer import humanize_response, maybe_typo, is_roast_trigger
-from gemini_client import call_gemini  # your Gemini API wrapper
+from gemini_client import call_gemini
 
 load_dotenv()
 
@@ -21,7 +21,6 @@ BOT_NAME = os.getenv("BOT_NAME", "Codunot")
 BOT_USER_ID = 1435987186502733878
 OWNER_ID = 1220934047794987048
 CONTEXT_LENGTH = int(os.getenv("CONTEXT_LENGTH", "18"))
-MAX_MSG_LEN = 3000  # for serious mode
 
 if not DISCORD_TOKEN or not GEN_API_KEY:
     raise SystemExit("Set DISCORD_TOKEN and GEMINI_API_KEY before running.")
@@ -32,15 +31,24 @@ client = discord.Client(intents=intents)
 
 memory = MemoryManager(limit=60, file_path="codunot_memory.json")
 
-# ---------- BOT MODES ----------
+# ---------------- BOT MODES ----------------
 MODES = {"funny": True, "roast": False, "serious": False}
+MAX_MSG_LEN = 3000
+
+# ---------------- OWNER QUIET/SPEAK ----------------
+owner_mute_until = None
 
 # ---------- allowed channels ----------
-ALLOWED_SERVER = "RoyalRacer Fans"
-ALLOWED_OPEN_GENERAL = "general"  # under OPEN TO ALL
-ALLOWED_OPEN_CATEGORY = "OPEN TO ALL"
+ALLOWED_SERVER = "royalracer fans"
+ALLOWED_OPEN_GENERAL = "general"
+ALLOWED_OPEN_CATEGORY = "open to all"
 ALWAYS_TALK_CHANNEL = "talk-with-bots"
 
+# ---------- per-user cooldown to avoid replying to every message ----------
+USER_COOLDOWN = {}
+COOLDOWN_SECONDS = 60  # bot will only respond once per user per minute
+
+# ---------- message queue ----------
 message_queue = asyncio.Queue()
 
 
@@ -78,26 +86,23 @@ async def send_human_reply(channel, reply_text):
         await message_queue.put((channel, reply_text))
 
 
-def humanize_and_safeify(text, mode_limited=False):
+def humanize_and_safeify(text):
     if not isinstance(text, str):
         text = str(text)
     text = text.replace(" idk", "").replace(" *nvm", "")
     if random.random() < 0.1 and not MODES["serious"]:
         text = maybe_typo(text)
-    if mode_limited:
-        text = text.strip()[:100]  # limit to ~100 chars
-        # try to end on sentence boundary
-        if "." in text:
-            text = text.rsplit(".", 1)[0] + "."
-    else:
-        # truncate to 3 lines max for non-serious modes
-        if not MODES["serious"]:
-            lines = text.strip().splitlines()
-            text = "\n".join(lines[:3])
+    # truncate to 100 chars for roast/fun modes
+    if MODES["roast"] or MODES["funny"]:
+        text = text.strip()[:100]
+    # for fun/roast, max 1–1.5 lines
+    if MODES["roast"] or MODES["funny"]:
+        lines = text.splitlines()
+        text = "\n".join(lines[:2])
     return text
 
 
-# ---------- PROMPTS ----------
+# ---------- build prompts ----------
 def build_general_prompt(mem_manager, channel_id):
     recent = mem_manager.get_recent_flat(channel_id, n=CONTEXT_LENGTH)
     history_text = "\n".join(recent)
@@ -113,7 +118,8 @@ def build_general_prompt(mem_manager, channel_id):
     elif MODES["roast"]:
         persona = (
             "You are Codunot, a savage roast-master. "
-            "NEVER roast yourself. Only roast non-bot users."
+            "NEVER roast yourself. Only roast non-bot users. "
+            "Roasts are nuclear-level, offensive but NOT targeting protected classes."
         )
     else:
         persona = (
@@ -124,7 +130,7 @@ def build_general_prompt(mem_manager, channel_id):
         f"{persona}\n"
         f"{persona_self_protect}\n"
         f"My user ID is {BOT_USER_ID}.\n"
-        f"If asked 'who made you', ALWAYS answer: '@aarav_2022 (ID: {OWNER_ID}) made me.'\n\n"
+        f"If asked 'who made you', ALWAYS answer: '@aarav_2022 (ID: 1220934047794987048) made me.'\n\n"
         f"Recent chat:\n{history_text}\n\nReply as Codunot:"
     )
 
@@ -169,81 +175,72 @@ async def on_message(message: Message):
     if is_dm:
         allowed_channel = True
     else:
-        if message.channel.name.lower() == ALWAYS_TALK_CHANNEL:
+        if message.channel.name.lower() == ALWAYS_TALK_CHANNEL.lower():
             allowed_channel = True
         elif (
             message.guild
-            and message.guild.id == 1435926772972519446  # RoyalRacer Fans
-            and message.channel.id in [1436339326509383820, 1439269712373485589]  # general / talk-with-bots
+            and message.guild.name.lower() == ALLOWED_SERVER.lower()
+            and message.channel.name.lower() == ALLOWED_OPEN_GENERAL.lower()
+            and message.channel.category
+            and message.channel.category.name.lower() == ALLOWED_OPEN_CATEGORY.lower()
         ):
-            mentioned = (
-                client.user in message.mentions
-                or f"<@{BOT_USER_ID}>" in message.content
-                or f"<@!{BOT_USER_ID}>" in message.content
-            )
-            replied = False
-            if message.reference:
-                try:
-                    ref = message.reference
-                    if isinstance(ref.resolved, discord.Message):
-                        replied = ref.resolved.author.id == BOT_USER_ID
-                    else:
-                        ref_msg = await message.channel.fetch_message(ref.message_id)
-                        replied = ref_msg.author.id == BOT_USER_ID if ref_msg else False
-                except:
-                    replied = False
-            if mentioned or replied:
-                allowed_channel = True
+            allowed_channel = True
 
     if not allowed_channel:
-        return
+        return  # disallowed channel
 
-    chan_id = str(message.channel.id) if not is_dm else f"dm_{message.author.id}"
+    # ---------------- COOLDOWN ----------------
+    user_id = message.author.id
+    last_time = USER_COOLDOWN.get(user_id)
+    if last_time and (now - last_time).total_seconds() < COOLDOWN_SECONDS:
+        return
+    USER_COOLDOWN[user_id] = now
+
+    chan_id = str(message.channel.id) if not is_dm else f"dm_{user_id}"
     memory.add_message(chan_id, message.author.display_name, message.content)
 
-    # OWNER COMMANDS
-    if message.content.startswith("!quiet"):
-        if message.author.id != OWNER_ID:
-            await send_human_reply(
-                message.channel,
-                f"Only my owner can shush me up, not you! Owner: @aarav_2022 (ID: {OWNER_ID})"
-            )
-            return
-        match = re.search(r"!quiet (\d+)([smhd])", message.content.lower())
-        if match:
-            num = int(match.group(1))
-            unit = match.group(2)
-            seconds = num * {"s":1, "m":60, "h":3600, "d":86400}[unit]
-            owner_mute_until = datetime.utcnow() + timedelta(seconds=seconds)
-            await send_human_reply(
-                message.channel,
-                f"I'll stop yapping for {format_duration(num, unit)} as my owner shushed me up. Cyu guys!"
-            )
-            return
-
-    if message.content.startswith("!speak"):
-        if message.author.id == OWNER_ID:
-            owner_mute_until = None
-            await send_human_reply(message.channel, "YOOO I'M BACK FROM MY TIMEOUT WASSUP GUYS!!!!")
+    # ---------- creator question ----------
+    if "who made you" in message.content.lower():
+        await send_human_reply(
+            message.channel,
+            "@aarav_2022, Discord user ID **1220934047794987048**, made me."
+        )
         return
 
-    # MODE SWITCHING
-    if message.content.startswith("!roastmode"):
+    # ---------- OWNER COMMANDS ----------
+    if message.author.id == OWNER_ID:
+        if "!quiet" in message.content.lower():
+            quiet_match = re.search(r"!quiet (\d+)([smhd])", message.content.lower())
+            if quiet_match:
+                num, unit = int(quiet_match.group(1)), quiet_match.group(2)
+                seconds = num * {"s": 1, "m": 60, "h": 3600, "d": 86400}[unit]
+                owner_mute_until = datetime.utcnow() + timedelta(seconds=seconds)
+                await send_human_reply(
+                    message.channel,
+                    f"I'll stop yapping for {format_duration(num, unit)} as my owner shushed me up. Cyu guys!"
+                )
+                return
+        if "!speak" in message.content.lower():
+            owner_mute_until = None
+            await send_human_reply(message.channel, "YOOO I'M BACK FROM MY TIMEOUT WASSUP GUYS!!!!")
+            return
+
+    # ---------- MODE SWITCHING ----------
+    if "!roastmode" in message.content.lower():
         MODES.update({"roast": True, "serious": False, "funny": False})
         await send_human_reply(message.channel, "🔥 Roast mode ACTIVATED. Hide yo egos.")
         return
-    if message.content.startswith("!seriousmode"):
+    if "!seriousmode" in message.content.lower():
         MODES.update({"serious": True, "roast": False, "funny": False})
         await send_human_reply(message.channel, "🤓 Serious mode activated.")
         return
-    if message.content.startswith("!funmode") or message.content.startswith("!funnymode"):
+    if "!funmode" in message.content.lower():
         MODES.update({"funny": True, "roast": False, "serious": False})
         await send_human_reply(message.channel, "😎 Fun & light roast mode activated!")
         return
 
-    # ROAST / FUN MODE
-    mode_limited = MODES["roast"] or MODES["funny"]
-    if mode_limited:
+    # ---------- ROAST/FUN MODE ----------
+    if MODES["roast"] or MODES["funny"]:
         roast_target = is_roast_trigger(message.content)
         if roast_target:
             memory.set_roast_target(chan_id, roast_target)
@@ -252,22 +249,22 @@ async def on_message(message: Message):
             roast_prompt = build_roast_prompt(memory, chan_id, target)
             try:
                 raw = await call_gemini(roast_prompt)
-                roast_text = humanize_and_safeify(raw, mode_limited=True)
+                roast_text = humanize_and_safeify(raw)
                 await send_human_reply(message.channel, roast_text)
                 memory.add_message(chan_id, BOT_NAME, roast_text)
-            except:
+            except Exception:
                 pass
             return
 
-    # GENERAL MESSAGE
+    # ---------- GENERAL MESSAGE ----------
     try:
         prompt = build_general_prompt(memory, chan_id)
         raw_resp = await call_gemini(prompt)
-        reply = humanize_and_safeify(raw_resp, mode_limited=False)
+        reply = humanize_and_safeify(raw_resp)
         await send_human_reply(message.channel, reply)
         memory.add_message(chan_id, BOT_NAME, reply)
         memory.persist()
-    except:
+    except Exception:
         pass
 
 
