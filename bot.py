@@ -18,9 +18,9 @@ load_dotenv()
 DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
 GEN_API_KEY = os.getenv("GEMINI_API_KEY")
 BOT_NAME = os.getenv("BOT_NAME", "Codunot")
-BOT_USER_ID = 1438495387848540160
+BOT_USER_ID = 1435987186502733878
 CONTEXT_LENGTH = int(os.getenv("CONTEXT_LENGTH", "18"))
-MAX_MSG_LEN = 3000
+MAX_MSG_LEN = 6700
 
 if not DISCORD_TOKEN or not GEN_API_KEY:
     raise SystemExit("Set DISCORD_TOKEN and GEMINI_API_KEY before running.")
