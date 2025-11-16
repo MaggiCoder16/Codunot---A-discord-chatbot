@@ -4,24 +4,26 @@ import os
 import asyncio
 import random
 import re
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 import discord
 from discord import Message
 from dotenv import load_dotenv
+import openai
 
 from memory import MemoryManager
 from humanizer import humanize_response, maybe_typo, is_roast_trigger
-from gemini_client import call_gemini
 
 load_dotenv()
 
 DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
-GEN_API_KEY = os.getenv("GEMINI_API_KEY")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")  # new key
 BOT_NAME = os.getenv("BOT_NAME", "Codunot")
 CONTEXT_LENGTH = int(os.getenv("CONTEXT_LENGTH", "18"))
 
-if not DISCORD_TOKEN or not GEN_API_KEY:
-    raise SystemExit("Set DISCORD_TOKEN and GEMINI_API_KEY before running.")
+if not DISCORD_TOKEN or not OPENAI_API_KEY:
+    raise SystemExit("Set DISCORD_TOKEN and OPENAI_API_KEY before running.")
+
+openai.api_key = OPENAI_API_KEY
 
 intents = discord.Intents.all()
 intents.message_content = True
@@ -148,6 +150,19 @@ def humanize_and_safeify(text: str) -> str:
         t = random.choice(["lol", "bruh", "ngl"]) + " " + t
     return t
 
+# ---------- OpenAI call ----------
+async def call_openai(prompt: str) -> str:
+    try:
+        response = await openai.ChatCompletion.acreate(
+            model="gpt-4",
+            messages=[{"role": "system", "content": prompt}],
+            temperature=0.7,
+            max_tokens=200
+        )
+        return response.choices[0].message.content.strip()
+    except Exception:
+        return ""  # silent on errors
+
 # ---------- on_ready ----------
 @client.event
 async def on_ready():
@@ -218,28 +233,23 @@ async def on_message(message: Message):
         target = memory.get_roast_target(chan_id)
         if target:
             roast_prompt = build_roast_prompt(memory, chan_id, target)
-            try:
-                raw = await call_gemini(roast_prompt)
+            raw = await call_openai(roast_prompt)
+            if raw:
                 roast_text = humanize_and_safeify(raw)
                 await send_human_reply(message.channel, roast_text)
                 memory.add_message(chan_id, BOT_NAME, roast_text)
-            except Exception:
-                pass  # silent on API errors
             return
 
     # GENERAL conversation
-    try:
-        prompt = build_general_prompt(memory, chan_id)
-        raw_resp = await call_gemini(prompt)
-        if not raw_resp.strip():
-            reply = random.choice(["lol", "huh?", "true", "omg", "bruh"])
-        else:
-            reply = humanize_response(raw_resp)
-        await send_human_reply(message.channel, reply)
-        memory.add_message(chan_id, BOT_NAME, reply)
-        memory.persist()
-    except Exception:
-        pass  # silent on API errors
+    prompt = build_general_prompt(memory, chan_id)
+    raw_resp = await call_openai(prompt)
+    if not raw_resp.strip():
+        reply = random.choice(["lol", "huh?", "true", "omg", "bruh"])
+    else:
+        reply = humanize_response(raw_resp)
+    await send_human_reply(message.channel, reply)
+    memory.add_message(chan_id, BOT_NAME, reply)
+    memory.persist()
 
 # ---------- graceful shutdown ----------
 async def _cleanup():
