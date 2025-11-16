@@ -31,7 +31,7 @@ memory = MemoryManager(limit=60, file_path="codunot_memory.json")
 
 # ---------------- BOT MODES ----------------
 MODES = {"funny": True, "roast": False, "serious": False}
-MAX_MSG_LEN = 200
+MAX_MSG_LEN = 500
 
 # ---------------- OWNER QUIET/SPEAK ----------------
 OWNER_ID = 1220934047794987048
