@@ -32,6 +32,7 @@ memory = MemoryManager(limit=60, file_path="codunot_memory.json")
 # ---------------- BOT MODES ----------------
 MODES = {"funny": True, "roast": False, "serious": False}
 MAX_MSG_LEN = 200
+dm_greeted_users = set()  # Track users already greeted in DMs
 
 # ---------- dead chat channels ----------
 DEAD_CHAT_CHANNELS = {
@@ -77,8 +78,8 @@ async def initiate_conversation():
             if guild.name in DEAD_CHAT_CHANNELS and channel.name in DEAD_CHAT_CHANNELS[guild.name]:
                 msg = random.choice([
                     "heyyy anyone up for a chat? 😎",
-                    "bruh, let's talk a bit lol",
-                    "sup guys, what's up?"
+                    "sup guys, let's talk a bit lol",
+                    "sup everyone, what's up?"
                 ])
                 await send_human_reply(channel, msg)
 
@@ -86,15 +87,16 @@ async def initiate_conversation():
 def build_general_prompt(mem_manager: MemoryManager, channel_id: str) -> str:
     recent = mem_manager.get_recent_flat(channel_id, n=CONTEXT_LENGTH)
     history_text = "\n".join(recent)
-    persona = (
-        "You are Codunot, a normal human friend in a Discord chat. "
-        "Never say you are a bot. Keep replies short, casual, with slang, emojis, and occasional typos. "
-        "Sometimes use 'idk', 'nvm', 'lol', 'bruh'."
-    )
     if MODES["serious"]:
         persona = (
-            "You are Codunot, friendly, helpful, concise, proper grammar. No slang, no emoji. "
-            "Keep replies professional."
+            "You are Codunot, friendly, helpful, concise, proper grammar. "
+            "No slang, no emoji. Keep replies professional."
+        )
+    else:
+        persona = (
+            "You are Codunot, a normal human friend in a Discord chat. "
+            "Keep replies short, casual, with slang, emojis, and occasional typos. "
+            "Sometimes use 'idk', 'nvm', 'lol', 'bruh'."
         )
     return f"{persona}\n\nRecent chat:\n{history_text}\n\nReply as Codunot (one short message):"
 
@@ -104,11 +106,11 @@ def build_roast_prompt(mem_manager: MemoryManager, channel_id: str, target_name:
     target_line = f"Target: {target_name}\n" if target_name else ""
     persona = (
         "You are Codunot, a witty human friend who can roast playfully. "
-        "Write a short, funny, non-malicious roast. "
-        "Never attack protected classes or someone's identity. "
+        "Write a short, HARD roast. "
+        "Never attack protected classes or identity. "
         "Use slang and emoji. Keep it short (1-2 lines)."
     )
-    return f"{persona}\n{target_line}\nRecent chat:\n{history_text}\n\nGive one playful roast as Codunot:"
+    return f"{persona}\n{target_line}\nRecent chat:\n{history_text}\n\nGive one HARD roast as Codunot:"
 
 def humanize_and_safeify(text: str) -> str:
     t = maybe_typo(text)
@@ -128,10 +130,38 @@ async def on_ready():
 async def on_message(message: Message):
     if message.author == client.user:
         return  # ignore self
-    # respond to other bots as well!
 
     chan_id = str(message.channel.id)
     memory.add_message(chan_id, message.author.display_name, message.content)
+
+    # --- DM GREETING ---
+    if isinstance(message.channel, discord.DMChannel):
+        if message.author.id not in dm_greeted_users:
+            dm_greeted_users.add(message.author.id)
+            greeting = (
+                "Hi! I'm Codunot, a bot who yaps like a human, but is AI! "
+                "I have 3 modes - !roastmode, !funmode, and !seriousmode. "
+                "They're pretty self-explanatory, you know? Try them all!"
+            )
+            await send_human_reply(message.channel, greeting, message)
+            return
+
+    # --- MODE COMMANDS ---
+    if message.content.startswith("!roastmode"):
+        MODES["roast"] = True
+        MODES["serious"] = False
+        await message.channel.send("😂 Roast/funny mode activated!")
+        return
+    elif message.content.startswith("!seriousmode"):
+        MODES["serious"] = True
+        MODES["roast"] = False
+        await message.channel.send("🤓 Serious/helpful mode activated!")
+        return
+    elif message.content.startswith("!funmode"):
+        MODES["serious"] = False
+        MODES["roast"] = False
+        await message.channel.send("😎 Fun casual mode activated!")
+        return
 
     # --- ROAST MODE ---
     if MODES["roast"]:
@@ -142,35 +172,32 @@ async def on_message(message: Message):
         target = memory.get_roast_target(chan_id)
         if target:
             roast_prompt = build_roast_prompt(memory, chan_id, target)
-            raw = await call_gemini(roast_prompt)
+            try:
+                raw = await call_gemini(roast_prompt)
+            except:
+                return  # silent on API error
             roast_text = humanize_and_safeify(raw)
+            # Send in DM to target if possible
+            for member in message.channel.members if hasattr(message.channel, "members") else []:
+                if member.display_name == target:
+                    try:
+                        await member.send(roast_text)
+                    except:
+                        pass  # ignore if DM fails
             await send_human_reply(message.channel, roast_text, message)
             memory.add_message(chan_id, BOT_NAME, roast_text)
             return
 
     # --- GENERAL CONVERSATION ---
     prompt = build_general_prompt(memory, chan_id)
-    raw_resp = await call_gemini(prompt)
+    try:
+        raw_resp = await call_gemini(prompt)
+    except:
+        return  # silent on API error
     reply = humanize_response(raw_resp) if raw_resp.strip() else random.choice(["lol", "huh?", "true", "omg", "bruh"])
     await send_human_reply(message.channel, reply, message)
     memory.add_message(chan_id, BOT_NAME, reply)
     memory.persist()
-
-# ---------- MODE COMMANDS ----------
-@client.event
-async def on_message_command(message: Message):
-    if message.content.startswith("!roastmode"):
-        MODES["roast"] = True
-        MODES["serious"] = False
-        await message.channel.send("😂 Roast/funny mode activated!")
-    elif message.content.startswith("!seriousmode"):
-        MODES["serious"] = True
-        MODES["roast"] = False
-        await message.channel.send("🤓 Serious/helpful mode activated!")
-    elif message.content.startswith("!funmode"):
-        MODES["serious"] = False
-        MODES["roast"] = False
-        await message.channel.send("😎 Fun casual mode activated!")
 
 # ---------- graceful shutdown ----------
 async def _cleanup():
