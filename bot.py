@@ -161,7 +161,7 @@ async def on_message(message: Message):
     if owner_mute_until and now < owner_mute_until:
         return
 
-    # ---------------- SERVER LOGIC ----------------
+    # ---------------- SERVER LOGIC (by ID) ----------------
     is_dm = isinstance(message.channel, discord.DMChannel)
     allowed_channel = False
 
@@ -169,16 +169,10 @@ async def on_message(message: Message):
         allowed_channel = True
     else:
         # Always talk in #talk-with-bots
-        if message.channel.name.lower() == "talk-with-bots":
+        if message.channel.id == 1439269712373485589:
             allowed_channel = True
-        # Only respond in specific server/channel
-        elif (
-            message.guild
-            and message.guild.name.lower() == "royalracer fans"
-            and message.channel.name.lower() == "general"
-            and message.channel.category
-            and message.channel.category.name.lower() == "open to all"
-        ):
+        # Only respond in RoyalRacer Fans -> general
+        elif message.guild and message.guild.id == 1435926772972519446 and message.channel.id == 1436339326509383820:
             # Check if bot is mentioned or message is a reply to bot
             mentioned = (
                 client.user in message.mentions
@@ -272,6 +266,9 @@ async def on_message(message: Message):
         prompt = build_general_prompt(memory, chan_id)
         raw_resp = await call_gemini(prompt)
         reply = humanize_and_safeify(raw_resp)
+        # Wrap code in serious mode
+        if MODES["serious"] and ("code" in message.content.lower() or "```" in raw_resp):
+            reply = f"```\n{reply}\n```"
         await send_human_reply(message.channel, reply)
         memory.add_message(chan_id, BOT_NAME, reply)
         memory.persist()
