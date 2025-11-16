@@ -32,10 +32,10 @@ client = discord.Client(intents=intents)
 memory = MemoryManager(limit=60, file_path="codunot_memory.json")
 
 # ---------------- BOT MODES ----------------
-MAX_MSG_LEN = 3000
-channel_modes = {}
-channel_mutes = {}
-channel_chess = {}
+MAX_MSG_LEN = 3000  # serious mode
+channel_modes = {}  # per-channel: funny, roast, serious
+channel_mutes = {}  # per-channel mute datetime
+channel_chess = {}  # per-channel chess mode
 chess_engine = OnlineChessEngine()
 
 # ---------- allowed channels ----------
@@ -44,17 +44,6 @@ GENERAL_CHANNEL_ID = 1436339326509383820
 TALK_WITH_BOTS_ID = 1439269712373485589
 
 message_queue = asyncio.Queue()
-
-# ---------- API safe call ----------
-API_DELAY = 0.5  # seconds; small delay to avoid rate limits
-
-async def safe_call_gemini(prompt):
-    await asyncio.sleep(API_DELAY)
-    try:
-        return await call_gemini(prompt)
-    except Exception as e:
-        print("Gemini API skipped:", e)  # console only
-        return None
 
 # ---------- helpers ----------
 def format_duration(num: int, unit: str) -> str:
@@ -78,7 +67,7 @@ async def process_queue():
             await channel.send(content)
         except:
             pass
-        await asyncio.sleep(0.02)
+        await asyncio.sleep(0.02)  # near-instant
 
 async def send_human_reply(channel, reply_text, limit=None):
     if limit:
@@ -99,6 +88,22 @@ def humanize_and_safeify(text, short=False):
         if not text.endswith(('.', '!', '?')):
             text += '.'
     return text
+
+# ---------- SAFE GEMINI CALL ----------
+async def safe_call_gemini(prompt, retries=3, delay_sec=1):
+    for attempt in range(retries):
+        try:
+            return await call_gemini(prompt)
+        except Exception as e:
+            msg = str(e)
+            if "429" in msg:
+                # API rate limited, wait a bit
+                await asyncio.sleep(delay_sec)
+                delay_sec *= 2  # exponential backoff
+                continue
+            else:
+                return None
+    return None
 
 # ---------- PROMPTS ----------
 def build_general_prompt(mem_manager, channel_id, mode):
@@ -156,7 +161,7 @@ async def on_message(message: Message):
     is_dm = isinstance(message.channel, discord.DMChannel)
     chan_id = str(message.channel.id) if not is_dm else f"dm_{message.author.id}"
 
-    # defaults
+    # per-channel defaults
     if chan_id not in channel_modes:
         channel_modes[chan_id] = "funny"
     if chan_id not in channel_mutes:
@@ -210,19 +215,35 @@ async def on_message(message: Message):
         return
     mode = channel_modes[chan_id]
 
+    # ---------- MODE HELP ----------
+    help_keywords = ["mode", "modes", "commands", "what can you do", "how to use"]
+    if any(kw in message.content.lower() for kw in help_keywords):
+        help_text = (
+            "I have 4 modes:\n"
+            "1️⃣ Fun mode: `!funmode` — playful, light roasts, emojis allowed.\n"
+            "2️⃣ Roast mode: `!roastmode` — savage 1–2 line roasts, no mercy.\n"
+            "3️⃣ Serious mode: `!seriousmode` — factual, direct, no slang or emojis.\n"
+            "4️⃣ Chess mode: `!chessmode` — play chess or ask about rules, strategies, players.\n"
+            "Use the commands above to switch modes in this channel!"
+        )
+        await send_human_reply(message.channel, help_text)
+        return
+
     # ---------- CHESS MODE ----------
     if message.content.lower().startswith("!chessmode"):
         channel_chess[chan_id] = True
         chess_engine.new_board(chan_id)
         await send_human_reply(
             message.channel,
-            "♟️ Chess mode ACTIVATED. I’m god-level now! Make your move with standard algebraic notation (e.g., e4, Nf3)."
+            "♟️ Chess mode ACTIVATED! Make a move (e.g., e4, Nf3) or ask me about chess rules, strategies, players."
         )
         return
 
     if channel_chess.get(chan_id):
         move_text = message.content.strip()
         board = chess_engine.get_board(chan_id)
+
+        # Check if valid chess move
         try:
             move = board.parse_san(move_text)
             board.push(move)
@@ -233,21 +254,16 @@ async def on_message(message: Message):
             else:
                 await send_human_reply(message.channel, "Couldn't calculate best move. 😅")
         except ValueError:
-            await send_human_reply(message.channel, "Invalid move! Use standard algebraic notation like e4, Nf3, Bb5.")
-        return
-
-    # ---------- MODE HELP ----------
-    help_keywords = ["mode", "modes", "commands", "what can you do", "how to use"]
-    if any(kw in message.content.lower() for kw in help_keywords):
-        help_text = (
-            "I have 4 modes:\n"
-            "1️⃣ Fun mode: `!funmode` — playful, light roasts, emojis allowed.\n"
-            "2️⃣ Roast mode: `!roastmode` — savage 1–2 line roasts, no mercy.\n"
-            "3️⃣ Serious mode: `!seriousmode` — factual, direct, no slang or emojis.\n"
-            "4️⃣ Chess mode: `!chessmode` — play chess with me!\n"
-            "Use the commands above to switch modes in this channel!"
-        )
-        await send_human_reply(message.channel, help_text)
+            # Treat as chess question
+            chess_prompt = (
+                "You are Codunot, an expert chess player and teacher. "
+                "Answer questions about chess rules, strategies, famous players, openings, tournaments, etc. "
+                f"Question: {move_text}\nAnswer concisely as Codunot:"
+            )
+            answer = await safe_call_gemini(chess_prompt)
+            if answer:
+                reply = humanize_and_safeify(answer)
+                await send_human_reply(message.channel, reply)
         return
 
     # ---------- ROAST/FUN ----------
@@ -257,7 +273,8 @@ async def on_message(message: Message):
         memory.set_roast_target(chan_id, roast_target)
     target = memory.get_roast_target(chan_id)
     if target:
-        raw = await safe_call_gemini(build_roast_prompt(memory, chan_id, target, mode))
+        roast_prompt = build_roast_prompt(memory, chan_id, target, mode)
+        raw = await safe_call_gemini(roast_prompt)
         if raw:
             reply = humanize_and_safeify(raw, short=short_mode)
             await send_human_reply(message.channel, reply, limit=100 if short_mode else None)
@@ -265,7 +282,8 @@ async def on_message(message: Message):
         return
 
     # ---------- GENERAL ----------
-    raw_resp = await safe_call_gemini(build_general_prompt(memory, chan_id, mode))
+    prompt = build_general_prompt(memory, chan_id, mode)
+    raw_resp = await safe_call_gemini(prompt)
     if raw_resp:
         reply = humanize_and_safeify(raw_resp, short=short_mode)
         await send_human_reply(message.channel, reply, limit=100 if short_mode else None)
