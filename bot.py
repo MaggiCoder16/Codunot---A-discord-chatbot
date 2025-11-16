@@ -221,6 +221,13 @@ async def on_message(message: Message):
             )
             return
 
+    if "!speak" in message.content.lower():
+        # Only the owner can unmute, silently ignore others
+        if message.author.id == OWNER_ID:
+            owner_mute_until = None
+            await send_human_reply(message.channel, "YOOO I'M BACK FROM MY TIMEOUT WASSUP GUYS!!!!")
+        return  # non-owner ignored
+
         owner_mute_until = None
         await send_human_reply(message.channel, "YOOO I'M BACK FROM MY TIMEOUT WASSUP GUYS!!!!")
         return
