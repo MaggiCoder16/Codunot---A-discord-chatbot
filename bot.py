@@ -7,7 +7,6 @@ from collections import deque
 
 import discord
 from discord import Message
-from discord.ext import commands
 from dotenv import load_dotenv
 
 from memory import MemoryManager
@@ -151,6 +150,7 @@ async def on_message(message: Message):
     now = datetime.utcnow()
     is_dm = isinstance(message.channel, discord.DMChannel)
     chan_id = str(message.channel.id) if not is_dm else f"dm_{message.author.id}"
+    guild_id = message.guild.id if message.guild else None
 
     # Only respond if mentioned or DM
     if not is_dm and client.user not in message.mentions:
@@ -217,7 +217,7 @@ async def on_message(message: Message):
     # Save memory
     channel_memory[chan_id].append(f"{message.author.display_name}: {content}")
 
-    # Chess mode
+    # ---------------- CHESS ----------------
     if channel_chess.get(chan_id):
         board = chess_engine.get_board(chan_id)
         try:
@@ -231,26 +231,22 @@ async def on_message(message: Message):
                 await send_human_reply(message.channel, "Couldn't calculate best move. 😅")
             return
         except ValueError:
-            # treat as general chess question
-            prompt = f"You are a chess expert. Answer briefly: {content}"
-            if await can_send_in_guild(message.guild.id):
-                raw_resp = await call_hf(prompt)
+            # general chess question
+            if guild_id is not None and await can_send_in_guild(guild_id):
+                raw_resp = await call_hf(f"You are a chess expert. Answer briefly: {content}")
                 if raw_resp:
                     reply = humanize_and_safeify(raw_resp, short=True)
                     await send_human_reply(message.channel, reply, limit=150)
             return
 
-    # Roast/Fun triggers
+    # ---------------- ROAST/FUN ----------------
     short_mode = mode in ["funny", "roast"]
     roast_target = is_roast_trigger(content)
-    if roast_target:
-        target = roast_target
-    else:
-        target = None
+    target = roast_target if roast_target else None
 
-    if target:
-        roast_prompt = build_roast_prompt(chan_id, target, mode)
-        if await can_send_in_guild(message.guild.id):
+    if target and guild_id is not None:
+        if await can_send_in_guild(guild_id):
+            roast_prompt = build_roast_prompt(chan_id, target, mode)
             raw = await call_hf(roast_prompt)
             if raw:
                 reply = humanize_and_safeify(raw, short=short_mode)
@@ -258,8 +254,8 @@ async def on_message(message: Message):
                 channel_memory[chan_id].append(f"{BOT_NAME}: {reply}")
         return
 
-    # General response
-    if await can_send_in_guild(message.guild.id):
+    # ---------------- GENERAL ----------------
+    if guild_id is None or await can_send_in_guild(guild_id):
         prompt = build_general_prompt(chan_id, mode)
         raw_resp = await call_hf(prompt)
         if raw_resp:
