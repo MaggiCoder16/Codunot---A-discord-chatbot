@@ -8,10 +8,9 @@ OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 
-# Pick a good default model
-MODEL = "meta-llama/llama-3.2-3b-instruct"
+# default fallback model (not used often)
+DEFAULT_MODEL = "google/gemini-flash-1.5"
 
-# Reuse one aiohttp session
 SESSION: aiohttp.ClientSession | None = None
 
 
@@ -22,20 +21,24 @@ async def get_session():
     return SESSION
 
 
-async def call_openrouter(prompt: str, max_tokens=220, retries=4) -> str:
+async def call_openrouter(prompt: str, model: str = None, max_tokens=512, retries=4) -> str:
     """
-    Safe OpenRouter call w/ retries, backoff, no timeouts, no crashes.
+    Model can be overridden per call.
+    Better generation settings so it stops cutting sentences.
     """
-
     if OPENROUTER_API_KEY is None:
         return "OpenRouter API key missing."
 
     session = await get_session()
 
     payload = {
-        "model": MODEL,
+        "model": model or DEFAULT_MODEL,
         "messages": [{"role": "user", "content": prompt}],
         "max_tokens": max_tokens,
+        "temperature": 0.8,
+        "top_p": 0.95,
+        "frequency_penalty": 0.2,
+        "safe_prompt": False
     }
 
     headers = {
@@ -57,13 +60,11 @@ async def call_openrouter(prompt: str, max_tokens=220, retries=4) -> str:
                     data = await resp.json()
                     return data["choices"][0]["message"]["content"]
 
-                # Handle rate-limit gracefully
                 if resp.status == 429:
                     await asyncio.sleep(backoff)
                     backoff = min(backoff * 2, 8)
                     continue
 
-                # Other server errors
                 text = await resp.text()
                 print(f"[OpenRouter ERROR {resp.status}] {text}")
                 await asyncio.sleep(backoff)
