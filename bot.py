@@ -222,7 +222,7 @@ async def on_message(message: Message):
     if "!chessmode" in content_lower:
         channel_chess[chan_id] = True
         chess_engine.new_board(chan_id)
-        await send_human_reply(message.channel, "♟️ Chess mode ACTIVATED")
+        await send_human_reply(message.channel, "♟️ Chess mode ACTIVATED. You are white, start the game!")
         return
 
     # Save memory
