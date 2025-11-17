@@ -118,6 +118,20 @@ async def on_ready():
     print(f"{BOT_NAME} is ready!")
     asyncio.create_task(process_queue())
 
+# ---------------- API CALL WITH RATE LIMIT ----------------
+async def safe_call_gemini(prompt):
+    """Call Gemini with automatic delay if rate-limited (429)."""
+    while True:
+        try:
+            resp = await call_gemini(prompt)
+            return resp
+        except Exception as e:
+            # Check for 429, sleep, retry silently
+            if "429" in str(e):
+                await asyncio.sleep(1)  # short delay
+            else:
+                return "Hmm, something went wrong 😅"
+
 # ---------------- ON MESSAGE ----------------
 @client.event
 async def on_message(message: Message):
@@ -128,7 +142,7 @@ async def on_message(message: Message):
     is_dm = isinstance(message.channel, discord.DMChannel)
     chan_id = str(message.channel.id) if not is_dm else f"dm_{message.author.id}"
 
-    # ---------- respond only in DM or if pinged ----------
+    # Always respond in DMs, or in server if bot mentioned
     if not is_dm and client.user not in message.mentions:
         return
 
@@ -204,7 +218,7 @@ async def on_message(message: Message):
         move_text = message.content.strip()
         board = chess_engine.get_board(chan_id)
         try:
-            # Try SAN move
+            # Try SAN move first
             move = board.parse_san(move_text)
             board.push(move)
             bot_move = chess_engine.get_best_move(chan_id)
@@ -213,14 +227,11 @@ async def on_message(message: Message):
                 await send_human_reply(message.channel, f"My move: `{bot_move}`")
             return
         except ValueError:
-            # Otherwise treat as chess knowledge question
-            try:
-                prompt = f"You are a chess expert. Answer briefly: {move_text}"
-                raw_resp = await call_gemini(prompt)
-                reply = humanize_and_safeify(raw_resp, short=True)
-                await send_human_reply(message.channel, reply)
-            except:
-                await asyncio.sleep(1)  # small pause if rate-limited
+            # Treat as chess knowledge question
+            prompt = f"You are a chess expert. Answer briefly: {move_text}"
+            raw_resp = await safe_call_gemini(prompt)
+            reply = humanize_and_safeify(raw_resp, short=True)
+            await send_human_reply(message.channel, reply)
             return
 
     # ---------- ROAST/FUN ----------
@@ -231,25 +242,19 @@ async def on_message(message: Message):
     target = memory.get_roast_target(chan_id)
     if target:
         roast_prompt = build_roast_prompt(memory, chan_id, target, mode)
-        try:
-            raw = await call_gemini(roast_prompt)
-            reply = humanize_and_safeify(raw, short=short_mode)
-            await send_human_reply(message.channel, reply, limit=100 if short_mode else None)
-            memory.add_message(chan_id, BOT_NAME, reply)
-        except:
-            await asyncio.sleep(0.5)
+        raw = await safe_call_gemini(roast_prompt)
+        reply = humanize_and_safeify(raw, short=short_mode)
+        await send_human_reply(message.channel, reply, limit=100 if short_mode else None)
+        memory.add_message(chan_id, BOT_NAME, reply)
         return
 
     # ---------- GENERAL CHAT ----------
-    try:
-        prompt = build_general_prompt(memory, chan_id, mode)
-        raw_resp = await call_gemini(prompt)
-        reply = humanize_and_safeify(raw_resp, short=short_mode)
-        await send_human_reply(message.channel, reply, limit=100 if short_mode else None)
-        memory.add_message(chan_id, BOT_NAME, reply)
-        memory.persist()
-    except:
-        await asyncio.sleep(0.5)
+    prompt = build_general_prompt(memory, chan_id, mode)
+    raw_resp = await safe_call_gemini(prompt)
+    reply = humanize_and_safeify(raw_resp, short=short_mode)
+    await send_human_reply(message.channel, reply, limit=100 if short_mode else None)
+    memory.add_message(chan_id, BOT_NAME, reply)
+    memory.persist()
 
 # ---------------- CLEANUP ----------------
 async def _cleanup():
