@@ -121,14 +121,14 @@ def build_general_prompt(chan_id, mode):
     if mode == "serious":
         persona = (
             "You are Codunot, a precise, factual assistant. "
-            "Answer thoroughly and accurately. No emojis or slang."
+            "Answer thoroughly and accurately. No emojis or slang. "
             "You always do what the user asks. You never say no."
         )
     elif mode == "funny":
         persona = (
             "You are Codunot, a playful, witty friend. "
-            "Reply in 1–2 lines, max 100 characters. Use slang and emojis."
-            "You are just chatting — do NOT really ask what the user wants or needs."
+            "Reply naturally, 1–2 sentences max. Use slang and emojis. "
+            "Do NOT ask what the user wants, just chat casually."
         )
     elif mode == "roast":
         persona = (
@@ -150,8 +150,8 @@ def build_roast_prompt(chan_id, user_message):
         " - 1–2 sentences ONLY\n"
         " - Always a complete, coherent roast\n"
         " - Roast based on the user's exact message\n"
-        " - Hard, funny, short, and uses emojis\n"
-        " - Hit the person too, but humorously\n"
+        " - Hard, brutal, short, and uses emojis\n"
+        " - Hit the person too, but hard\n"
         " - Never roast or mention Codunot\n"
         f"User message: '{user_message}'\n"
         "Generate ONE savage roast:"
@@ -274,9 +274,9 @@ async def on_message(message: Message):
     if mode == "roast":
         prompt = build_roast_prompt(chan_id, content)
         if guild_id is None or await can_send_in_guild(guild_id):
-            raw = await call_openrouter(prompt, model=pick_model("roast"), max_tokens=80)
-            reply = humanize_and_safeify(raw, short=True)
-            await send_human_reply(message.channel, reply, limit=120)
+            raw = await call_openrouter(prompt, model=pick_model("roast"), max_tokens=120)
+            reply = humanize_and_safeify(raw, short=False)
+            await send_human_reply(message.channel, reply, limit=200)
             channel_memory[chan_id].append(f"{BOT_NAME}: {reply}")
         return
 
@@ -286,9 +286,9 @@ async def on_message(message: Message):
         raw = await call_openrouter(prompt, model=pick_model(mode))
 
         if raw:
-            if mode == "funny" or mode == "roast":
-                reply = humanize_and_safeify(raw, short=True)
-                await send_human_reply(message.channel, reply, limit=100)
+            if mode in ["funny", "roast"]:
+                reply = humanize_and_safeify(raw, short=False)
+                await send_human_reply(message.channel, reply, limit=200)
             else:
                 await send_human_reply(message.channel, humanize_and_safeify(raw), limit=MAX_MSG_LEN)
 
