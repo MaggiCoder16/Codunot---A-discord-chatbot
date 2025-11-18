@@ -9,7 +9,7 @@ OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 
 # Default fallback model
-DEFAULT_MODEL = "google/gemini-2.0-flash-001"
+DEFAULT_MODEL = "google/gemini-2.0-pro-001"
 
 SESSION: aiohttp.ClientSession | None = None
 
@@ -74,4 +74,4 @@ async def call_openrouter(prompt: str, max_tokens=220, retries=4, model=None) ->
             await asyncio.sleep(backoff)
             backoff = min(backoff * 2, 8)
 
-    return "Sorry, I couldn't think of a response right now 😅"
+    return "uhh.... my brain lowk lagged 💀💀 say that again?"
