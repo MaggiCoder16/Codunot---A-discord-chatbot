@@ -188,56 +188,76 @@ def choose_fallback():
     return random.choice(FALLBACK_VARIANTS)
 
 
-# ---------------- CODEMODE LOGIC (UPDATED WITH FILE SENDING) ----------------
+# ---------------- CODEMODE LOGIC (FINAL & IMPROVED) ----------------
 
 def detect_language_from_code(text):
     t = text.lower()
-    if "python" in t or "pygame" in t or "import " in t:
-        return "py"
-    if "javascript" in t or "node" in t or "console.log" in t:
-        return "js"
-    if "html" in t or "<div" in t:
+
+    # strong language indicators first
+    if "```python" in t or "import " in t or "pygame" in t:
+        return "python"
+    if "```js" in t or "console.log" in t:
+        return "javascript"
+    if "```html" in t or "<!doctype html" in t or "<div" in t:
         return "html"
-    if "css" in t:
+    if "```css" in t:
         return "css"
-    if "java" in t and "class" in t:
+    if "```java" in t:
         return "java"
-    if "cpp" in t or "#include" in t:
+    if "#include" in t or "std::" in t:
         return "cpp"
-    if "cs" in t or "c#" in t:
-        return "cs"
+    if "using system" in t or "public class" in t and "{" in t:
+        return "csharp"
+
+    # fallback
     return "txt"
 
 
 def is_code_request(text: str) -> bool:
+    """
+    User MUST be clearly asking for code or sending code.
+    """
     t = text.lower()
+
     keywords = [
         "code", "fix", "error", "bug", "script",
         "function", "class", "write", "make",
         "convert", "generate", "build", "program",
         "extend", "optimize", "refactor"
     ]
-    return any(k in t for k in keywords) or "```" in t
+
+    return "```" in t or any(k in t for k in keywords)
 
 
 async def handle_codemode(content, message, chan_id):
+    """
+    Improved codemode:
+    - Only responds to code-related messages
+    - Generates long code in files when needed
+    - Always sends code inside ``` blocks
+    - No explanation unless user asks
+    """
+
+    # If no coding keywords -> block
     if not is_code_request(content):
         await send_human_reply(
             message.channel,
-            "Codemode is only for coding. For normal talks, type !funmode or !seriousmode."
+            "⚠️ Codemode is only for coding.\nUse **!funmode** or **!seriousmode** for normal talking."
         )
         return
 
+    # Build codemode prompt
     prompt = (
         "You are Codunot in CODEMODE.\n"
-        "Instructions:\n"
-        "- The user message below may contain a request, broken code, or incomplete code.\n"
-        "- Detect the programming language.\n"
-        "- If code is broken, FIX it fully.\n"
-        "- If incomplete, COMPLETE it fully.\n"
-        "- If new code is requested, GENERATE full code.\n"
-        "- NEVER output explanations unless the user asks.\n"
-        "- ALWAYS output final code wrapped in proper ```language blocks```.\n\n"
+        "RULES:\n"
+        "- User message may contain requests or code.\n"
+        "- Detect the correct language.\n"
+        "- If code is broken, FIX it.\n"
+        "- If code is incomplete, COMPLETE it fully.\n"
+        "- If new code is requested, generate full working code.\n"
+        "- ALWAYS output ONLY code.\n"
+        "- No explanations unless the user explicitly asks.\n"
+        "- Wrap final code in ```language blocks```.\n\n"
         f"USER MESSAGE:\n{content}\n"
     )
 
@@ -247,31 +267,37 @@ async def handle_codemode(content, message, chan_id):
         await send_human_reply(message.channel, choose_fallback())
         return
 
+    # If short enough, send normally
     if len(raw) <= 1900:
-        await send_human_reply(message.channel, raw, is_code=False)
+        if not raw.startswith("```"):
+            lang = detect_language_from_code(content)
+            raw = f"```{lang}\n{raw}\n```"
+
+        await send_human_reply(message.channel, raw)
         channel_memory[chan_id].append(f"{BOT_NAME}: {raw}")
         memory.add_message(chan_id, BOT_NAME, raw)
         memory.persist()
         return
 
-    ext = detect_language_from_code(content)
-    filename = f"codunot_output.{ext}"
+    # Too big → send as file
+    lang = detect_language_from_code(content)
+    filename = f"codunot_output.{lang}"
 
+    # Always wrap in codeblock before saving
     if not raw.startswith("```"):
-        raw = f"```{ext}\n{raw}\n```"
+        raw = f"```{lang}\n{raw}\n```"
 
     with open(filename, "w", encoding="utf-8") as f:
         f.write(raw)
 
     await message.channel.send(
-        content="📄 The code was too large, so I sent it as a file:",
+        content="📄 Code too large — sending as file:",
         file=discord.File(filename)
     )
 
     channel_memory[chan_id].append(f"{BOT_NAME}: [sent file {filename}]")
     memory.add_message(chan_id, BOT_NAME, f"[sent file {filename}]")
     memory.persist()
-
 
 # ---------------- EVENTS ----------------
 @client.event
