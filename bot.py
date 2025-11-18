@@ -45,7 +45,7 @@ rate_buckets = {}      # guild_id -> deque of timestamps for rate-limiting
 # ---------------- MODEL PICKER ----------------
 def pick_model(mode):
     # Use Gemini 2.5 Pro for all modes
-    return "google/gemini-2.0-pro-001"
+    return "google/gemini-2.0-flash-001"
 
 # ---------------- HELPERS ----------------
 def format_duration(num: int, unit: str) -> str:
