@@ -157,7 +157,7 @@ def build_roast_prompt(user_message):
         " - Use humor and emojis\n"
         " - Roast the user based on their exact message\n"
         " - Never roast yourself\n"
-        " - Your roast should make sense, and it should be understandable, but hard
+        " - Your roast should make sense, and it should be understandable, but hard"
         f"User message: '{user_message}'\n"
         "Generate ONE savage, complete roast as a standalone response."
     )
