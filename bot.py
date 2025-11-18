@@ -231,34 +231,27 @@ def is_code_request(text: str) -> bool:
 
 async def handle_codemode(content, message, chan_id):
     """
-    Improved codemode:
-    - Only responds to code-related messages
-    - Generates long code in files when needed
-    - Always sends code inside ``` blocks
-    - No explanation unless user asks
+    Codemode behavior:
+    - Any coding request generates full working code.
+    - Wraps output in proper code blocks.
+    - Sends as a file if output is too long.
     """
-
-    # If no coding keywords -> block
+    # Detect if this is a code request (smarter NLP + keywords)
     if not is_code_request(content):
         await send_human_reply(
             message.channel,
-            "⚠️ Codemode is only for coding.\nUse **!funmode** or **!seriousmode** for normal talking."
+            "⚠️ Codemode is only for coding. Use !funmode or !seriousmode for normal chat."
         )
         return
 
-    # Build codemode prompt
     prompt = (
-        "You are Codunot in CODEMODE.\n"
-        "RULES:\n"
-        "- User message may contain requests or code.\n"
-        "- Detect the correct language.\n"
-        "- If code is broken, FIX it.\n"
-        "- If code is incomplete, COMPLETE it fully.\n"
-        "- If new code is requested, generate full working code.\n"
-        "- ALWAYS output ONLY code.\n"
-        "- No explanations unless the user explicitly asks.\n"
-        "- Wrap final code in ```language blocks```.\n\n"
-        f"USER MESSAGE:\n{content}\n"
+        "You are Codunot in CODEMODE. ALWAYS generate FULL WORKING CODE.\n"
+        "- User request may be natural language or partial code.\n"
+        "- Detect the language (Python, JS, Java, C#, C++, etc.)\n"
+        "- Complete any partial code or generate requested program from scratch\n"
+        "- NEVER give explanations unless explicitly asked\n"
+        "- Wrap output in proper ```language code blocks```\n\n"
+        f"USER REQUEST:\n{content}\n"
     )
 
     raw = await call_openrouter(prompt, model=pick_model("codemode"))
@@ -267,36 +260,29 @@ async def handle_codemode(content, message, chan_id):
         await send_human_reply(message.channel, choose_fallback())
         return
 
-    # If short enough, send normally
-    if len(raw) <= 1900:
-        if not raw.startswith("```"):
-            lang = detect_language_from_code(content)
-            raw = f"```{lang}\n{raw}\n```"
-
-        await send_human_reply(message.channel, raw)
-        channel_memory[chan_id].append(f"{BOT_NAME}: {raw}")
-        memory.add_message(chan_id, BOT_NAME, raw)
-        memory.persist()
-        return
-
-    # Too big → send as file
+    # Ensure proper code blocks
     lang = detect_language_from_code(content)
-    filename = f"codunot_output.{lang}"
-
-    # Always wrap in codeblock before saving
     if not raw.startswith("```"):
         raw = f"```{lang}\n{raw}\n```"
 
-    with open(filename, "w", encoding="utf-8") as f:
-        f.write(raw)
+    # Auto-send as file if too long
+    if len(raw) > 1900:
+        filename = f"codunot_output.{lang}"
+        with open(filename, "w", encoding="utf-8") as f:
+            f.write(raw)
+        await message.channel.send(
+            content="📄 Code too long, sent as a file:",
+            file=discord.File(filename)
+        )
+        channel_memory[chan_id].append(f"{BOT_NAME}: [sent file {filename}]")
+        memory.add_message(chan_id, BOT_NAME, f"[sent file {filename}]")
+        memory.persist()
+        return
 
-    await message.channel.send(
-        content="📄 Code too large — sending as file:",
-        file=discord.File(filename)
-    )
-
-    channel_memory[chan_id].append(f"{BOT_NAME}: [sent file {filename}]")
-    memory.add_message(chan_id, BOT_NAME, f"[sent file {filename}]")
+    # Normal code reply
+    await send_human_reply(message.channel, raw, is_code=False)
+    channel_memory[chan_id].append(f"{BOT_NAME}: {raw}")
+    memory.add_message(chan_id, BOT_NAME, raw)
     memory.persist()
 
 # ---------------- EVENTS ----------------
