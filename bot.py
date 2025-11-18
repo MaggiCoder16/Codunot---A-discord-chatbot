@@ -44,7 +44,6 @@ rate_buckets = {}      # guild_id -> deque of timestamps for rate-limiting
 
 # ---------------- MODEL PICKER ----------------
 def pick_model(mode):
-    # Gemini 2.0 Flash works for all modes
     return "google/gemini-2.0-flash-001"
 
 # ---------------- HELPERS ----------------
@@ -90,6 +89,7 @@ async def send_human_reply(channel, reply_text, limit=None, is_code=False):
         await message_queue.put((channel, reply_text))
 
 def humanize_and_safeify(text, short=False):
+    """General humanizer for fun/serious modes."""
     if not isinstance(text, str):
         text = str(text)
     text = text.replace(" idk", "").replace(" *nvm", "")
@@ -144,12 +144,6 @@ def build_general_prompt(chan_id, mode):
             "You are Codunot, a playful, witty friend. "
             "Reply in 1–2 lines, max 100 characters. Use slang and emojis."
         )
-    elif mode == "roast":
-        persona = (
-            "You are CODUNOT in **ROAST MODE**.\n"
-            "Deliver brutal, savage 1–2 sentence roasts for every user message. "
-            "Use emojis and complete full sentences."
-        )
     else:
         persona = "You are Codunot, helpful and friendly."
 
@@ -157,20 +151,26 @@ def build_general_prompt(chan_id, mode):
     return f"{persona}\n{persona_self_protect}\n\nRecent chat:\n{history_text}\n\nReply as Codunot:"
 
 def build_roast_prompt(chan_id, user_message):
-    mem = channel_memory.get(chan_id, deque())
-    history_text = "\n".join(mem)
-    persona = (
+    """The NEW roast persona — hard, short, funny, targeted at message AND person."""
+    return (
         "You are CODUNOT in **ROAST MODE**.\n"
+        "\n"
         "Rules:\n"
-        " - Roast the user message directly.\n"
-        " - Maximum 1–2 sentences.\n"
-        " - Emojis allowed.\n"
-        " - Complete full sentences.\n"
-        " - Roast based on content, intelligence, confidence, hygiene, behavior, etc.\n"
-        f"User message: '{user_message}'\n"
-        "Generate ONE short, savage, humorous roast."
+        " - Roast the user based on what they just said.\n"
+        " - Do NOT mention the user's name.\n"
+        " - Use 'you' when roasting.\n"
+        " - Hit the user personally *and* the content of their message.\n"
+        " - 1–2 short, complete sentences.\n"
+        " - Make it funny, brutal, punchy.\n"
+        " - Use emojis.\n"
+        " - NO rambling, NO trailing off, NO unfinished sentences.\n"
+        " - NO politeness, NO disclaimers.\n"
+        " - NEVER roast yourself (Codunot).\n"
+        "\n"
+        f"User's message: \"{user_message}\"\n"
+        "\n"
+        "Respond with ONE complete, savage, funny roast that hits the user and mocks the message.\n"
     )
-    return persona
 
 # ---------------- FALLBACK ----------------
 FALLBACK_VARIANTS = [
@@ -277,34 +277,41 @@ async def on_message(message: Message):
 
         except ValueError:
             if guild_id is None or await can_send_in_guild(guild_id):
-                raw = await call_openrouter(f"You are a chess expert. Answer briefly: {content}",
-                                            model=pick_model("serious"))
+                raw = await call_openrouter(
+                    f"You are a chess expert. Answer briefly: {content}",
+                    model=pick_model("serious")
+                )
                 reply = humanize_and_safeify(raw, short=True)
                 await send_human_reply(message.channel, reply, limit=150)
             return
 
-    # ---------------- ROAST ----------------
+    # ---------------- ROAST MODE ----------------
     if mode == "roast":
         prompt = build_roast_prompt(chan_id, content)
+
         if guild_id is None or await can_send_in_guild(guild_id):
-            raw = await call_openrouter(prompt, model=pick_model("roast"), max_tokens=80)
-            reply = humanize_and_safeify(raw, short=True)
-            await send_human_reply(message.channel, reply, limit=120)
-            channel_memory[chan_id].append(f"{BOT_NAME}: {reply}")
+            raw = await call_openrouter(prompt, model=pick_model("roast"), max_tokens=70)
+
+            if raw:
+                reply = raw.strip()  # IMPORTANT: no humanizer, no truncation
+                await send_human_reply(message.channel, reply)
+                channel_memory[chan_id].append(f"{BOT_NAME}: {reply}")
         return
 
     # ---------------- GENERAL / CODE ----------------
     if guild_id is None or await can_send_in_guild(guild_id):
         prompt = build_general_prompt(chan_id, mode)
         raw = await call_openrouter(prompt, model=pick_model(mode))
+
         if raw:
-            if mode == "funny" or mode == "roast":
+            if mode == "funny":
                 reply = humanize_and_safeify(raw, short=True)
                 await send_human_reply(message.channel, reply, limit=100)
             elif mode == "codemode":
                 await send_human_reply(message.channel, raw, limit=None, is_code=True)
-            else:  # serious
+            else:
                 await send_human_reply(message.channel, humanize_and_safeify(raw, short=False), limit=MAX_MSG_LEN)
+
             channel_memory[chan_id].append(f"{BOT_NAME}: {raw}")
             memory.add_message(chan_id, BOT_NAME, raw)
             memory.persist()
