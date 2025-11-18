@@ -128,6 +128,7 @@ def build_general_prompt(chan_id, mode):
         persona = (
             "You are Codunot, a playful, witty friend. "
             "Reply in 1–2 lines, max 100 characters. Use slang and emojis."
+            "You are just chatting — do NOT really ask what the user wants or needs."
         )
     elif mode == "roast":
         persona = (
