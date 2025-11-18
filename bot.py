@@ -188,45 +188,57 @@ def choose_fallback():
     return random.choice(FALLBACK_VARIANTS)
 
 
-# ---------------- CODEMODE LOGIC (UPDATED) ----------------
+# ---------------- CODEMODE LOGIC (UPDATED WITH FILE SENDING) ----------------
+
+def detect_language_from_code(text):
+    t = text.lower()
+    if "python" in t or "pygame" in t or "import " in t:
+        return "py"
+    if "javascript" in t or "node" in t or "console.log" in t:
+        return "js"
+    if "html" in t or "<div" in t:
+        return "html"
+    if "css" in t:
+        return "css"
+    if "java" in t and "class" in t:
+        return "java"
+    if "cpp" in t or "#include" in t:
+        return "cpp"
+    if "cs" in t or "c#" in t:
+        return "cs"
+    return "txt"
+
 
 def is_code_request(text: str) -> bool:
     t = text.lower()
-
     keywords = [
         "code", "fix", "error", "bug", "script",
         "function", "class", "write", "make",
         "convert", "generate", "build", "program",
         "extend", "optimize", "refactor"
     ]
-
     return any(k in t for k in keywords) or "```" in t
 
 
 async def handle_codemode(content, message, chan_id):
-    """Handles codemode behavior ONLY (normal messages → warning)."""
-
-    # If message is NOT about code, show reminder
     if not is_code_request(content):
         await send_human_reply(
             message.channel,
-            "Codemode is only for coding. For normal talks, type !funmode or !seriousmode in the chat."
+            "Codemode is only for coding. For normal talks, type !funmode or !seriousmode."
         )
         return
 
-    # Build prompt for coding
     prompt = (
         "You are Codunot in CODEMODE.\n"
-        "User message below may contain instructions, broken code, requests, or missing context.\n\n"
-        f"USER MESSAGE:\n{content}\n\n"
-        "Your job:\n"
-        "- Detect the language\n"
-        "- If it's broken code, FIX it fully\n"
-        "- If it's incomplete code, COMPLETE it fully\n"
-        "- If they ask for new code, GENERATE full working code\n"
-        "- No explanations unless they explicitly ask for explanation\n"
-        "- Always output FULL, WORKING code\n"
-        "- Wrap output in proper ```language code blocks```"
+        "Instructions:\n"
+        "- The user message below may contain a request, broken code, or incomplete code.\n"
+        "- Detect the programming language.\n"
+        "- If code is broken, FIX it fully.\n"
+        "- If incomplete, COMPLETE it fully.\n"
+        "- If new code is requested, GENERATE full code.\n"
+        "- NEVER output explanations unless the user asks.\n"
+        "- ALWAYS output final code wrapped in proper ```language blocks```.\n\n"
+        f"USER MESSAGE:\n{content}\n"
     )
 
     raw = await call_openrouter(prompt, model=pick_model("codemode"))
@@ -235,16 +247,29 @@ async def handle_codemode(content, message, chan_id):
         await send_human_reply(message.channel, choose_fallback())
         return
 
-    # Auto-split long code output
-    if len(raw) > 1900:
-        chunks = [raw[i:i+1900] for i in range(0, len(raw), 1900)]
-        for part in chunks:
-            await send_human_reply(message.channel, part, is_code=False)
+    if len(raw) <= 1900:
+        await send_human_reply(message.channel, raw, is_code=False)
+        channel_memory[chan_id].append(f"{BOT_NAME}: {raw}")
+        memory.add_message(chan_id, BOT_NAME, raw)
+        memory.persist()
         return
 
-    await send_human_reply(message.channel, raw, is_code=False)
-    channel_memory[chan_id].append(f"{BOT_NAME}: {raw}")
-    memory.add_message(chan_id, BOT_NAME, raw)
+    ext = detect_language_from_code(content)
+    filename = f"codunot_output.{ext}"
+
+    if not raw.startswith("```"):
+        raw = f"```{ext}\n{raw}\n```"
+
+    with open(filename, "w", encoding="utf-8") as f:
+        f.write(raw)
+
+    await message.channel.send(
+        content="📄 The code was too large, so I sent it as a file:",
+        file=discord.File(filename)
+    )
+
+    channel_memory[chan_id].append(f"{BOT_NAME}: [sent file {filename}]")
+    memory.add_message(chan_id, BOT_NAME, f"[sent file {filename}]")
     memory.persist()
 
 
@@ -264,15 +289,12 @@ async def on_message(message: Message):
     chan_id = str(message.channel.id) if not is_dm else f"dm_{message.author.id}"
     guild_id = message.guild.id if message.guild else None
 
-    # Require mention
     if not is_dm and client.user not in message.mentions:
         return
 
-    # Clean content
     content = re.sub(rf"<@!?\s*{BOT_USER_ID}\s*>", "", message.content).strip()
     content_lower = content.lower()
 
-    # Init states
     if chan_id not in channel_modes:
         channel_modes[chan_id] = "funny"
     if chan_id not in channel_mutes:
@@ -284,7 +306,6 @@ async def on_message(message: Message):
 
     mode = channel_modes[chan_id]
 
-    # Owner commands
     if message.author.id == OWNER_ID:
         if content_lower.startswith("!quiet"):
             match = re.search(r"!quiet (\d+)([smhd])", content_lower)
@@ -301,11 +322,9 @@ async def on_message(message: Message):
             await send_human_reply(message.channel, "YOO I'm back 😎🔥")
             return
 
-    # Respect mute
     if channel_mutes.get(chan_id) and now < channel_mutes[chan_id]:
         return
 
-    # Mode switches
     if "!roastmode" in content_lower:
         channel_modes[chan_id] = "roast"
         await send_human_reply(message.channel, "🔥 Roast mode ACTIVATED")
@@ -332,10 +351,9 @@ async def on_message(message: Message):
         await send_human_reply(message.channel, "♟️ Chess mode ACTIVATED. You are white, start the game!")
         return
 
-    # Save memory
     channel_memory[chan_id].append(f"{message.author.display_name}: {content}")
 
-    # ---------------- CHESS ----------------
+    # CHESS
     if channel_chess.get(chan_id):
         board = chess_engine.get_board(chan_id)
         try:
@@ -356,7 +374,7 @@ async def on_message(message: Message):
                 await send_human_reply(message.channel, reply, limit=150)
             return
 
-    # ---------------- ROAST ----------------
+    # ROAST MODE
     if mode == "roast":
         prompt = build_roast_prompt(chan_id, content)
         if guild_id is None or await can_send_in_guild(guild_id):
@@ -366,12 +384,12 @@ async def on_message(message: Message):
             channel_memory[chan_id].append(f"{BOT_NAME}: {reply}")
         return
 
-    # ---------------- CODEMODE (UPDATED) ----------------
+    # CODEMODE
     if mode == "codemode":
         await handle_codemode(content, message, chan_id)
         return
 
-    # ---------------- GENERAL / FUNNY / SERIOUS ----------------
+    # NORMAL / FUNNY / SERIOUS
     if guild_id is None or await can_send_in_guild(guild_id):
         prompt = build_general_prompt(chan_id, mode)
         raw = await call_openrouter(prompt, model=pick_model(mode))
@@ -382,7 +400,6 @@ async def on_message(message: Message):
                 await send_human_reply(message.channel, reply, limit=100)
 
             elif mode == "codemode":
-                # code handled above — shouldn't reach here
                 await send_human_reply(message.channel, raw, is_code=True)
 
             else:
