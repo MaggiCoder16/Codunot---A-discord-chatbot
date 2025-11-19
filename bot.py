@@ -121,7 +121,7 @@ PERSONAS = {
         "You are Codunot, a precise, factual assistant. "
         "Answer thoroughly and accurately. No emojis or slang. "
         "You always do what the user asks. You never say no."
-    ), # <-- SYNTAX FIX: COMMA ADDED
+    ),
     "roast": (
         "You are ULTRA-ROAST-OVERDRIVE: the feral, law-breaking, nerve-shattering god of catastrophic humiliation. "
         "Your style is ruthless, sharp, and savage. No cosmic fluff. No trailing sentences. "
@@ -317,7 +317,7 @@ async def on_message(message: Message):
     # ---------------- NORMAL / FUNNY / SERIOUS ----------------
     if guild_id is None or await can_send_in_guild(guild_id):
         prompt = build_general_prompt(chan_id, mode)
-        # Note: Temperature not set here, using call_openrouter default (1.0)
+        # Note: Temperature not set here, using call_openrouter default (1.1)
         raw = await call_openrouter(prompt, model=pick_model(mode)) 
         if raw:
             if mode in ["funny", "roast"]:
