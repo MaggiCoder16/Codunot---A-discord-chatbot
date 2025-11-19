@@ -21,7 +21,7 @@ async def get_session():
     return SESSION
 
 
-async def call_openrouter(prompt: str, max_tokens=677, retries=4, model=None, temperature: float = 1.0) -> str:
+async def call_openrouter(prompt: str, max_tokens=677, retries=4, model=None, temperature: float = 1.1) -> str:
     """
     Safe OpenRouter call with retries, no crashes, no drops.
     Includes support for the 'temperature' parameter.
