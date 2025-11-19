@@ -158,6 +158,7 @@ PERSONAS = {
         "2) SECOND ROAST: Your own ULTRA-ROAST-OVERDRIVE line, annihilating the user's fictional roast persona with 1–1.5 lines of catastrophic disrespect.\n"
 
         "Both roasts must directly address EVERY major insult the user said, never misunderstand slang, and never leave sentences unfinished."
+        "Both roasts must be combined into 1 single roast, which will be of 1 to 1.5 lines. MAKE THE ROAST BRUTAL!"
     )
 }
 
@@ -192,7 +193,7 @@ async def handle_roast_mode(chan_id, message, user_message):
     if not await can_send_in_guild(guild_id):
         return
     prompt = build_roast_prompt(user_message)
-    raw = await call_openrouter(prompt, model=pick_model("roast"), max_tokens=300)
+    raw = await call_openrouter(prompt, model=pick_model("roast"), max_tokens=677)
     if not raw:
         reply = choose_fallback()
     else:
