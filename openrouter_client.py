@@ -9,7 +9,7 @@ OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 
 # Default model
-DEFAULT_MODEL = "openai/gpt-5-mini"
+DEFAULT_MODEL = "openai/gpt-3.5-turbo"
 
 SESSION: aiohttp.ClientSession | None = None
 
