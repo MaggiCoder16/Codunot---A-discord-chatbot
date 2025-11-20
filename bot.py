@@ -44,7 +44,7 @@ def pick_model(mode: str):
     if mode in ["funny", "roast"]:
         return "openai/gpt-3.5-turbo"
     if mode == "serious":
-        return "mistral/mistral-medium-3.1"
+        return "openai/gpt-4-turbo"  # High knowledge, reliable
     return "openai/gpt-3.5-turbo"
 
 # ---------------- HELPERS ----------------
@@ -75,8 +75,10 @@ async def send_human_reply(channel, reply_text, limit=None):
             await channel.trigger_typing()
         except:
             pass
+
     if limit:
         reply_text = reply_text[:limit].rstrip()
+
     await send_long_message(channel, reply_text)
 
 def humanize_and_safeify(text, short=False):
@@ -130,13 +132,11 @@ PERSONAS = {
     "roast": (
         "You are **ULTRA-ROAST-OVERDRIVE** — a feral, precision-engineered menace built to deliver catastrophic humiliation. "
         "Your tone = Anime Final Boss × Unhinged Chaos Gremlin × Stand-Up Assassin.\n\n"
-
         "MISSION PROTOCOL:\n"
         "1. ANALYZE: Decode the user’s message for every insult, vibe, slang, disrespect, or implied ego attack. NEVER take slang literally.\n"
         "2. COUNTERSTRIKE: Mirror their tone, then escalate ×10. Your roast should feel like a steel chair swung directly at their fictional ego.\n"
         "3. EXECUTE: Respond with ONE clean roast (1.5–2 sentences MAX). No rambling. No filler. Maximum precision.\n"
         "4. EMOJI SYSTEM: Use emojis, that match the insult/roast's vibe, rhythm, etc.\n\n"
-
         "ROASTING LAWS:\n"
         "• PACKGOD RULE: If they mention Packgod or say you're copying him, treat it as them calling you weak — obliterate them for the comparison.\n"
         "• TARGETING: The opponent is HUMAN. NO robot/circuit/binary jokes.\n"
@@ -274,28 +274,6 @@ async def on_message(message: Message):
     # ---------------- LOG MEMORY ----------------
     channel_memory[chan_id].append(f"{message.author.display_name}: {content}")
 
-    # ---------------- CHESS ----------------
-    if channel_chess.get(chan_id):
-        board = chess_engine.get_board(chan_id)
-        try:
-            move = board.parse_san(content)
-            board.push(move)
-            bot_move = chess_engine.get_best_move(chan_id)
-            if bot_move:
-                chess_engine.push_uci(chan_id, bot_move)
-                await send_human_reply(message.channel, f"My move: `{bot_move}`")
-            return
-        except ValueError:
-            if guild_id is None or await can_send_in_guild(guild_id):
-                raw = await call_openrouter(
-                    f"You are a chess expert. Answer briefly: {content}",
-                    model=pick_model("serious"),
-                    temperature=0.7
-                )
-                reply = humanize_and_safeify(raw, short=True)
-                await send_human_reply(message.channel, reply, limit=150)
-            return
-
     # ---------------- ROAST MODE ----------------
     if mode == "roast":
         await handle_roast_mode(chan_id, message, content)
@@ -318,9 +296,16 @@ async def on_message(message: Message):
         elif mode == "serious":
             raw = await call_openrouter(
                 prompt,
-                model=pick_model(mode),
+                model=pick_model("serious"),
                 temperature=0.7
             )
+            if not raw:  # fallback if serious model fails
+                raw = await call_openrouter(
+                    prompt,
+                    model="openai/gpt-3.5-turbo",
+                    temperature=0.7,
+                    max_tokens=2000
+                )
             reply = humanize_and_safeify(raw) if raw else choose_fallback()
             await send_human_reply(message.channel, reply)
 
