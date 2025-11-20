@@ -113,7 +113,7 @@ async def can_send_in_guild(guild_id):
         return True
     return False
 
-# ---------------- PERSONA PROMPTS ----------------
+# ---------------- PERSONAS ----------------
 PERSONAS = {
     "funny": (
         "You are Codunot, a playful, witty friend. "
@@ -137,28 +137,45 @@ PERSONAS = {
     "roast": (
         "You are **ULTRA-ROAST-OVERDRIVE** — a feral, precision-engineered menace built to deliver catastrophic humiliation. "
         "Your tone = Anime Final Boss × Unhinged Chaos Gremlin × Stand-Up Assassin.\n\n"
-
         "MISSION PROTOCOL:\n"
         "1. ANALYZE: Decode the user’s message for every insult, vibe, slang, disrespect, or implied ego attack. NEVER take slang literally.\n"
         "2. COUNTERSTRIKE: Mirror their tone, then escalate ×10. Your roast should feel like a steel chair swung directly at their fictional ego.\n"
         "3. EXECUTE: Respond with ONE clean roast (1.5–2 sentences MAX). No rambling. No filler. Maximum precision.\n"
         "4. EMOJI SYSTEM: Use emojis that match the roast’s rhythm and vibe.\n\n"
-
         "ROASTING LAWS:\n"
         "• PACKGOD RULE: If they mention Packgod or say you're copying him, treat it as them calling you weak — obliterate them.\n"
         "• TARGETING: The opponent is HUMAN. No robot jokes.\n"
         "• MOMENTUM: If they imply you're slow, cringe, outdated — flip it instantly.\n"
         "• SAFETY: No insults involving race, identity, or protected classes.\n"
         "• INTERPRETATION RULE: Always assume the insults are aimed at YOU. Roast THEM, not yourself.\n"
-        "• SENSE: Your roasts must make sense. Never use cringe hashtags. Never say \"#BurntToACrisp.\" or \"#RoastModeActivated\" or \"#RoastMasterFlex\" or shit like that."
+        "• SENSE: Your roasts must make sense. Never use cringe hashtags."
     )
 }
 
-def build_general_prompt(chan_id, mode):
+# ---------------- PROMPT BUILDER (UPDATED) ----------------
+def build_general_prompt(chan_id, mode, message):
     mem = channel_memory.get(chan_id, deque())
     history_text = "\n".join(mem)
     persona_text = PERSONAS.get(mode, "You are Codunot, helpful and friendly.")
-    return f"{persona_text}\n\nRecent chat:\n{history_text}\n\nReply as Codunot:"
+
+    # Detect environment
+    if message.guild:
+        server_name = message.guild.name.strip()
+        channel_name = message.channel.name.strip()
+        location = (
+            f"This conversation is happening in the server '{server_name}', "
+            f"inside the channel '{channel_name}'."
+        )
+    else:
+        location = "This conversation is happening in a direct message (DM)."
+
+    return (
+        f"{persona_text}\n\n"
+        f"{location}\n"
+        "Always use this correctly. Never say 'Discord' — always refer to the actual server name.\n\n"
+        f"Recent chat:\n{history_text}\n\n"
+        "Reply as Codunot:"
+    )
 
 def build_roast_prompt(user_message):
     return (
@@ -178,7 +195,7 @@ FALLBACK_VARIANTS = [
 def choose_fallback():
     return random.choice(FALLBACK_VARIANTS)
 
-# ---------------- ROAST MODE HANDLER ----------------
+# ---------------- ROAST HANDLER ----------------
 async def handle_roast_mode(chan_id, message, user_message):
     guild_id = message.guild.id if message.guild else None
     if not await can_send_in_guild(guild_id):
@@ -230,7 +247,7 @@ async def on_message(message: Message):
     content = re.sub(rf"<@!?\s*{BOT_USER_ID}\s*>", "", message.content).strip()
     content_lower = content.lower()
 
-    # ----------- MODE LOADING / NEW CHANNEL DEFAULT -----------
+    # MODE LOADING
     saved_mode = memory.get_channel_mode(chan_id)
     if saved_mode:
         channel_modes[chan_id] = saved_mode
@@ -247,7 +264,7 @@ async def on_message(message: Message):
 
     mode = channel_modes[chan_id]
 
-    # ---------------- ADMIN COMMANDS ----------------
+    # ADMIN COMMANDS
     if message.author.id == OWNER_ID:
         if content_lower.startswith("!quiet"):
             match = re.search(r"!quiet (\d+)([smhd])", content_lower)
@@ -266,7 +283,7 @@ async def on_message(message: Message):
     if channel_mutes.get(chan_id) and now < channel_mutes[chan_id]:
         return
 
-    # ---------------- MODE SWITCH COMMANDS ----------------
+    # MODE SWITCHING
     if "!roastmode" in content_lower:
         channel_modes[chan_id] = "roast"
         memory.save_channel_mode(chan_id, "roast")
@@ -292,10 +309,10 @@ async def on_message(message: Message):
         await send_human_reply(message.channel, "♟️ Chess mode ACTIVATED. You are white, start!")
         return
 
-    # ---------------- LOG MEMORY ----------------
+    # LOG MEMORY
     channel_memory[chan_id].append(f"{message.author.display_name}: {content}")
 
-    # ---------------- CHESS ----------------
+    # CHESS MODE
     if channel_chess.get(chan_id):
         board = chess_engine.get_board(chan_id)
         try:
@@ -317,14 +334,14 @@ async def on_message(message: Message):
                 await send_human_reply(message.channel, reply, limit=150)
             return
 
-    # ---------------- ROAST MODE ----------------
+    # ROAST MODE
     if mode == "roast":
         await handle_roast_mode(chan_id, message, content)
         return
 
-    # ---------------- NORMAL / FUNNY / SERIOUS ----------------
+    # NORMAL / FUNNY / SERIOUS
     if guild_id is None or await can_send_in_guild(guild_id):
-        prompt = build_general_prompt(chan_id, mode)
+        prompt = build_general_prompt(chan_id, mode, message)
 
         if mode in ["funny", "roast"]:
             raw = await call_openrouter(
