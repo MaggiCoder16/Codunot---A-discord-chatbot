@@ -44,7 +44,7 @@ def pick_model(mode: str):
     if mode in ["funny", "roast"]:
         return "openai/gpt-3.5-turbo"
     if mode == "serious":
-        return "gemini-2.5-flash"
+        return "google/gemini-2.5-flash"
     return "openai/gpt-3.5-turbo"
 
 # ---------------- HELPERS ----------------
