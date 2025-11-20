@@ -44,7 +44,7 @@ def pick_model(mode: str):
     if mode in ["funny", "roast"]:
         return "openai/gpt-3.5-turbo"
     if mode == "serious":
-        return "google/gemini-2.5-flash"
+        return "mistral/mistral-medium-3.1"
     return "openai/gpt-3.5-turbo"
 
 # ---------------- HELPERS ----------------
@@ -75,10 +75,8 @@ async def send_human_reply(channel, reply_text, limit=None):
             await channel.trigger_typing()
         except:
             pass
-
     if limit:
         reply_text = reply_text[:limit].rstrip()
-
     await send_long_message(channel, reply_text)
 
 def humanize_and_safeify(text, short=False):
@@ -316,6 +314,7 @@ async def on_message(message: Message):
             )
             reply = humanize_and_safeify(raw, short=True) if raw else choose_fallback()
             await send_human_reply(message.channel, reply, limit=100)
+
         elif mode == "serious":
             raw = await call_openrouter(
                 prompt,
