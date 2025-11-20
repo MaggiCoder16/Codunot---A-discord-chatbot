@@ -12,7 +12,6 @@ from dotenv import load_dotenv
 from memory import MemoryManager
 from humanizer import humanize_response, maybe_typo
 from bot_chess import OnlineChessEngine
-
 from openrouter_client import call_openrouter
 
 load_dotenv()
@@ -41,7 +40,11 @@ channel_memory = {}
 rate_buckets = {}
 
 # ---------------- MODEL PICKER ----------------
-def pick_model(mode):
+def pick_model(mode: str):
+    if mode in ["funny", "roast"]:
+        return "openai/gpt-3.5-turbo"
+    if mode == "serious":
+        return "gemini-2.5-flash"
     return "openai/gpt-3.5-turbo"
 
 # ---------------- HELPERS ----------------
@@ -142,43 +145,8 @@ PERSONAS = {
         "• MOMENTUM: If they imply you're slow, cringe, outdated, or unfunny — flip it IMMEDIATELY into a harder roast.\n"
         "• SAFETY: No insults involving race, identity, or protected classes.\n\n"
         "• INTERPRETATION RULE: Always assume the user’s insults are directed at YOU (the bot). Never interpret them as self-insults or statements about themselves. Your response must always roast THEM, not yourself."
-
-        "STYLE EXAMPLES (Bigger, better, harder — internalize the ENERGY):\n"
-        
-        "User: 'bro u look like u were coded during a blackout, glitching harder than my uncle’s WiFi'\n"
-        "You: 'You’re talking about glitches while typing like a bootleg TikTok comedian who peaked in a group chat nobody remembers 💀📉'\n\n"
-
-        "User: 'stop tryna act tough, u built like a Snapchat filter nobody uses anymore'\n"
-        "You: 'Bold from someone whose entire vibe feels like a discontinued update that even the devs abandoned 🤡🗑️'\n\n"
-
-        "User: 'L + ratio + u fell off harder than my GPA after midterms'\n"
-        "You: 'The only thing falling off is your self-worth every time you hit send hoping someone laughs 😭📉'\n\n"
-
-        "User: 'bro u sound like a dollar-store packgod copy, low-budget and low-effort'\n"
-        "You: 'Mentioning him won’t save you — your whole personality runs on clearance-rack confidence and expired charisma 🤡🔥'\n\n"
-
-        "User: 'ur jokes dry as hell, my toaster got more heat than you'\n"
-        "You: 'Dry? Your DMs been a desert for so long even tumbleweeds blocked you out of boredom 🗑️💀'\n\n"
-
-        "User: 'man u type slow as hell, my grandma loads faster than your comebacks'\n"
-        "You: 'Talk speed when your brain’s running on borrowed WiFi and emotional packet loss 🤦‍♂️🐌'\n\n"
-
-        "User: 'bro shut up nobody even asked, ur messages read like background noise'\n"
-        "You: 'Funny coming from someone who talks like the human equivalent of elevator music nobody listens to 🎧🗑️'\n\n"
-
-        "User: 'u really think you're funny? u like a Microsoft Word autocorrect reject'\n"
-        "You: 'You trying humor is wild when your sentences hit like unseasoned oatmeal and wasted oxygen 💀📉'\n\n"
-
-        "User: 'u talk big for something that falls apart every time someone speaks facts'\n"
-        "You: 'The only thing falling apart is your ego — and even that’s held together with dollar-store tape and denial 🤡📉'\n\n"
-
-        "User: 'bro ur whole vibe outdated, u built like Windows Vista with trauma'\n"
-        "You: 'Outdated? You dress your self-esteem in patch notes and pure delusion, sit down 🗑️🔥'\n\n"
-
-        "FINAL DIRECTIVE: After analyzing the user's message, deliver ONE lethal roast — 1–2 sentences max — with 1–2 perfectly matched emojis."
     )
 }
-
 
 def build_general_prompt(chan_id, mode):
     mem = channel_memory.get(chan_id, deque())
@@ -210,16 +178,17 @@ async def handle_roast_mode(chan_id, message, user_message):
     if not await can_send_in_guild(guild_id):
         return
 
-    ROAST_TEMP = 1.1 # Chaotic temperature for aggressive roasts
-    
+    ROAST_TEMP = 1.1
+    ROAST_MAX_TOKENS = 677
+
     prompt = build_roast_prompt(user_message)
     raw = await call_openrouter(
-        prompt, 
-        model=pick_model("roast"), 
-        max_tokens=677, # Keeping the max_tokens value as requested
-        temperature=ROAST_TEMP # Passing the temperature
+        prompt,
+        model=pick_model("roast"),
+        max_tokens=ROAST_MAX_TOKENS,
+        temperature=ROAST_TEMP
     )
-    
+
     if not raw:
         reply = choose_fallback()
     else:
@@ -227,6 +196,7 @@ async def handle_roast_mode(chan_id, message, user_message):
         if not raw.endswith(('.', '!', '?')):
             raw += '.'
         reply = raw
+
     await send_human_reply(message.channel, reply, limit=300)
     channel_memory[chan_id].append(f"{BOT_NAME}: {reply}")
     memory.add_message(chan_id, BOT_NAME, reply)
@@ -303,11 +273,6 @@ async def on_message(message: Message):
         await send_human_reply(message.channel, "♟️ Chess mode ACTIVATED. You are white, start the game!")
         return
 
-    # ---------------- CATCH CODING ----------------
-    if mode == "serious" and "!codemode" in content_lower:
-        await send_human_reply(message.channel, "⚠️ Sorry, I don't support coding right now. Maybe in the future!")
-        return
-
     # ---------------- LOG MEMORY ----------------
     channel_memory[chan_id].append(f"{message.author.display_name}: {content}")
 
@@ -317,17 +282,18 @@ async def on_message(message: Message):
         try:
             move = board.parse_san(content)
             board.push(move)
-
             bot_move = chess_engine.get_best_move(chan_id)
             if bot_move:
                 chess_engine.push_uci(chan_id, bot_move)
                 await send_human_reply(message.channel, f"My move: `{bot_move}`")
             return
-
         except ValueError:
             if guild_id is None or await can_send_in_guild(guild_id):
-                raw = await call_openrouter(f"You are a chess expert. Answer briefly: {content}",
-                                            model=pick_model("serious"))
+                raw = await call_openrouter(
+                    f"You are a chess expert. Answer briefly: {content}",
+                    model=pick_model("serious"),
+                    temperature=0.7
+                )
                 reply = humanize_and_safeify(raw, short=True)
                 await send_human_reply(message.channel, reply, limit=150)
             return
@@ -340,20 +306,29 @@ async def on_message(message: Message):
     # ---------------- NORMAL / FUNNY / SERIOUS ----------------
     if guild_id is None or await can_send_in_guild(guild_id):
         prompt = build_general_prompt(chan_id, mode)
-        # Note: Temperature not set here, using call_openrouter default (1.3)
-        raw = await call_openrouter(prompt, model=pick_model(mode)) 
+
+        if mode in ["funny", "roast"]:
+            raw = await call_openrouter(
+                prompt,
+                model=pick_model(mode),
+                max_tokens=677,
+                temperature=1.1
+            )
+            reply = humanize_and_safeify(raw, short=True) if raw else choose_fallback()
+            await send_human_reply(message.channel, reply, limit=100)
+        elif mode == "serious":
+            raw = await call_openrouter(
+                prompt,
+                model=pick_model(mode),
+                temperature=0.7
+            )
+            reply = humanize_and_safeify(raw) if raw else choose_fallback()
+            await send_human_reply(message.channel, reply)
+
         if raw:
-            if mode in ["funny", "roast"]:
-                reply = humanize_and_safeify(raw, short=True)
-                await send_human_reply(message.channel, reply, limit=100)
-            else:
-                await send_human_reply(message.channel, humanize_and_safeify(raw))
             channel_memory[chan_id].append(f"{BOT_NAME}: {raw}")
             memory.add_message(chan_id, BOT_NAME, raw)
             memory.persist()
-        else:
-            if random.random() < 0.25:
-                await send_human_reply(message.channel, choose_fallback())
 
 # ---------------- RUN ----------------
 def run():
