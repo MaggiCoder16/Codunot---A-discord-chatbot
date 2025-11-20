@@ -42,7 +42,7 @@ rate_buckets = {}
 
 # ---------------- MODEL PICKER ----------------
 def pick_model(mode):
-    return "openai/gpt-oss-20b:free"
+    return "openai/gpt-5-mini"
 
 # ---------------- HELPERS ----------------
 def format_duration(num: int, unit: str) -> str:
