@@ -212,38 +212,50 @@ async def on_ready():
 
 @client.event
 async def on_message(message: Message):
-    if message.author == client.user:
+    # IGNORE OUR OWN MESSAGES
+    if message.author.id == client.user.id:
         return
 
     now = datetime.utcnow()
     is_dm = isinstance(message.channel, discord.DMChannel)
-    chan_id = str(message.channel.id) if not is_dm else f"dm_{message.author.id}"
+
+    # CORRECT CHANNEL ID HANDLING
+    chan_id = f"dm_{message.author.id}" if is_dm else str(message.channel.id)
     guild_id = message.guild.id if message.guild else None
 
-    if not is_dm and client.user not in message.mentions:
+    # --- REAL BOT ID (NOT HARDCODED) ---
+    bot_id = client.user.id
+
+    # DEBUG LOGS (ALWAYS PRINT, NEVER FAIL)
+    print("\n======================")
+    print(f"[DEBUG] RAW MESSAGE: {message.content}")
+    print(f"[DEBUG] BOT ID: {bot_id}")
+    print(f"[DEBUG] MENTIONS: {[m.id for m in message.mentions]}")
+    print("======================\n")
+
+    # --- FIXED: mention detection ---
+    if not is_dm and bot_id not in [m.id for m in message.mentions]:
+        print("[DEBUG] Bot not mentioned — ignoring message.")
         return
 
-    content = re.sub(rf"<@!?\s*{BOT_USER_ID}\s*>", "", message.content).strip()
+    # --- FIXED: remove bot mention using REAL ID ---
+    content = re.sub(rf"<@!?\s*{bot_id}\s*>", "", message.content).strip()
     content_lower = content.lower()
 
-    # Load mode
+    # LOAD OR SET MODE
     saved_mode = memory.get_channel_mode(chan_id)
-    if saved_mode:
-        channel_modes[chan_id] = saved_mode
-    else:
-        channel_modes[chan_id] = "funny"
+    channel_modes[chan_id] = saved_mode if saved_mode else "funny"
+    if not saved_mode:
         memory.save_channel_mode(chan_id, "funny")
 
-    if chan_id not in channel_mutes:
-        channel_mutes[chan_id] = None
-    if chan_id not in channel_chess:
-        channel_chess[chan_id] = False
-    if chan_id not in channel_memory:
-        channel_memory[chan_id] = deque(maxlen=MAX_MEMORY)
+    # MISSING DATASLOTS FIX
+    channel_mutes.setdefault(chan_id, None)
+    channel_chess.setdefault(chan_id, False)
+    channel_memory.setdefault(chan_id, deque(maxlen=MAX_MEMORY))
 
     mode = channel_modes[chan_id]
 
-    # Admin commands
+    # ---------------- ADMIN COMMANDS ----------------
     if message.author.id == OWNER_ID:
         if content_lower.startswith("!quiet"):
             match = re.search(r"!quiet (\d+)([smhd])", content_lower)
@@ -254,15 +266,18 @@ async def on_message(message: Message):
                 channel_mutes[chan_id] = datetime.utcnow() + timedelta(seconds=seconds)
                 await send_human_reply(message.channel, f"I'll stop yapping for {format_duration(num, unit)}.")
             return
+
         if content_lower.startswith("!speak"):
             channel_mutes[chan_id] = None
             await send_human_reply(message.channel, "YOO I'm back 😎🔥")
             return
 
+    # QUIET MODE
     if channel_mutes.get(chan_id) and now < channel_mutes[chan_id]:
+        print("[DEBUG] Channel muted — ignoring.")
         return
 
-    # Mode switching
+    # MODE SWITCHING
     if "!roastmode" in content_lower:
         channel_modes[chan_id] = "roast"
         memory.save_channel_mode(chan_id, "roast")
@@ -287,10 +302,10 @@ async def on_message(message: Message):
         await send_human_reply(message.channel, "♟️ Chess mode ACTIVATED. You are white, start!")
         return
 
-    # Log memory
+    # LOG MEMORY
     channel_memory[chan_id].append(f"{message.author.display_name}: {content}")
 
-    # Chess mode handling
+    # --- CHESS MODE ---
     if channel_chess.get(chan_id):
         board = chess_engine.get_board(chan_id)
         try:
@@ -303,24 +318,29 @@ async def on_message(message: Message):
             return
         except ValueError:
             if guild_id is None or await can_send_in_guild(guild_id):
-                raw = await call_openrouter(f"You are a chess expert. Answer briefly: {content}",
-                                            model=pick_model("serious"),
-                                            temperature=0.7)
+                raw = await call_openrouter(
+                    f"You are a chess expert. Answer briefly: {content}",
+                    model=pick_model("serious"),
+                    temperature=0.7
+                )
                 reply = humanize_and_safeify(raw, short=True) if raw else "[ERROR] OpenRouter request failed. Check logs."
                 await send_human_reply(message.channel, reply)
             return
 
-    # Roast mode
+    # --- ROAST MODE ---
     if mode == "roast":
         await handle_roast_mode(chan_id, message, content)
         return
 
-    # Normal / funny / serious
+    # --- NORMAL MODES ---
     if guild_id is None or await can_send_in_guild(guild_id):
         prompt = build_general_prompt(chan_id, mode, message)
-        raw = await call_openrouter(prompt,
-                                    model=pick_model(mode),
-                                    temperature=1.1 if mode == "funny" else 0.7)
+        raw = await call_openrouter(
+            prompt,
+            model=pick_model(mode),
+            temperature=1.1 if mode == "funny" else 0.7
+        )
+
         reply = humanize_and_safeify(raw) if raw else "[ERROR] OpenRouter request failed. Check logs."
         await send_human_reply(message.channel, reply)
 
