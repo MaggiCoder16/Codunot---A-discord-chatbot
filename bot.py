@@ -42,10 +42,10 @@ rate_buckets = {}
 # ---------------- MODEL PICKER ----------------
 def pick_model(mode: str):
     if mode in ["funny", "roast"]:
-        return "openai/gpt-3.5-turbo"
+        return "openai/gpt-oss-20b:free"
     if mode == "serious":
-        return "google/gemini-2.0-flash-001"
-    return "openai/gpt-3.5-turbo"
+        return "x-ai/grok-4.1-fast:free"
+    return "openai/gpt-oss-20b:free"
 
 # ---------------- HELPERS ----------------
 def format_duration(num: int, unit: str) -> str:
@@ -75,8 +75,6 @@ async def send_human_reply(channel, reply_text, limit=None):
             await channel.trigger_typing()
         except:
             pass
-
-    # 🔥 LIMIT REMOVED FOR ROAST FIX
     await send_long_message(channel, reply_text)
 
 def humanize_and_safeify(text, short=False):
@@ -87,7 +85,6 @@ def humanize_and_safeify(text, short=False):
     if random.random() < 0.1:
         text = maybe_typo(text)
 
-    # 🔥 short mode no longer used for roasts, but kept for safety
     if short:
         text = text.strip()
         if len(text) > 100:
@@ -155,21 +152,21 @@ PERSONAS = {
     )
 }
 
-# ---------------- PROMPT BUILDER ----------------
+# ---------------- PROMPT BUILDERS ----------------
 def build_general_prompt(chan_id, mode, message):
     mem = channel_memory.get(chan_id, deque())
     history_text = "\n".join(mem)
-    persona_text = PERSONAS.get(mode, "You are Codunot, helpful and friendly.")
+    persona_text = PERSONAS.get(mode, PERSONAS["funny"])
 
     if message.guild:
         server_name = message.guild.name.strip()
         channel_name = message.channel.name.strip()
         location = (
             f"This conversation is happening in the server '{server_name}', "
-            f"inside the channel '{channel_name}'."
+            f"in the channel '{channel_name}'."
         )
     else:
-        location = "This conversation is happening in a direct message (DM)."
+        location = "This conversation is happening in a direct message."
 
     return (
         f"{persona_text}\n\n"
@@ -204,10 +201,10 @@ async def handle_roast_mode(chan_id, message, user_message):
         return
 
     prompt = build_roast_prompt(user_message)
+
     raw = await call_openrouter(
         prompt,
         model=pick_model("roast"),
-        max_tokens=1400,
         temperature=1.3
     )
 
@@ -217,16 +214,15 @@ async def handle_roast_mode(chan_id, message, user_message):
         raw = raw.strip()
         if not raw.endswith(('.', '!', '?')):
             raw += '.'
-        reply = raw  # 🔥 FULL ROAST, NO CLIPPING
+        reply = raw
 
-    # 🔥 NO LIMIT — FIXED
     await send_human_reply(message.channel, reply)
 
     channel_memory[chan_id].append(f"{BOT_NAME}: {reply}")
     memory.add_message(chan_id, BOT_NAME, reply)
     memory.persist()
 
-# ---------------- EVENTS ----------------
+# ---------------- EVENTS & ON_MESSAGE ----------------
 @client.event
 async def on_ready():
     print(f"{BOT_NAME} is ready!")
@@ -248,7 +244,7 @@ async def on_message(message: Message):
     content = re.sub(rf"<@!?\s*{BOT_USER_ID}\s*>", "", message.content).strip()
     content_lower = content.lower()
 
-    # MODE LOADING
+    # Load mode
     saved_mode = memory.get_channel_mode(chan_id)
     if saved_mode:
         channel_modes[chan_id] = saved_mode
@@ -265,7 +261,7 @@ async def on_message(message: Message):
 
     mode = channel_modes[chan_id]
 
-    # ADMIN COMMANDS
+    # Admin commands
     if message.author.id == OWNER_ID:
         if content_lower.startswith("!quiet"):
             match = re.search(r"!quiet (\d+)([smhd])", content_lower)
@@ -284,7 +280,7 @@ async def on_message(message: Message):
     if channel_mutes.get(chan_id) and now < channel_mutes[chan_id]:
         return
 
-    # MODE SWITCHING
+    # Mode switching
     if "!roastmode" in content_lower:
         channel_modes[chan_id] = "roast"
         memory.save_channel_mode(chan_id, "roast")
@@ -305,15 +301,14 @@ async def on_message(message: Message):
 
     if "!chessmode" in content_lower:
         channel_chess[chan_id] = True
-        memory.save_channel_mode(chan_id, "chess")
         chess_engine.new_board(chan_id)
         await send_human_reply(message.channel, "♟️ Chess mode ACTIVATED. You are white, start!")
         return
 
-    # LOG MEMORY
+    # Log memory
     channel_memory[chan_id].append(f"{message.author.display_name}: {content}")
 
-    # CHESS MODE
+    # Chess mode handling
     if channel_chess.get(chan_id):
         board = chess_engine.get_board(chan_id)
         try:
@@ -325,6 +320,7 @@ async def on_message(message: Message):
                 await send_human_reply(message.channel, f"My move: `{bot_move}`")
             return
         except ValueError:
+            # Treat as question/comment about chess
             if guild_id is None or await can_send_in_guild(guild_id):
                 raw = await call_openrouter(
                     f"You are a chess expert. Answer briefly: {content}",
@@ -335,34 +331,23 @@ async def on_message(message: Message):
                 await send_human_reply(message.channel, reply)
             return
 
-    # ROAST MODE
+    # Roast mode
     if mode == "roast":
         await handle_roast_mode(chan_id, message, content)
         return
 
-    # NORMAL / FUNNY / SERIOUS
+    # Normal / funny / serious
     if guild_id is None or await can_send_in_guild(guild_id):
         prompt = build_general_prompt(chan_id, mode, message)
 
-        if mode in ["funny"]:
-            raw = await call_openrouter(
-                prompt,
-                model=pick_model(mode),
-                max_tokens=677,
-                temperature=1.1
-            )
-            # 🔥 remove limit
-            reply = humanize_and_safeify(raw) if raw else choose_fallback()
-            await send_human_reply(message.channel, reply)
+        raw = await call_openrouter(
+            prompt,
+            model=pick_model(mode),
+            temperature=1.1 if mode == "funny" else 0.7
+        )
 
-        elif mode == "serious":
-            raw = await call_openrouter(
-                prompt,
-                model=pick_model(mode),
-                temperature=0.7
-            )
-            reply = humanize_and_safeify(raw) if raw else choose_fallback()
-            await send_human_reply(message.channel, reply)
+        reply = humanize_and_safeify(raw) if raw else choose_fallback()
+        await send_human_reply(message.channel, reply)
 
         if raw:
             channel_memory[chan_id].append(f"{BOT_NAME}: {raw}")
