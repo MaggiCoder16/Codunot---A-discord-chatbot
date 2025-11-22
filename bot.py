@@ -12,7 +12,7 @@ from dotenv import load_dotenv
 from memory import MemoryManager
 from humanizer import humanize_response, maybe_typo
 from bot_chess import OnlineChessEngine
-from openrouter_client import call_openrouter
+from openrouter_client import call_openrouter  # updated client with logging
 
 load_dotenv()
 
@@ -65,8 +65,8 @@ async def process_queue():
         channel, content = await message_queue.get()
         try:
             await channel.send(content)
-        except:
-            pass
+        except Exception as e:
+            print(f"[QUEUE ERROR] {e}")
         await asyncio.sleep(0.02)
 
 async def send_human_reply(channel, reply_text, limit=None):
@@ -161,27 +161,14 @@ def build_general_prompt(chan_id, mode, message):
     if message.guild:
         server_name = message.guild.name.strip()
         channel_name = message.channel.name.strip()
-        location = (
-            f"This conversation is happening in the server '{server_name}', "
-            f"in the channel '{channel_name}'."
-        )
+        location = f"This conversation is happening in the server '{server_name}', in the channel '{channel_name}'."
     else:
         location = "This conversation is happening in a direct message."
 
-    return (
-        f"{persona_text}\n\n"
-        f"{location}\n"
-        "Always use this correctly. Never say 'Discord'.\n\n"
-        f"Recent chat:\n{history_text}\n\n"
-        "Reply as Codunot:"
-    )
+    return f"{persona_text}\n\n{location}\nAlways use this correctly. Never say 'Discord'.\n\nRecent chat:\n{history_text}\n\nReply as Codunot:"
 
 def build_roast_prompt(user_message):
-    return (
-        PERSONAS["roast"] + "\n"
-        f"User message: '{user_message}'\n"
-        "Generate ONE savage, complete roast as a standalone response."
-    )
+    return PERSONAS["roast"] + f"\nUser message: '{user_message}'\nGenerate ONE savage, complete roast as a standalone response."
 
 # ---------------- FALLBACK ----------------
 FALLBACK_VARIANTS = [
@@ -202,14 +189,9 @@ async def handle_roast_mode(chan_id, message, user_message):
 
     prompt = build_roast_prompt(user_message)
 
-    raw = await call_openrouter(
-        prompt,
-        model=pick_model("roast"),
-        temperature=1.3
-    )
-
+    raw = await call_openrouter(prompt, model=pick_model("roast"), temperature=1.3)
     if not raw:
-        reply = choose_fallback()
+        reply = "[ERROR] OpenRouter request failed. Check logs."
     else:
         raw = raw.strip()
         if not raw.endswith(('.', '!', '?')):
@@ -320,14 +302,11 @@ async def on_message(message: Message):
                 await send_human_reply(message.channel, f"My move: `{bot_move}`")
             return
         except ValueError:
-            # Treat as question/comment about chess
             if guild_id is None or await can_send_in_guild(guild_id):
-                raw = await call_openrouter(
-                    f"You are a chess expert. Answer briefly: {content}",
-                    model=pick_model("serious"),
-                    temperature=0.7
-                )
-                reply = humanize_and_safeify(raw, short=True)
+                raw = await call_openrouter(f"You are a chess expert. Answer briefly: {content}",
+                                            model=pick_model("serious"),
+                                            temperature=0.7)
+                reply = humanize_and_safeify(raw, short=True) if raw else "[ERROR] OpenRouter request failed. Check logs."
                 await send_human_reply(message.channel, reply)
             return
 
@@ -339,14 +318,10 @@ async def on_message(message: Message):
     # Normal / funny / serious
     if guild_id is None or await can_send_in_guild(guild_id):
         prompt = build_general_prompt(chan_id, mode, message)
-
-        raw = await call_openrouter(
-            prompt,
-            model=pick_model(mode),
-            temperature=1.1 if mode == "funny" else 0.7
-        )
-
-        reply = humanize_and_safeify(raw) if raw else choose_fallback()
+        raw = await call_openrouter(prompt,
+                                    model=pick_model(mode),
+                                    temperature=1.1 if mode == "funny" else 0.7)
+        reply = humanize_and_safeify(raw) if raw else "[ERROR] OpenRouter request failed. Check logs."
         await send_human_reply(message.channel, reply)
 
         if raw:
