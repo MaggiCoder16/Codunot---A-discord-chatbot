@@ -42,10 +42,10 @@ rate_buckets = {}
 # ---------------- MODEL PICKER ----------------
 def pick_model(mode: str):
     if mode in ["funny", "roast"]:
-        return "openai/gpt-oss-20b:free"
+        return "tngtech/deepseek-r1t2-chimera:free"
     if mode == "serious":
-        return "x-ai/grok-4.1-fast:free"
-    return "openai/gpt-oss-20b:free"
+        return "meta-llama/llama-3.3-70b-instruct:free"
+    return "tngtech/deepseek-r1t2-chimera:free"
 
 # ---------------- HELPERS ----------------
 def format_duration(num: int, unit: str) -> str:
