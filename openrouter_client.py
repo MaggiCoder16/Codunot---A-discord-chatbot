@@ -16,9 +16,13 @@ async def get_session():
         SESSION = aiohttp.ClientSession()
     return SESSION
 
-async def call_openrouter(prompt: str, model: str, temperature: float = 1.0, retries: int = 4) -> str:
+
+async def call_openrouter(prompt: str, model: str,
+                          temperature: float = 1.0, retries: int = 4) -> str | None:
+
     if OPENROUTER_API_KEY is None:
-        return "OpenRouter API key missing."
+        print("Missing OpenRouter API Key")
+        return None
 
     session = await get_session()
 
@@ -36,6 +40,7 @@ async def call_openrouter(prompt: str, model: str, temperature: float = 1.0, ret
     }
 
     backoff = 1
+
     for attempt in range(1, retries + 1):
         try:
             async with session.post(
@@ -45,28 +50,38 @@ async def call_openrouter(prompt: str, model: str, temperature: float = 1.0, ret
                 timeout=60
             ) as resp:
 
-                if resp.status != 200:
-                    error_text = await resp.text()
-                    print("\n===== OPENROUTER ERROR =====")
+                # ----- SUCCESS -----
+                if resp.status == 200:
+                    data = await resp.json()
+                    return data["choices"][0]["message"]["content"]
+
+                # ----- AUTH ERRORS -----
+                if resp.status in (401, 403):
+                    print("\n===== OPENROUTER AUTH ERROR =====")
                     print(f"Status: {resp.status}")
-                    print(f"Response: {error_text}")
-                    print("================================\n")
+                    print(await resp.text())
+                    print("=================================\n")
                     return None
 
-                if resp.status in (401, 403):
-                    return f"OpenRouter auth failed ({resp.status}). Your API key is invalid."
-
+                # ----- RATE LIMIT -----
                 if resp.status == 429:
+                    print(f"Rate limit hit. Retrying in {backoff}s...")
                     await asyncio.sleep(backoff)
                     backoff = min(backoff * 2, 8)
                     continue
 
-                # other errors
-                text = await resp.text()
-                return f"OpenRouter error {resp.status}: {text}"
+                # ----- OTHER ERRORS -----
+                error_text = await resp.text()
+                print("\n===== OPENROUTER ERROR =====")
+                print(f"Status: {resp.status}")
+                print(f"Response: {error_text}")
+                print("================================\n")
+                return None
 
-        except Exception:
+        except Exception as e:
+            print(f"Network/Server error: {e}. Retrying in {backoff}s...")
             await asyncio.sleep(backoff)
             backoff = min(backoff * 2, 8)
 
-    return "uhm uhm.. i gtg ahh... lets talk later, k? sooweeeeyyy"
+    # Total failure
+    return None
