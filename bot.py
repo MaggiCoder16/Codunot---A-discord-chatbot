@@ -42,9 +42,7 @@ rate_buckets = {}
 
 # ---------------- MODEL PICKER ----------------
 def pick_model(mode: str):
-    if mode == "funny":
-        return "x-ai/grok-4.1-fast:free"
-    if mode == "roast":
+    if mode in ["funny", "roast"]:
         return "x-ai/grok-4.1-fast:free"
     if mode == "serious":
         return "mistralai/mistral-7b-instruct:free"
@@ -233,7 +231,9 @@ async def slash_chessmode(interaction: discord.Interaction):
 async def on_ready():
     print(f"{BOT_NAME} is ready!")
     asyncio.create_task(process_queue())
+    # Global sync for slash commands
     await bot.tree.sync()
+    print("Slash commands synced globally!")
 
 @bot.event
 async def on_message(message: Message):
@@ -245,12 +245,6 @@ async def on_message(message: Message):
     chan_id = f"dm_{message.author.id}" if is_dm else str(message.channel.id)
     guild_id = message.guild.id if message.guild else None
     bot_id = bot.user.id
-
-    print("\n======================")
-    print(f"[DEBUG] RAW MESSAGE: {message.content}")
-    print(f"[DEBUG] BOT ID: {bot_id}")
-    print(f"[DEBUG] MENTIONS: {[m.id for m in message.mentions]}")
-    print("======================\n")
 
     if not is_dm and bot_id not in [m.id for m in message.mentions]:
         return
