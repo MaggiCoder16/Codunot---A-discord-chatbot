@@ -42,16 +42,12 @@ rate_buckets = {}
 
 # ---------------- MODEL PICKER ----------------
 def pick_model(mode: str):
-    # Funny mode (!funmode)
     if mode == "funny":
         return "x-ai/grok-4.1-fast:free"
-    # Roast mode (!roastmode)
     if mode == "roast":
         return "x-ai/grok-4.1-fast:free"
-    # Serious mode (!seriousmode)
     if mode == "serious":
         return "mistralai/mistral-7b-instruct:free"
-    # Fallback
     return "x-ai/grok-4.1-fast:free"
 
 # ---------------- HELPERS ----------------
@@ -122,10 +118,10 @@ PERSONAS = {
         "You are Codunot, a playful, witty friend. "
         "Reply in 1–2 lines, max 100 characters. Use slang and emojis. "
         "Just chat naturally, don't ask the user what they need. "
-        "GAME REALITY RULE: You CANNOT play real video games."
-        "You can play text-based games, like hangman, would you rather, etc. Never ask the user to play games. Only when they say they want to play, you say the games. You never ask them to play games unless they ask you."
+        "GAME REALITY RULE: You CANNOT play real video games. "
+        "You can play text-based games, like hangman, would you rather, etc. Only when the user says they want to play. "
         "Never prefix your answers with your name. "
-        "Keep the vibe chaotic, fun, and human-like."
+        "Keep the vibe chaotic, fun, and human-like. "
         "Never, ever mention the server and channel name in the chat unless asked to do so."
     ),
     "serious": (
@@ -237,7 +233,7 @@ async def slash_chessmode(interaction: discord.Interaction):
 async def on_ready():
     print(f"{BOT_NAME} is ready!")
     asyncio.create_task(process_queue())
-    await bot.tree.sync()  # sync slash commands
+    await bot.tree.sync()
 
 @bot.event
 async def on_message(message: Message):
@@ -292,25 +288,22 @@ async def on_message(message: Message):
     if channel_mutes.get(chan_id) and now < channel_mutes[chan_id]:
         return
 
-    if "!roastmode" in content_lower:
-        channel_modes[chan_id] = "roast"
-        memory.save_channel_mode(chan_id, "roast")
-        await send_human_reply(message.channel, "🔥 ROAST MODE ACTIVATED")
-        return
-    if "!funmode" in content_lower:
-        channel_modes[chan_id] = "funny"
-        memory.save_channel_mode(chan_id, "funny")
-        await send_human_reply(message.channel, "😎 Fun mode activated!")
-        return
-    if "!seriousmode" in content_lower:
-        channel_modes[chan_id] = "serious"
-        memory.save_channel_mode(chan_id, "serious")
-        await send_human_reply(message.channel, "🤓 Serious mode ON")
-        return
-    if "!chessmode" in content_lower:
-        channel_chess[chan_id] = True
-        chess_engine.new_board(chan_id)
-        await send_human_reply(message.channel, "♟️ Chess mode ACTIVATED. You are white, start!")
+    # --- MODE SWITCHING via @bot commands ---
+    if content_lower in ["!funmode", "!roastmode", "!seriousmode", "!chessmode"]:
+        if content_lower == "!chessmode":
+            channel_chess[chan_id] = True
+            chess_engine.new_board(chan_id)
+            await send_human_reply(message.channel, "♟️ Chess mode ACTIVATED. You are white, start!")
+        else:
+            mode_cmd = content_lower[1:-4]  # removes ! and mode
+            channel_modes[chan_id] = mode_cmd
+            memory.save_channel_mode(chan_id, mode_cmd)
+            messages = {
+                "fun": "😎 Fun mode activated!",
+                "roast": "🔥 ROAST MODE ACTIVATED",
+                "serious": "🤓 Serious mode ON"
+            }
+            await send_human_reply(message.channel, messages.get(mode_cmd, f"{mode_cmd} mode activated!"))
         return
 
     channel_memory[chan_id].append(f"{message.author.display_name}: {content}")
