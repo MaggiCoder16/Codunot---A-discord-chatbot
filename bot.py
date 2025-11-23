@@ -6,7 +6,8 @@ from datetime import datetime, timedelta, timezone
 from collections import deque
 
 import discord
-from discord import Message
+from discord import Message, app_commands
+from discord.ext import commands
 from dotenv import load_dotenv
 
 from memory import MemoryManager
@@ -27,7 +28,7 @@ RATE_LIMIT = 900
 # ---------------- CLIENT ----------------
 intents = discord.Intents.all()
 intents.message_content = True
-client = discord.Client(intents=intents)
+bot = commands.Bot(command_prefix="!", intents=intents)
 memory = MemoryManager(limit=60, file_path="codunot_memory.json")
 chess_engine = OnlineChessEngine()
 
@@ -41,19 +42,16 @@ rate_buckets = {}
 
 # ---------------- MODEL PICKER ----------------
 def pick_model(mode: str):
-    # this is for funny mode (!funmode)
+    # Funny mode (!funmode)
     if mode == "funny":
         return "x-ai/grok-4.1-fast:free"
-    
-    # this is for roast mode (!roastmode)
+    # Roast mode (!roastmode)
     if mode == "roast":
         return "x-ai/grok-4.1-fast:free"
-    
-    # this is for serious mode (!seriousmode)
+    # Serious mode (!seriousmode)
     if mode == "serious":
         return "mistralai/mistral-7b-instruct:free"
-    
-    # this is a fallback model, if others fail
+    # Fallback
     return "x-ai/grok-4.1-fast:free"
 
 # ---------------- HELPERS ----------------
@@ -90,17 +88,14 @@ def humanize_and_safeify(text, short=False):
     if not isinstance(text, str):
         text = str(text)
     text = text.replace(" idk", "").replace(" *nvm", "")
-
     if random.random() < 0.1:
         text = maybe_typo(text)
-
     if short:
         text = text.strip()
         if len(text) > 100:
             text = text[:100].rsplit(" ", 1)[0].strip()
         if not text.endswith(('.', '!', '?')):
             text += '.'
-
     return text
 
 def is_admin(member):
@@ -167,14 +162,12 @@ def build_general_prompt(chan_id, mode, message):
     mem = channel_memory.get(chan_id, deque())
     history_text = "\n".join(mem)
     persona_text = PERSONAS.get(mode, PERSONAS["funny"])
-
     if message.guild:
         server_name = message.guild.name.strip()
         channel_name = message.channel.name.strip()
         location = f"This conversation is happening in the server '{server_name}', in the channel '{channel_name}'."
     else:
         location = "This conversation is happening in a direct message."
-
     return f"{persona_text}\n\n{location}\nAlways use this correctly. Never say 'Discord'.\n\nRecent chat:\n{history_text}\n\nReply as Codunot:"
 
 def build_roast_prompt(user_message):
@@ -196,9 +189,7 @@ async def handle_roast_mode(chan_id, message, user_message):
     guild_id = message.guild.id if message.guild else None
     if not await can_send_in_guild(guild_id):
         return
-
     prompt = build_roast_prompt(user_message)
-
     raw = await call_openrouter(prompt, model=pick_model("roast"), temperature=1.3)
     if not raw:
         reply = "[ERROR] OpenRouter request failed. Check logs."
@@ -207,65 +198,82 @@ async def handle_roast_mode(chan_id, message, user_message):
         if not raw.endswith(('.', '!', '?')):
             raw += '.'
         reply = raw
-
     await send_human_reply(message.channel, reply)
-
     channel_memory[chan_id].append(f"{BOT_NAME}: {reply}")
     memory.add_message(chan_id, BOT_NAME, reply)
     memory.persist()
 
+# ---------------- SLASH COMMANDS ----------------
+@bot.tree.command(name="funmode", description="Switch bot to funny mode")
+async def slash_funmode(interaction: discord.Interaction):
+    chan_id = str(interaction.channel.id)
+    channel_modes[chan_id] = "funny"
+    memory.save_channel_mode(chan_id, "funny")
+    await interaction.response.send_message("😎 Fun mode activated!", ephemeral=True)
+
+@bot.tree.command(name="roastmode", description="Activate roast mode")
+async def slash_roastmode(interaction: discord.Interaction):
+    chan_id = str(interaction.channel.id)
+    channel_modes[chan_id] = "roast"
+    memory.save_channel_mode(chan_id, "roast")
+    await interaction.response.send_message("🔥 ROAST MODE ACTIVATED", ephemeral=True)
+
+@bot.tree.command(name="seriousmode", description="Switch bot to serious mode")
+async def slash_seriousmode(interaction: discord.Interaction):
+    chan_id = str(interaction.channel.id)
+    channel_modes[chan_id] = "serious"
+    memory.save_channel_mode(chan_id, "serious")
+    await interaction.response.send_message("🤓 Serious mode ON", ephemeral=True)
+
+@bot.tree.command(name="chessmode", description="Activate chess mode")
+async def slash_chessmode(interaction: discord.Interaction):
+    chan_id = str(interaction.channel.id)
+    channel_chess[chan_id] = True
+    chess_engine.new_board(chan_id)
+    await interaction.response.send_message("♟️ Chess mode ACTIVATED. You are white, start!", ephemeral=True)
+
 # ---------------- EVENTS & ON_MESSAGE ----------------
-@client.event
+@bot.event
 async def on_ready():
     print(f"{BOT_NAME} is ready!")
     asyncio.create_task(process_queue())
+    await bot.tree.sync()  # sync slash commands
 
-@client.event
+@bot.event
 async def on_message(message: Message):
-    # IGNORE OUR OWN MESSAGES
-    if message.author.id == client.user.id:
+    if message.author.id == bot.user.id:
         return
 
     now = datetime.utcnow()
     is_dm = isinstance(message.channel, discord.DMChannel)
-
-    # CORRECT CHANNEL ID HANDLING
     chan_id = f"dm_{message.author.id}" if is_dm else str(message.channel.id)
     guild_id = message.guild.id if message.guild else None
+    bot_id = bot.user.id
 
-    # --- REAL BOT ID (NOT HARDCODED) ---
-    bot_id = client.user.id
-
-    # DEBUG LOGS (ALWAYS PRINT, NEVER FAIL)
     print("\n======================")
     print(f"[DEBUG] RAW MESSAGE: {message.content}")
     print(f"[DEBUG] BOT ID: {bot_id}")
     print(f"[DEBUG] MENTIONS: {[m.id for m in message.mentions]}")
     print("======================\n")
 
-    # --- FIXED: mention detection ---
     if not is_dm and bot_id not in [m.id for m in message.mentions]:
-        print("[DEBUG] Bot not mentioned — ignoring message.")
         return
 
-    # --- FIXED: remove bot mention using REAL ID ---
     content = re.sub(rf"<@!?\s*{bot_id}\s*>", "", message.content).strip()
     content_lower = content.lower()
 
-    # LOAD OR SET MODE
     saved_mode = memory.get_channel_mode(chan_id)
     channel_modes[chan_id] = saved_mode if saved_mode else "funny"
     if not saved_mode:
         memory.save_channel_mode(chan_id, "funny")
 
-    # MISSING DATASLOTS FIX
     channel_mutes.setdefault(chan_id, None)
     channel_chess.setdefault(chan_id, False)
     channel_memory.setdefault(chan_id, deque(maxlen=MAX_MEMORY))
 
     mode = channel_modes[chan_id]
 
-    # ---------------- ADMIN COMMANDS ----------------
+    # --- ADMIN COMMANDS ---
     if message.author.id == OWNER_ID:
         if content_lower.startswith("!quiet"):
             match = re.search(r"!quiet (\d+)([smhd])", content_lower)
@@ -276,46 +284,38 @@ async def on_message(message: Message):
                 channel_mutes[chan_id] = datetime.utcnow() + timedelta(seconds=seconds)
                 await send_human_reply(message.channel, f"I'll stop yapping for {format_duration(num, unit)}.")
             return
-
         if content_lower.startswith("!speak"):
             channel_mutes[chan_id] = None
             await send_human_reply(message.channel, "YOO I'm back 😎🔥")
             return
 
-    # QUIET MODE
     if channel_mutes.get(chan_id) and now < channel_mutes[chan_id]:
-        print("[DEBUG] Channel muted — ignoring.")
         return
 
-    # MODE SWITCHING
     if "!roastmode" in content_lower:
         channel_modes[chan_id] = "roast"
         memory.save_channel_mode(chan_id, "roast")
         await send_human_reply(message.channel, "🔥 ROAST MODE ACTIVATED")
         return
-
     if "!funmode" in content_lower:
         channel_modes[chan_id] = "funny"
         memory.save_channel_mode(chan_id, "funny")
         await send_human_reply(message.channel, "😎 Fun mode activated!")
         return
-
     if "!seriousmode" in content_lower:
         channel_modes[chan_id] = "serious"
         memory.save_channel_mode(chan_id, "serious")
         await send_human_reply(message.channel, "🤓 Serious mode ON")
         return
-
     if "!chessmode" in content_lower:
         channel_chess[chan_id] = True
         chess_engine.new_board(chan_id)
         await send_human_reply(message.channel, "♟️ Chess mode ACTIVATED. You are white, start!")
         return
 
-    # LOG MEMORY
     channel_memory[chan_id].append(f"{message.author.display_name}: {content}")
 
-    # --- CHESS MODE ---
+    # Chess mode handling
     if channel_chess.get(chan_id):
         board = chess_engine.get_board(chan_id)
         try:
@@ -337,12 +337,12 @@ async def on_message(message: Message):
                 await send_human_reply(message.channel, reply)
             return
 
-    # --- ROAST MODE ---
+    # Roast mode
     if mode == "roast":
         await handle_roast_mode(chan_id, message, content)
         return
 
-    # --- NORMAL MODES ---
+    # Normal / funny / serious
     if guild_id is None or await can_send_in_guild(guild_id):
         prompt = build_general_prompt(chan_id, mode, message)
         raw = await call_openrouter(
@@ -350,10 +350,8 @@ async def on_message(message: Message):
             model=pick_model(mode),
             temperature=1.1 if mode == "funny" else 0.7
         )
-
         reply = humanize_and_safeify(raw) if raw else "[ERROR] OpenRouter request failed. Check logs."
         await send_human_reply(message.channel, reply)
-
         if raw:
             channel_memory[chan_id].append(f"{BOT_NAME}: {raw}")
             memory.add_message(chan_id, BOT_NAME, raw)
@@ -361,7 +359,7 @@ async def on_message(message: Message):
 
 # ---------------- RUN ----------------
 def run():
-    client.run(DISCORD_TOKEN)
+    bot.run(DISCORD_TOKEN)
 
 if __name__ == "__main__":
     run()
