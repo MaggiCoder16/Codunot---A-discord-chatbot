@@ -283,7 +283,6 @@ async def slash_chessmode(interaction: discord.Interaction):
     response = get_mode_message("chess")
     await interaction.response.send_message(response)
 
-
 # ---------------- EVENTS & ON_MESSAGE ----------------
 @bot.event
 async def on_message(message: Message):
