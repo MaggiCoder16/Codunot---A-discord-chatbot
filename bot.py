@@ -148,7 +148,6 @@ async def generate_and_reply(chan_id, message, content, current_mode):
 
     # Check rate limit before calling API
     if guild_id is not None and not await can_send_in_guild(guild_id):
-        # Could send a rate limit message here if needed, but for simplicity, we just return
         return
 
     prompt = build_general_prompt(chan_id, current_mode, message)
@@ -256,37 +255,39 @@ async def handle_roast_mode(chan_id, message, user_message):
     memory.persist()
 
 # ---------------- SLASH COMMANDS ----------------
-@bot.tree.command(name="funmode", description="Switch bot to funny mode")
-async def slash_funmode(interaction: discord.Interaction):
-    chan_id = str(interaction.channel.id)
-    await interaction.response.defer() # Acknowledge immediately to prevent timeout
-    await update_mode_and_memory(chan_id, "funny")
-    response = get_mode_message("funny")
-    await interaction.followup.send(response) 
+# Fixed slash commands: deferred first, then followup
+async def register_slash_commands():
+    @bot.tree.command(name="funmode", description="Switch bot to funny mode")
+    async def slash_funmode(interaction: discord.Interaction):
+        chan_id = str(interaction.channel.id)
+        await interaction.response.defer()
+        await update_mode_and_memory(chan_id, "funny")
+        response = get_mode_message("funny")
+        await interaction.followup.send(response)
 
-@bot.tree.command(name="roastmode", description="Activate roast mode")
-async def slash_roastmode(interaction: discord.Interaction):
-    chan_id = str(interaction.channel.id)
-    await interaction.response.defer()
-    await update_mode_and_memory(chan_id, "roast")
-    response = get_mode_message("roast")
-    await interaction.followup.send(response) 
+    @bot.tree.command(name="roastmode", description="Activate roast mode")
+    async def slash_roastmode(interaction: discord.Interaction):
+        chan_id = str(interaction.channel.id)
+        await interaction.response.defer()
+        await update_mode_and_memory(chan_id, "roast")
+        response = get_mode_message("roast")
+        await interaction.followup.send(response)
 
-@bot.tree.command(name="seriousmode", description="Switch bot to serious mode")
-async def slash_seriousmode(interaction: discord.Interaction):
-    chan_id = str(interaction.channel.id)
-    await interaction.response.defer()
-    await update_mode_and_memory(chan_id, "serious")
-    response = get_mode_message("serious")
-    await interaction.followup.send(response) 
+    @bot.tree.command(name="seriousmode", description="Switch bot to serious mode")
+    async def slash_seriousmode(interaction: discord.Interaction):
+        chan_id = str(interaction.channel.id)
+        await interaction.response.defer()
+        await update_mode_and_memory(chan_id, "serious")
+        response = get_mode_message("serious")
+        await interaction.followup.send(response)
 
-@bot.tree.command(name="chessmode", description="Activate chess mode")
-async def slash_chessmode(interaction: discord.Interaction):
-    chan_id = str(interaction.channel.id)
-    await interaction.response.defer()
-    await update_mode_and_memory(chan_id, "chess")
-    response = get_mode_message("chess")
-    await interaction.followup.send(response) 
+    @bot.tree.command(name="chessmode", description="Activate chess mode")
+    async def slash_chessmode(interaction: discord.Interaction):
+        chan_id = str(interaction.channel.id)
+        await interaction.response.defer()
+        await update_mode_and_memory(chan_id, "chess")
+        response = get_mode_message("chess")
+        await interaction.followup.send(response)
 
 # ---------------- EVENTS & ON_MESSAGE ----------------
 @bot.event
@@ -324,7 +325,6 @@ async def on_message(message: Message):
     channel_chess.setdefault(chan_id, False)
     channel_memory.setdefault(chan_id, deque(maxlen=MAX_MEMORY))
 
-
     # --- ADMIN COMMANDS & MODE SWITCHING ---
     if message.author.id == OWNER_ID:
         if content_lower.startswith("!quiet"):
@@ -350,7 +350,6 @@ async def on_message(message: Message):
         mode_map = {"fun": "funny", "roast": "roast", "serious": "serious", "chess": "chess"}
         final_mode = mode_map.get(mode_alias)
         if final_mode:
-            # For '!' commands, update memory and send reply synchronously
             await update_mode_and_memory(chan_id, final_mode)
             message_text = get_mode_message(final_mode)
             await send_human_reply(message.channel, message_text)
@@ -420,16 +419,13 @@ async def on_message(message: Message):
             return
 
     # --- General Mode Handling ---
-    channel_memory[chan_id].append(f"{message.author.display_name}: {content}") # Add message to memory before task creation
+    channel_memory[chan_id].append(f"{message.author.display_name}: {content}")
 
     if current_mode == "roast":
-        # Roast mode doesn't need the background task since it's typically quick
         await handle_roast_mode(chan_id, message, content)
         return
 
-    # Use a separate task for general mode to prevent blocking the bot
     if guild_id is None or await can_send_in_guild(guild_id):
-        # Fire and forget: the reply will come later, freeing up the main event loop.
         asyncio.create_task(generate_and_reply(chan_id, message, content, current_mode))
 
 
@@ -438,6 +434,7 @@ async def on_message(message: Message):
 async def on_ready():
     print(f"{BOT_NAME} is ready!")
     asyncio.create_task(process_queue())
+    await register_slash_commands()
     await bot.tree.sync()
     print("Slash commands synced globally!")
 
