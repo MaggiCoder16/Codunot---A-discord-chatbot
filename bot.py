@@ -140,6 +140,35 @@ async def update_mode_and_memory(chan_id: str, new_mode: str):
     if new_mode == "chess":
         chess_engine.new_board(chan_id)
 
+# ---------------- API CALL HANDLER (NEW) ----------------
+async def generate_and_reply(chan_id, message, content, current_mode):
+    """Isolated task to handle API calls and send replies, preventing bot blocking."""
+    guild_id = message.guild.id if message.guild else None
+
+    # Check rate limit before calling API
+    if guild_id is not None and not await can_send_in_guild(guild_id):
+        # Could send a rate limit message here if needed, but for simplicity, we just return
+        return
+
+    prompt = build_general_prompt(chan_id, current_mode, message)
+    
+    try:
+        raw = await call_openrouter(
+            prompt,
+            model=pick_model(current_mode),
+            temperature=1.1 if current_mode == "funny" else 0.7
+        )
+    except Exception as e:
+        print(f"[API ERROR] Failed to call LLM: {e}")
+        raw = None
+        
+    reply = humanize_and_safeify(raw) if raw else choose_fallback()
+    await send_human_reply(message.channel, reply)
+
+    if raw:
+        channel_memory[chan_id].append(f"{BOT_NAME}: {raw}")
+        memory.add_message(chan_id, BOT_NAME, raw)
+        memory.persist()
 
 # ---------------- PERSONAS ----------------
 PERSONAS = {
@@ -260,13 +289,6 @@ async def slash_chessmode(interaction: discord.Interaction):
 
 # ---------------- EVENTS & ON_MESSAGE ----------------
 @bot.event
-async def on_ready():
-    print(f"{BOT_NAME} is ready!")
-    asyncio.create_task(process_queue())
-    await bot.tree.sync()
-    print("Slash commands synced globally!")
-
-@bot.event
 async def on_message(message: Message):
     if message.author.id == bot.user.id:
         return
@@ -290,14 +312,12 @@ async def on_message(message: Message):
     content_lower = content.lower()
 
     # --- Mode Setup and Memory Initialization (ROBUST CHECK) ---
-    # Determine the mode from the volatile dictionary (updated immediately by mode commands)
     if chan_id in channel_modes:
         current_mode = channel_modes[chan_id]
     else:
-        # If not in volatile memory, load from persistent memory
         saved_mode = memory.get_channel_mode(chan_id)
         current_mode = saved_mode if saved_mode else "funny"
-        channel_modes[chan_id] = current_mode # Store in volatile memory for immediate use
+        channel_modes[chan_id] = current_mode 
 
     channel_mutes.setdefault(chan_id, None)
     channel_chess.setdefault(chan_id, False)
@@ -329,7 +349,7 @@ async def on_message(message: Message):
         mode_map = {"fun": "funny", "roast": "roast", "serious": "serious", "chess": "chess"}
         final_mode = mode_map.get(mode_alias)
         if final_mode:
-            # For '!' commands, we can update memory first since they aren't subject to the 3s timeout
+            # For '!' commands, update memory and send reply synchronously
             await update_mode_and_memory(chan_id, final_mode)
             message_text = get_mode_message(final_mode)
             await send_human_reply(message.channel, message_text)
@@ -350,8 +370,6 @@ async def on_message(message: Message):
         memory.persist()
         
         return 
-
-    channel_memory[chan_id].append(f"{message.author.display_name}: {content}")
 
     # --- Chess mode handling (STRICT CHECK) ---
     if is_chess_mode:
@@ -401,24 +419,26 @@ async def on_message(message: Message):
             return
 
     # --- General Mode Handling ---
+    channel_memory[chan_id].append(f"{message.author.display_name}: {content}") # Add message to memory before task creation
+
     if current_mode == "roast":
+        # Roast mode doesn't need the background task since it's typically quick
         await handle_roast_mode(chan_id, message, content)
         return
 
+    # Use a separate task for general mode to prevent blocking the bot
     if guild_id is None or await can_send_in_guild(guild_id):
-        prompt = build_general_prompt(chan_id, current_mode, message)
-        
-        raw = await call_openrouter(
-            prompt,
-            model=pick_model(current_mode),
-            temperature=1.1 if current_mode == "funny" else 0.7
-        )
-        reply = humanize_and_safeify(raw) if raw else choose_fallback()
-        await send_human_reply(message.channel, reply)
-        if raw:
-            channel_memory[chan_id].append(f"{BOT_NAME}: {raw}")
-            memory.add_message(chan_id, BOT_NAME, raw)
-            memory.persist()
+        # Fire and forget: the reply will come later, freeing up the main event loop.
+        asyncio.create_task(generate_and_reply(chan_id, message, content, current_mode))
+
+
+# ---------------- EVENTS ----------------
+@bot.event
+async def on_ready():
+    print(f"{BOT_NAME} is ready!")
+    asyncio.create_task(process_queue())
+    await bot.tree.sync()
+    print("Slash commands synced globally!")
 
 # ---------------- RUN ----------------
 def run():
