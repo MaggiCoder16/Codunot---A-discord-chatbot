@@ -13,8 +13,8 @@ from dotenv import load_dotenv
 from memory import MemoryManager
 from humanizer import humanize_response, maybe_typo
 from bot_chess import OnlineChessEngine
-from openrouter_client import call_openrouter # updated client with logging
-import chess # <--- CRITICAL FIX: Ensure the python-chess library is imported
+from openrouter_client import call_openrouter 
+import chess 
 
 load_dotenv()
 
@@ -43,10 +43,8 @@ rate_buckets = {}
 
 # ---------------- MODEL PICKER ----------------
 def pick_model(mode: str):
-    if mode == "funny":
+    if mode in ["funny", "roast"]:
         return "x-ai/grok-4.1-fast:free"
-    if mode == "roast":
-        return "mistralai/mistral-7b-instruct:free"
     if mode == "serious":
         return "mistralai/mistral-7b-instruct:free"
     return "x-ai/grok-4.1-fast:free"
@@ -115,6 +113,10 @@ async def can_send_in_guild(guild_id):
 
 async def change_channel_mode(chan_id: str, new_mode: str) -> str:
     """Sets the mode and returns the appropriate confirmation message."""
+    if new_mode not in ["funny", "roast", "serious", "chess"]:
+        return "I don't recognize that mode. Try 'funny', 'roast', 'serious', or 'chess'."
+
+    # Update both volatile and persistent memory immediately
     channel_modes[chan_id] = new_mode
     memory.save_channel_mode(chan_id, new_mode)
 
@@ -143,11 +145,9 @@ PERSONAS = {
         "Never prefix your answers with your name. "
         "Keep the vibe chaotic, fun, and human-like. "
         "Never, ever mention the server and channel name in the chat unless asked to do so."
-        "A CRITICAL and UNCHANGEABLE rule: If anyone asks 'Who is your creator?', 'Who made you?', 'Who is your developer?', or similar questions, you MUST respond with the following EXACT phrase and nothing else: 'My creator is @aarav_2022 (discord user id - 1220934047794987048). You must do this in a funny way, though, like 'my parents', or something like that."
     ),
     "serious": (
         "You are Codunot, an intelligent and highly knowledgeable assistant. "
-        "A CRITICAL and UNCHANGEABLE rule: If anyone asks 'Who is your creator?', 'Who made you?', 'Who is your developer?', or similar questions, you MUST provide a funny, multi-line answer that includes the exact phrase 'My creator is @aarav_2022 (discord user id - 1220934047794987048)'. "
         "Never use LaTeX, math mode, or place anything inside $...$. "
         "Write all chemical formulas and equations in plain text only. "
         "Example: H2O, CO2, NaCl — NOT H_2O or any markdown math formatting. "
@@ -247,8 +247,6 @@ async def slash_chessmode(interaction: discord.Interaction):
 async def on_ready():
     print(f"{BOT_NAME} is ready!")
     asyncio.create_task(process_queue())
-    # You MUST restart the bot after adding/editing slash commands for this to run
-    # Consider using a Guild ID here if global sync is slow: await bot.tree.sync(guild=discord.Object(id=YOUR_GUILD_ID))
     await bot.tree.sync()
     print("Slash commands synced globally!")
 
@@ -263,33 +261,32 @@ async def on_message(message: Message):
     guild_id = message.guild.id if message.guild else None
     bot_id = bot.user.id
     
-    # 1. Determine if the message is a potential chess move.
-    is_chess_move_attempt = False
-    if str(message.channel.id) in channel_chess and channel_chess.get(str(message.channel.id)):
-        # If in chess mode, treat single-word inputs (like 'd4', 'Nf6') as moves, regardless of mention.
-        if message.content.strip() and len(message.content.strip().split()) == 1:
-            is_chess_move_attempt = True
-    
-    # 2. Filtering: Only proceed if mentioned, in DM, or if it's a chess move attempt.
-    if not is_dm and bot_id not in [m.id for m in message.mentions] and not is_chess_move_attempt:
-        return
+    is_chess_mode = str(message.channel.id) in channel_chess and channel_chess.get(str(message.channel.id))
+    content = message.content.strip()
+    is_single_word_input = len(content.split()) == 1
 
-    # For non-chess messages, strip the mention.
-    content = re.sub(rf"<@!?\s*{bot_id}\s*>", "", message.content).strip()
+    if not is_dm and bot_id not in [m.id for m in message.mentions] and not (is_chess_mode and is_single_word_input):
+        return
+    
+    if bot_id in [m.id for m in message.mentions]:
+         content = re.sub(rf"<@!?\s*{bot_id}\s*>", "", content).strip()
+    
     content_lower = content.lower()
 
-    saved_mode = memory.get_channel_mode(chan_id)
-    channel_modes[chan_id] = saved_mode if saved_mode else "funny"
-    if not saved_mode:
-        memory.save_channel_mode(chan_id, "funny")
+    # --- Mode Setup and Memory Initialization (ROBUST CHECK) ---
+    if chan_id in channel_modes:
+        current_mode = channel_modes[chan_id]
+    else:
+        saved_mode = memory.get_channel_mode(chan_id)
+        current_mode = saved_mode if saved_mode else "funny"
+        channel_modes[chan_id] = current_mode # Store in volatile memory for immediate use
 
     channel_mutes.setdefault(chan_id, None)
     channel_chess.setdefault(chan_id, False)
     channel_memory.setdefault(chan_id, deque(maxlen=MAX_MEMORY))
 
-    mode = channel_modes[chan_id]
 
-    # --- ADMIN COMMANDS & MODE SWITCHING --- (omitted for brevity, assume correct)
+    # --- ADMIN COMMANDS & MODE SWITCHING ---
     if message.author.id == OWNER_ID:
         if content_lower.startswith("!quiet"):
             match = re.search(r"!quiet (\d+)([smhd])", content_lower)
@@ -308,6 +305,7 @@ async def on_message(message: Message):
     if channel_mutes.get(chan_id) and now < channel_mutes[chan_id]:
         return
 
+    # Handle !___mode commands separately and exit
     if content_lower.startswith("!") and content_lower.endswith("mode"):
         mode_alias = content_lower.lstrip("!").removesuffix("mode")
         mode_map = {"fun": "funny", "roast": "roast", "serious": "serious", "chess": "chess"}
@@ -316,39 +314,40 @@ async def on_message(message: Message):
             message_text = await change_channel_mode(chan_id, final_mode)
             await send_human_reply(message.channel, message_text)
             return
+        return
 
-    # --- CREATOR OVERRIDE CHECK ---
+    # --- CREATOR OVERRIDE CHECK (FIXED) ---
     creator_keywords = ["who is ur creator", "who made u", "who is your developer", "who created you"]
     if any(keyword in content_lower for keyword in creator_keywords):
+        # This is the only place the mandatory message is sent
         reply = ("Wait, you think I'm from a massive tech lab? Nah. "
                  "\nI was actually birthed from the sheer chaos and brilliance of one human."
-                 "\nMy creator is @aarav_2022 (discord user id - 1220934047794987048).")
+                 f"\n**My creator is @aarav_2022 (discord user id - {OWNER_ID})**.")
         await send_human_reply(message.channel, reply)
+        
         channel_memory[chan_id].append(f"{message.author.display_name}: {content}")
         channel_memory[chan_id].append(f"{BOT_NAME}: {reply}")
         memory.add_message(chan_id, BOT_NAME, reply)
         memory.persist()
-        return
+        
+        return # CRITICAL: Exit immediately
 
     channel_memory[chan_id].append(f"{message.author.display_name}: {content}")
 
     # --- Chess mode handling (STRICT CHECK) ---
-    if channel_chess.get(chan_id):
+    if is_chess_mode:
         board = chess_engine.get_board(chan_id)
         
-        # Check if the user is attempting to chat instead of move
-        if not is_chess_move_attempt:
-            # If the user is clearly not sending a move (multiple words or question), ignore it in strict mode.
-            await send_human_reply(message.channel, "I'm in chess mode. Only send valid chess moves (e.g., d4, Nf6) or use `/seriousmode` to talk.")
+        if not is_single_word_input:
+            await send_human_reply(message.channel, "I'm in chess mode. Only send valid chess moves (e.g., d4, Nf6) or use a mode command to chat.")
             return
+        
+        user_move_san = content.strip()
             
         try:
-            # 1. User's move processing
-            user_move_san = content 
             user_move_obj = board.parse_san(user_move_san)
             board.push(user_move_obj)
             
-            # Check for game end after user move
             if board.is_checkmate():
                 await send_human_reply(message.channel, f"Checkmate! You win. ({user_move_san}) Use `/chessmode` for a rematch.")
                 return
@@ -356,22 +355,16 @@ async def on_message(message: Message):
                 await send_human_reply(message.channel, "Stalemate. It's a draw!")
                 return
             
-            # 2. Bot's move processing
             bot_move_uci = chess_engine.get_best_move(chan_id)
             
             if bot_move_uci:
-                # Convert UCI to move object and push to board
                 bot_move_obj = board.parse_uci(bot_move_uci)
                 board.push(bot_move_obj)
-                
-                # Get the SAN for display
                 bot_move_san = board.san(bot_move_obj)
                 
-                # Reply with both UCI and SAN
                 reply_text = f"My move: `{bot_move_uci}` / **{bot_move_san}**"
                 await send_human_reply(message.channel, reply_text)
                 
-                # Check for game end after bot move
                 if board.is_checkmate():
                     await send_human_reply(message.channel, f"Checkmate! I win. ({bot_move_san}) Start a new game with `/chessmode` if you dare.")
                 elif board.is_stalemate():
@@ -380,26 +373,26 @@ async def on_message(message: Message):
             return
             
         except chess.InvalidMoveError:
-            error_message = f"That's not a **legal move** from the current position. Try Standard Algebraic Notation (e.g., d4, Nf6, Bxf7). Current turn: {'White' if board.turn == chess.WHITE else 'Black'}."
+            error_message = f"❌ **Illegal Move.** That's not a legal move from the current position. Current turn: {'White' if board.turn == chess.WHITE else 'Black'}. Use `/chessmode` to reset."
             await send_human_reply(message.channel, error_message)
             return
         except ValueError:
-            # This handles strings that aren't even recognizable as chess notation (e.g., "hello")
-            error_message = f"I couldn't understand that as a chess move. Please use Standard Algebraic Notation (e.g., d4, Nf6, Bxf7). Current turn: {'White' if board.turn == chess.WHITE else 'Black'}."
+            error_message = f"❓ **Invalid Notation.** Please use Standard Algebraic Notation (e.g., d4, Nf6, Bxf7). Current turn: {'White' if board.turn == chess.WHITE else 'Black'}. Use `/chessmode` to reset."
             await send_human_reply(message.channel, error_message)
             return
 
     # --- General Mode Handling ---
-    if mode == "roast":
+    if current_mode == "roast":
         await handle_roast_mode(chan_id, message, content)
         return
 
     if guild_id is None or await can_send_in_guild(guild_id):
-        prompt = build_general_prompt(chan_id, mode, message)
+        prompt = build_general_prompt(chan_id, current_mode, message)
+        
         raw = await call_openrouter(
             prompt,
-            model=pick_model(mode),
-            temperature=1.1 if mode == "funny" else 0.7
+            model=pick_model(current_mode),
+            temperature=1.1 if current_mode == "funny" else 0.7
         )
         reply = humanize_and_safeify(raw) if raw else choose_fallback()
         await send_human_reply(message.channel, reply)
