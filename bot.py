@@ -111,10 +111,20 @@ async def can_send_in_guild(guild_id):
         return True
     return False
 
-async def change_channel_mode(chan_id: str, new_mode: str) -> str:
-    """Sets the mode, CLEARS MEMORY, and returns the appropriate confirmation message."""
+def get_mode_message(new_mode: str) -> str:
+    """Returns the confirmation message for the mode."""
+    messages = {
+        "funny": "😎 Fun mode activated!",
+        "roast": "🔥 ROAST MODE ACTIVATED",
+        "serious": "🤓 Serious mode ON",
+        "chess": "♟️ Chess mode ACTIVATED. You are white, start!"
+    }
+    return messages.get(new_mode, f"Mode set to {new_mode}!")
+
+async def update_mode_and_memory(chan_id: str, new_mode: str):
+    """Handles the actual memory and state updates asynchronously."""
     if new_mode not in ["funny", "roast", "serious", "chess"]:
-        return "I don't recognize that mode. Try 'funny', 'roast', 'serious', or 'chess'."
+        return
 
     # CRITICAL FIX: Clear history when changing modes to enforce persona switch
     if chan_id in channel_memory:
@@ -125,19 +135,11 @@ async def change_channel_mode(chan_id: str, new_mode: str) -> str:
     channel_modes[chan_id] = new_mode
     memory.save_channel_mode(chan_id, new_mode)
 
+    # Update chess mode state
+    channel_chess[chan_id] = (new_mode == "chess")
     if new_mode == "chess":
-        channel_chess[chan_id] = True
         chess_engine.new_board(chan_id)
-        return "♟️ Chess mode ACTIVATED. You are white, start!"
-    else:
-        channel_chess[chan_id] = False
 
-    messages = {
-        "funny": "😎 Fun mode activated!",
-        "roast": "🔥 ROAST MODE ACTIVATED",
-        "serious": "🤓 Serious mode ON"
-    }
-    return messages.get(new_mode, f"Mode set to {new_mode}!")
 
 # ---------------- PERSONAS ----------------
 PERSONAS = {
@@ -227,26 +229,34 @@ async def handle_roast_mode(chan_id, message, user_message):
 @bot.tree.command(name="funmode", description="Switch bot to funny mode")
 async def slash_funmode(interaction: discord.Interaction):
     chan_id = str(interaction.channel.id)
-    response = await change_channel_mode(chan_id, "funny")
-    await interaction.response.send_message(response) 
+    await interaction.response.defer() # Acknowledge immediately to prevent timeout
+    await update_mode_and_memory(chan_id, "funny")
+    response = get_mode_message("funny")
+    await interaction.followup.send(response) 
 
 @bot.tree.command(name="roastmode", description="Activate roast mode")
 async def slash_roastmode(interaction: discord.Interaction):
     chan_id = str(interaction.channel.id)
-    response = await change_channel_mode(chan_id, "roast")
-    await interaction.response.send_message(response) 
+    await interaction.response.defer()
+    await update_mode_and_memory(chan_id, "roast")
+    response = get_mode_message("roast")
+    await interaction.followup.send(response) 
 
 @bot.tree.command(name="seriousmode", description="Switch bot to serious mode")
 async def slash_seriousmode(interaction: discord.Interaction):
     chan_id = str(interaction.channel.id)
-    response = await change_channel_mode(chan_id, "serious")
-    await interaction.response.send_message(response) 
+    await interaction.response.defer()
+    await update_mode_and_memory(chan_id, "serious")
+    response = get_mode_message("serious")
+    await interaction.followup.send(response) 
 
 @bot.tree.command(name="chessmode", description="Activate chess mode")
 async def slash_chessmode(interaction: discord.Interaction):
     chan_id = str(interaction.channel.id)
-    response = await change_channel_mode(chan_id, "chess")
-    await interaction.response.send_message(response) 
+    await interaction.response.defer()
+    await update_mode_and_memory(chan_id, "chess")
+    response = get_mode_message("chess")
+    await interaction.followup.send(response) 
 
 # ---------------- EVENTS & ON_MESSAGE ----------------
 @bot.event
@@ -319,7 +329,9 @@ async def on_message(message: Message):
         mode_map = {"fun": "funny", "roast": "roast", "serious": "serious", "chess": "chess"}
         final_mode = mode_map.get(mode_alias)
         if final_mode:
-            message_text = await change_channel_mode(chan_id, final_mode)
+            # For '!' commands, we can update memory first since they aren't subject to the 3s timeout
+            await update_mode_and_memory(chan_id, final_mode)
+            message_text = get_mode_message(final_mode)
             await send_human_reply(message.channel, message_text)
             return
         return
