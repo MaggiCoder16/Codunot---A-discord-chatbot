@@ -255,39 +255,34 @@ async def handle_roast_mode(chan_id, message, user_message):
     memory.persist()
 
 # ---------------- SLASH COMMANDS ----------------
-# Fixed slash commands: deferred first, then followup
-async def register_slash_commands():
-    @bot.tree.command(name="funmode", description="Switch bot to funny mode")
-    async def slash_funmode(interaction: discord.Interaction):
-        chan_id = str(interaction.channel.id)
-        await interaction.response.defer()
-        await update_mode_and_memory(chan_id, "funny")
-        response = get_mode_message("funny")
-        await interaction.followup.send(response)
+@bot.tree.command(name="funmode", description="Switch bot to funny mode")
+async def slash_funmode(interaction: discord.Interaction):
+    chan_id = str(interaction.channel.id)
+    await update_mode_and_memory(chan_id, "funny")
+    response = get_mode_message("funny")
+    await interaction.response.send_message(response)
 
-    @bot.tree.command(name="roastmode", description="Activate roast mode")
-    async def slash_roastmode(interaction: discord.Interaction):
-        chan_id = str(interaction.channel.id)
-        await interaction.response.defer()
-        await update_mode_and_memory(chan_id, "roast")
-        response = get_mode_message("roast")
-        await interaction.followup.send(response)
+@bot.tree.command(name="roastmode", description="Activate roast mode")
+async def slash_roastmode(interaction: discord.Interaction):
+    chan_id = str(interaction.channel.id)
+    await update_mode_and_memory(chan_id, "roast")
+    response = get_mode_message("roast")
+    await interaction.response.send_message(response)
 
-    @bot.tree.command(name="seriousmode", description="Switch bot to serious mode")
-    async def slash_seriousmode(interaction: discord.Interaction):
-        chan_id = str(interaction.channel.id)
-        await interaction.response.defer()
-        await update_mode_and_memory(chan_id, "serious")
-        response = get_mode_message("serious")
-        await interaction.followup.send(response)
+@bot.tree.command(name="seriousmode", description="Switch bot to serious mode")
+async def slash_seriousmode(interaction: discord.Interaction):
+    chan_id = str(interaction.channel.id)
+    await update_mode_and_memory(chan_id, "serious")
+    response = get_mode_message("serious")
+    await interaction.response.send_message(response)
 
-    @bot.tree.command(name="chessmode", description="Activate chess mode")
-    async def slash_chessmode(interaction: discord.Interaction):
-        chan_id = str(interaction.channel.id)
-        await interaction.response.defer()
-        await update_mode_and_memory(chan_id, "chess")
-        response = get_mode_message("chess")
-        await interaction.followup.send(response)
+@bot.tree.command(name="chessmode", description="Activate chess mode")
+async def slash_chessmode(interaction: discord.Interaction):
+    chan_id = str(interaction.channel.id)
+    await update_mode_and_memory(chan_id, "chess")
+    response = get_mode_message("chess")
+    await interaction.response.send_message(response)
+
 
 # ---------------- EVENTS & ON_MESSAGE ----------------
 @bot.event
