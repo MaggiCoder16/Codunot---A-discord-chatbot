@@ -42,10 +42,10 @@ rate_buckets = {}
 # ---------------- MODEL PICKER ----------------
 def pick_model(mode: str):
     if mode in ["funny", "roast"]:
-        return "meta-llama/llama-3.3-70b-instruct:free"
+        return "x-ai/grok-4.1-fast"
     if mode == "serious":
         return "mistralai/mistral-7b-instruct:free"
-    return "meta-llama/llama-3.3-70b-instruct:free"
+    return "x-ai/grok-4.1-fast"
 
 # ---------------- HELPERS ----------------
 def format_duration(num: int, unit: str) -> str:
