@@ -217,39 +217,64 @@ async def extract_image_bytes(message):
     return None
 
 # ---------------- CHESS UTILS ----------------
-RESIGN_PHRASES = ["resign","i resign","gg","give up","i give up","surrender","i surrender","forfeit","quit","lost","im done","i'm done"]
+RESIGN_PHRASES = [
+    "resign", "i resign", "gg", "give up", "i give up",
+    "surrender", "i surrender", "forfeit", "i forfeit",
+    "quit", "i quit", "done", "enough", "cant win",
+    "can't win", "lost", "i lost", "i'm done", "im done"
+]
 
 def is_resign_message(message_content: str) -> bool:
+    """
+    Returns True if the user's message indicates resignation,
+    even if it contains extra words.
+    """
     msg = message_content.lower()
-    return any(p in msg for p in RESIGN_PHRASES)
+    for phrase in RESIGN_PHRASES:
+        if phrase in msg:
+            return True
+    return False
 
 def normalize_move_input(board, move_input: str) -> str:
-    move_input = move_input.strip().lower()
+    """
+    Normalize any user input (SAN, UCI, algebraic, coordinates, castle) to a valid SAN.
+    Returns 'resign' if user resigns.
+    """
+    move_input = move_input.strip().lower().replace('o-0', '0-0').replace('o-o-o', '0-0-0')
+
     if is_resign_message(move_input):
         return "resign"
 
     legal_moves = list(board.legal_moves)
 
-    if len(move_input) == 2 and move_input[0] in "abcdefgh" and move_input[1] in "123456":
+    # Coordinate inference (e.g., "e4")
+    if len(move_input) == 2 and move_input[0] in 'abcdefgh' and move_input[1] in '123456':
+        matches = [m for m in legal_moves if m.to_square == chess.parse_square(move_input)]
+        if len(matches) == 1:
+            return board.san(matches[0])
+
+    # Try SAN parsing
+    try:
+        move_obj = board.parse_san(move_input)
+        return board.san(move_obj)
+    except:
+        pass
+
+    # Try UCI parsing
+    try:
+        move_obj = chess.Move.from_uci(move_input)
+        if move_obj in legal_moves:
+            return board.san(move_obj)
+    except:
+        pass
+
+    # Long algebraic (e2-e4)
+    if '-' in move_input:
         try:
-            target = chess.parse_square(move_input)
-            candidates = [m for m in legal_moves if m.to_square == target]
-            if len(candidates) == 1:
-                return board.san(candidates[0])
+            move_obj = board.parse_san(move_input.replace('-', ''))
+            return board.san(move_obj)
         except:
             pass
-
-    try:
-        return board.san(board.parse_san(move_input))
-    except:
-        pass
-
-    try:
-        mv = chess.Move.from_uci(move_input)
-        if mv in legal_moves:
-            return board.san(mv)
-    except:
-        pass
 
     return None
 
@@ -349,7 +374,8 @@ async def on_message(message: Message):
         )
         response = await call_openrouter(
             vision_prompt,
-            model="anthropic/claude-3.7-sonnet",
+            model="gpt-4o",
+            messages=None,
             image_bytes=image_bytes
         )
         await send_human_reply(message.channel, response)
