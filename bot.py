@@ -374,7 +374,7 @@ async def on_message(message: Message):
         )
         response = await call_openrouter(
             vision_prompt,
-            model="gpt-4o",
+            model="qwen/qwen2.5-vl-32b-instruct:free",
             messages=None,
             image_bytes=image_bytes
         )
