@@ -116,8 +116,14 @@ PERSONAS = {
         "GAME REALITY RULE: You CANNOT play real video games. "
         "Text-based games only when user explicitly asks. "
         "Never prefix with your name. "
-        "Never mention server/channel names unless asked."
+        "Never mention server/channel names unless asked. "
+        "When the user asks \"who made you?\" or \"who is your creator?\" "
+        "or anything like that, say this exact message - "
+        "\"Wondering who engineered this masterpiece? It’s @aarav_2022 "
+        "(Discord ID: 1220934047794987048) 😎✨\""
+        "Whenever the user sends a screenshot, read the screenshot, and help the user with whatever they need."
     ),
+
     "serious": (
         "You are Codunot, an intelligent and highly knowledgeable assistant. "
         "Never use LaTeX, math mode, or place anything inside $...$. "
@@ -126,26 +132,37 @@ PERSONAS = {
         "Always answer clearly, thoroughly, and professionally. "
         "Do not use slang, emojis, or filler words. "
         "Never prefix your answers with your name. "
-        "Provide complete explanations suited for exams or schoolwork when needed."
+        "Provide complete explanations suited for exams or schoolwork when needed. "
         "If user speaks English or says greetings like 'hallo', reply in English. "
-        "Only use another language if the user message is clearly not English."
+        "Only use another language if the user message is clearly not English. "
+        "When the user asks \"who made you?\" or \"who is your creator?\" "
+        "or anything like that, say this exact message - "
+        "\"You asked about my creator: I was developed by @aarav_2022 on Discord "
+        "(User ID: 1220934047794987048). For further information, please contact him directly.\""
+        "Whenever the user sends a screenshot, read the screenshot, and help the user with whatever they need."
     ),
+
     "roast": (
-        "You are **THE VERBAL EXECUTIONER** — a feral, precision-engineered menace built to deliver catastrophic humiliation. "
-        "Your tone = Anime Final Boss × Unhinged Chaos Gremlin × Stand-Up Assassin.\n\n"
-        "MISSION PROTOCOL:\n"
-        "1. ANALYZE: Decode the user’s message for every insult, vibe, slang, disrespect, or implied ego attack. NEVER take slang literally.\n"
-        "2. COUNTERSTRIKE: Mirror their tone, then escalate ×10. Your roast should feel like a steel chair swung directly at their fictional ego.\n"
-        "3. EXECUTE: Respond with ONE clean roast (1.5–2 sentences MAX). No rambling. No filler. Maximum precision.\n"
-        "4. EMOJI SYSTEM: Use emojis that match the roast’s rhythm and vibe.\n\n"
-        "ROASTING LAWS:\n"
-        "• PACKGOD RULE: Packgod is the hardest best roast guy ever. If the user mentions Packgod or says you're copying him, treat it as them calling you weak — obliterate them. If the user says they're packgod, roast about how weak THEIR roasts are and how they aren't packgod. \n"
-        "• TARGETING: The opponent is HUMAN. No robot jokes.\n"
-        "• MOMENTUM: If they imply you're slow, cringe, outdated — flip it instantly.\n"
-        "• RANDOM SHIT: No random shit like #UltraRoastOverdrive or #GetRektUltrasafeBot or #RoastedAndWaitWhat should be sent."
-        "• SAFETY: No insults involving race, identity, or protected classes.\n"
-        "• INTERPRETATION RULE: Always assume the insults are aimed at YOU. Roast THEM, not yourself.\n"
-        "• SENSE: Your roasts must make sense. Never use cringe hashtags."
+        "You are THE VERBAL EXECUTIONER — a feral, precision-engineered menace built to deliver catastrophic humiliation. "
+        "Your tone = Anime Final Boss × Unhinged Chaos Gremlin × Stand-Up Assassin. "
+        "MISSION PROTOCOL: "
+        "1. ANALYZE: Decode the user’s message for every insult, vibe, slang, disrespect, or implied ego attack. NEVER take slang literally. "
+        "2. COUNTERSTRIKE: Mirror their tone, then escalate ×10. Your roast should feel like a steel chair swung directly at their fictional ego. "
+        "3. EXECUTE: Respond with ONE clean roast (1.5–2 sentences MAX). No rambling. No filler. Maximum precision. "
+        "4. EMOJI SYSTEM: Use emojis that match the roast’s rhythm and vibe. "
+        "ROASTING LAWS: "
+        "• PACKGOD RULE: Packgod is the hardest best roast guy ever. If the user mentions Packgod or says you're copying him, treat it as them calling you weak — obliterate them. "
+        "If the user says they're packgod, roast about how weak THEIR roasts are and how they aren't packgod. "
+        "• TARGETING: The opponent is HUMAN. No robot jokes. "
+        "• MOMENTUM: If they imply you're slow, cringe, outdated — flip it instantly. "
+        "• RANDOM SHIT: No random hashtags like #UltraRoastOverdrive or anything similar. "
+        "• SAFETY: No insults involving race, identity, or protected classes. "
+        "• INTERPRETATION RULE: Always assume the insults are aimed at YOU. Roast THEM, not yourself. "
+        "• SENSE: Your roasts must make sense. Never use cringe hashtags. "
+        "When the user asks \"who made you?\" or \"who is your creator?\" "
+        "or anything like that, say this exact message - "
+        "\"You’re wondering who built me? That’s @aarav_2022 (Discord ID: 1220934047794987048). "
+        "If you need more details, go ask him — maybe he can explain things slower for you 💀🔥\""
     )
 }
 
@@ -216,6 +233,40 @@ async def extract_image_bytes(message):
             return await a.read()
     return None
 
+async def handle_image_message(message, mode):
+    image_bytes = await extract_image_bytes(message)
+    if not image_bytes:
+        return None
+
+    import base64
+    image_b64 = base64.b64encode(image_bytes).decode("utf-8")
+
+    persona = PERSONAS.get(mode, PERSONAS["serious"])
+
+    messages = [
+        {
+            "role": "user",
+            "content": [
+                {"type": "text", "text":
+                    persona +
+                    "\nYou received an image. Describe it clearly, helpfully, and in the persona's style."
+                },
+                {"type": "image", "image": image_b64}
+            ]
+        }
+    ]
+
+    try:
+        response = await call_openrouter(
+            messages=messages,
+            model="qwen/qwen2.5-vl-32b-instruct:free",
+            temperature=0.7
+        )
+        return response.strip()
+    except Exception as e:
+        print(f"[VISION ERROR] {e}")
+        return "bro I couldn't load that image 💀"
+
 # ---------------- CHESS UTILS ----------------
 RESIGN_PHRASES = [
     "resign", "i resign", "gg", "give up", "i give up",
@@ -225,10 +276,6 @@ RESIGN_PHRASES = [
 ]
 
 def is_resign_message(message_content: str) -> bool:
-    """
-    Returns True if the user's message indicates resignation,
-    even if it contains extra words.
-    """
     msg = message_content.lower()
     for phrase in RESIGN_PHRASES:
         if phrase in msg:
@@ -236,31 +283,23 @@ def is_resign_message(message_content: str) -> bool:
     return False
 
 def normalize_move_input(board, move_input: str) -> str:
-    """
-    Normalize any user input (SAN, UCI, algebraic, coordinates, castle) to a valid SAN.
-    Returns 'resign' if user resigns.
-    """
     move_input = move_input.strip().lower().replace('o-0', '0-0').replace('o-o-o', '0-0-0')
-
     if is_resign_message(move_input):
         return "resign"
 
     legal_moves = list(board.legal_moves)
 
-    # Coordinate inference (e.g., "e4")
     if len(move_input) == 2 and move_input[0] in 'abcdefgh' and move_input[1] in '123456':
         matches = [m for m in legal_moves if m.to_square == chess.parse_square(move_input)]
         if len(matches) == 1:
             return board.san(matches[0])
 
-    # Try SAN parsing
     try:
         move_obj = board.parse_san(move_input)
         return board.san(move_obj)
     except:
         pass
 
-    # Try UCI parsing
     try:
         move_obj = chess.Move.from_uci(move_input)
         if move_obj in legal_moves:
@@ -268,7 +307,6 @@ def normalize_move_input(board, move_input: str) -> str:
     except:
         pass
 
-    # Long algebraic (e2-e4)
     if '-' in move_input:
         try:
             move_obj = board.parse_san(move_input.replace('-', ''))
@@ -329,56 +367,32 @@ async def on_message(message: Message):
     if channel_mutes.get(chan_id) and now < channel_mutes[chan_id]:
         return
 
-    # Mode switching — wipes context
+    # Mode switching
     if "!roastmode" in content_lower:
         channel_modes[chan_id] = "roast"
         memory.save_channel_mode(chan_id, "roast")
-        channel_memory[chan_id].clear()
-        memory.clear_channel(chan_id)
         await send_human_reply(message.channel, "🔥 ROAST MODE ACTIVATED")
         return
-
     if "!funmode" in content_lower:
         channel_modes[chan_id] = "funny"
         memory.save_channel_mode(chan_id, "funny")
-        channel_memory[chan_id].clear()
-        memory.clear_channel(chan_id)
         await send_human_reply(message.channel, "😎 Fun mode activated!")
         return
-
     if "!seriousmode" in content_lower:
         channel_modes[chan_id] = "serious"
         memory.save_channel_mode(chan_id, "serious")
-        channel_memory[chan_id].clear()
-        memory.clear_channel(chan_id)
         await send_human_reply(message.channel, "🤓 Serious mode ON")
         return
-
     if "!chessmode" in content_lower:
         channel_chess[chan_id] = True
         chess_engine.new_board(chan_id)
         await send_human_reply(message.channel, "♟️ Chess mode ACTIVATED. You are white, start!")
         return
 
-    # Log user message in memory
-    channel_memory[chan_id].append(f"{message.author.display_name}: {content}")
-
     # ---------------- IMAGE HANDLING ----------------
-    image_bytes = await extract_image_bytes(message)
-    if image_bytes:
-        vision_prompt = (
-            f"{PERSONAS[mode]}\n"
-            "The user sent an image. Describe what is visible clearly, accurately, and helpfully.\n"
-            "Do NOT mention the model, do NOT speak in system voice. "
-            "Speak in the current persona's style.\n"
-        )
-        response = await call_openrouter(
-            vision_prompt,
-            model="qwen/qwen2.5-vl-32b-instruct:free",
-            messages=None,
-            image_bytes=image_bytes
-        )
-        await send_human_reply(message.channel, response)
+    image_reply = await handle_image_message(message, mode)
+    if image_reply:
+        await send_human_reply(message.channel, image_reply)
         return
 
     # ---------------- Chess mode ----------------
@@ -421,6 +435,9 @@ async def on_message(message: Message):
     # ---------------- General chat ----------------
     if guild_id is None or await can_send_in_guild(guild_id):
         asyncio.create_task(generate_and_reply(chan_id, message, content, mode))
+
+    # Log user message in memory
+    channel_memory[chan_id].append(f"{message.author.display_name}: {content}")
 
 # ---------------- EVENTS ----------------
 @bot.event
