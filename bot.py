@@ -234,27 +234,36 @@ IMAGE_EXTENSIONS = (".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp", ".tiff")
 async def extract_image_bytes(message):
     async def download(url):
         try:
+            print(f"[DEBUG] Downloading URL: {url}")
             async with aiohttp.ClientSession() as session:
                 async with session.get(url, timeout=10) as resp:
+                    print(f"[DEBUG] HTTP status for {url}: {resp.status}")
                     if resp.status == 200:
                         ct = resp.headers.get("Content-Type", "")
+                        print(f"[DEBUG] Content-Type: {ct}")
                         if "image" in ct:
-                            return await resp.read()
+                            data = await resp.read()
+                            print(f"[DEBUG] Downloaded {len(data)} bytes from {url}")
+                            return data
                         else:
                             print(f"[IMAGE ERROR] URL {url} returned non-image content-type: {ct}")
                     else:
                         print(f"[IMAGE ERROR] URL {url} returned HTTP {resp.status}")
         except Exception as e:
             print(f"[IMAGE ERROR] Exception downloading {url}: {e}")
+            import traceback; traceback.print_exc()
         return None
 
     # 1. Attachments
     for a in message.attachments:
         if a.content_type and "image" in a.content_type:
             try:
-                return await a.read()
+                data = await a.read()
+                print(f"[DEBUG] Read attachment {a.filename} ({len(data)} bytes)")
+                return data
             except Exception as e:
                 print(f"[IMAGE ERROR] Failed to read attachment {a.filename}: {e}")
+                import traceback; traceback.print_exc()
 
     # 2. Embeds (image + thumbnail)
     for embed in message.embeds:
@@ -265,7 +274,7 @@ async def extract_image_bytes(message):
                 if data:
                     return data
 
-    # 3. URLs in text (any URL, no extension needed)
+    # 3. URLs in text (any URL)
     urls = re.findall(r"(https?://\S+)", message.content)
     for url in urls:
         data = await download(url)
@@ -299,18 +308,21 @@ async def handle_image_message(message, mode):
     ]
 
     try:
+        print(f"[DEBUG] Sending image to model ({len(image_bytes)} bytes)")
         response = await call_openrouter(
             messages=messages,
             model="x-ai/grok-2-vision-1212",
             temperature=0.7
         )
         if response:
+            print(f"[DEBUG] Model returned: {response}")
             return response.strip()
         else:
             print("[VISION ERROR] Model returned empty response")
             return "bro I couldn't load that image 💀"
     except Exception as e:
         print(f"[VISION ERROR] Exception from call_openrouter: {e}")
+        import traceback; traceback.print_exc()
         return "bro I couldn't load that image 💀"
 
 # ---------------- CHESS UTILS ----------------
