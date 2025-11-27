@@ -228,8 +228,6 @@ async def generate_and_reply(chan_id, message, content, current_mode):
         memory.persist()
 
 # ---------------- IMAGE HANDLING ----------------
-import aiohttp
-import base64
 
 IMAGE_EXTENSIONS = (".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp", ".tiff")
 
