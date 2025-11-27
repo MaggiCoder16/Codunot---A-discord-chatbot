@@ -124,6 +124,7 @@ PERSONAS = {
         "\"Wondering who engineered this masterpiece? It’s @aarav_2022 "
         "(Discord ID: 1220934047794987048) 😎✨\""
         "Whenever the user sends a screenshot, read the screenshot, and help the user with whatever they need."
+        "Whenever the user says \"fuck u\" or anything like that disrespecting you, (you have to realize they are disrespecting you) roast them light-heartedly. Don't say \"love ya too bud\" or anything like that"
     ),
 
     "serious": (
@@ -230,32 +231,38 @@ async def generate_and_reply(chan_id, message, content, current_mode):
 IMAGE_EXTENSIONS = (".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp", ".tiff")
 
 async def extract_image_bytes(message):
-    # 1. Check attachments
-    if message.attachments:
-        for a in message.attachments:
-            if a.content_type and "image" in a.content_type:
-                return await a.read()
-
-    # 2. Check embeds
-    for embed in message.embeds:
-        url = getattr(embed, "image", None) or getattr(embed, "thumbnail", None)
-        if url and url.url and url.url.lower().endswith(IMAGE_EXTENSIONS):
+    async def download(url):
+        try:
             async with aiohttp.ClientSession() as session:
-                async with session.get(url.url) as resp:
+                async with session.get(url) as resp:
                     if resp.status == 200:
-                        return await resp.read()
-
-    # 3. Check direct URLs in message content
-    urls = re.findall(r'(https?://\S+)', message.content)
-    for url in urls:
-        if url.lower().endswith(IMAGE_EXTENSIONS):
-            try:
-                async with aiohttp.ClientSession() as session:
-                    async with session.get(url) as resp:
-                        if resp.status == 200:
+                        ct = resp.headers.get("Content-Type", "")
+                        if "image" in ct:
                             return await resp.read()
-            except:
-                continue
+        except:
+            return None
+        return None
+
+    # 1. Attachments
+    for a in message.attachments:
+        if a.content_type and "image" in a.content_type:
+            return await a.read()
+
+    # 2. Embeds (image + thumbnail)
+    for embed in message.embeds:
+        for attr in ["image", "thumbnail"]:
+            img = getattr(embed, attr, None)
+            if img and img.url:
+                data = await download(img.url)
+                if data:
+                    return data
+
+    # 3. URLs in text (any URL, no extension needed)
+    urls = re.findall(r"(https?://\S+)", message.content)
+    for url in urls:
+        data = await download(url)
+        if data:
+            return data
 
     return None
 
@@ -283,7 +290,7 @@ async def handle_image_message(message, mode):
     try:
         response = await call_openrouter(
             messages=messages,
-            model="nvidia/nemotron-nano-12b-v2-vl:free",
+            model="x-ai/grok-2-vision-1212",
             temperature=0.7
         )
         return response.strip()
