@@ -14,6 +14,8 @@ from humanizer import maybe_typo
 from bot_chess import OnlineChessEngine
 from openrouter_client import call_openrouter
 import chess
+import aiohttp
+import base64
 
 load_dotenv()
 
@@ -225,12 +227,36 @@ async def generate_and_reply(chan_id, message, content, current_mode):
         memory.persist()
 
 # ---------------- IMAGE HANDLING ----------------
+IMAGE_EXTENSIONS = (".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp", ".tiff")
+
 async def extract_image_bytes(message):
-    if not message.attachments:
-        return None
-    for a in message.attachments:
-        if a.content_type and ("image" in a.content_type):
-            return await a.read()
+    # 1. Check attachments
+    if message.attachments:
+        for a in message.attachments:
+            if a.content_type and "image" in a.content_type:
+                return await a.read()
+
+    # 2. Check embeds
+    for embed in message.embeds:
+        url = getattr(embed, "image", None) or getattr(embed, "thumbnail", None)
+        if url and url.url and url.url.lower().endswith(IMAGE_EXTENSIONS):
+            async with aiohttp.ClientSession() as session:
+                async with session.get(url.url) as resp:
+                    if resp.status == 200:
+                        return await resp.read()
+
+    # 3. Check direct URLs in message content
+    urls = re.findall(r'(https?://\S+)', message.content)
+    for url in urls:
+        if url.lower().endswith(IMAGE_EXTENSIONS):
+            try:
+                async with aiohttp.ClientSession() as session:
+                    async with session.get(url) as resp:
+                        if resp.status == 200:
+                            return await resp.read()
+            except:
+                continue
+
     return None
 
 async def handle_image_message(message, mode):
@@ -238,18 +264,16 @@ async def handle_image_message(message, mode):
     if not image_bytes:
         return None
 
-    import base64
     image_b64 = base64.b64encode(image_bytes).decode("utf-8")
-
     persona = PERSONAS.get(mode, PERSONAS["serious"])
 
     messages = [
         {
             "role": "user",
             "content": [
-                {"type": "text", "text":
-                    persona +
-                    "\nYou received an image. Describe it clearly, helpfully, and in the persona's style."
+                {
+                    "type": "text",
+                    "text": persona + "\nYou received an image. Describe it clearly, helpfully, and in the persona's style."
                 },
                 {"type": "image", "image": image_b64}
             ]
