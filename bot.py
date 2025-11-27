@@ -294,35 +294,25 @@ async def handle_image_message(message, mode):
     image_b64 = base64.b64encode(image_bytes).decode("utf-8")
     persona = PERSONAS.get(mode, PERSONAS["serious"])
 
-    messages = [
-        {
-            "role": "user",
-            "content": [
-                {
-                    "type": "text",
-                    "text": persona + "\nYou received an image. Help the user with whatever they need, in the image, using the persona's style."
-                },
-                {"type": "image", "image": image_b64}
-            ]
-        }
-    ]
+    prompt = (
+        persona + "\n"
+        "You received an image. Help the user with whatever they need, in the image, using the persona's style.\n"
+        f"Image (base64): {image_b64}"
+    )
 
     try:
-        print(f"[DEBUG] Sending image to model ({len(image_bytes)} bytes)")
         response = await call_openrouter(
-            messages=messages,
+            prompt=prompt,
             model="x-ai/grok-2-vision-1212",
             temperature=0.7
         )
         if response:
-            print(f"[DEBUG] Model returned: {response}")
             return response.strip()
         else:
             print("[VISION ERROR] Model returned empty response")
             return "bro I couldn't load that image 💀"
     except Exception as e:
         print(f"[VISION ERROR] Exception from call_openrouter: {e}")
-        import traceback; traceback.print_exc()
         return "bro I couldn't load that image 💀"
 
 # ---------------- CHESS UTILS ----------------
