@@ -307,12 +307,14 @@ async def handle_image_message(message, mode):
             temperature=0.7
         )
         if response:
+            print(f"[DEBUG] Model returned: {response}")
             return response.strip()
         else:
             print("[VISION ERROR] Model returned empty response")
             return "bro I couldn't load that image 💀"
     except Exception as e:
         print(f"[VISION ERROR] Exception from call_openrouter: {e}")
+        import traceback; traceback.print_exc()
         return "bro I couldn't load that image 💀"
 
 # ---------------- CHESS UTILS ----------------
