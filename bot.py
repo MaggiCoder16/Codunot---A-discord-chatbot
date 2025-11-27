@@ -273,7 +273,7 @@ async def handle_image_message(message, mode):
             "content": [
                 {
                     "type": "text",
-                    "text": persona + "\nYou received an image. Describe it clearly, helpfully, and in the persona's style."
+                    "text": persona + "\nYou received an image. Help the user with whatever they need, in the image, using the persona's style."
                 },
                 {"type": "image", "image": image_b64}
             ]
@@ -283,7 +283,7 @@ async def handle_image_message(message, mode):
     try:
         response = await call_openrouter(
             messages=messages,
-            model="qwen/qwen2.5-vl-32b-instruct:free",
+            model="nvidia/nemotron-nano-12b-v2-vl:free",
             temperature=0.7
         )
         return response.strip()
