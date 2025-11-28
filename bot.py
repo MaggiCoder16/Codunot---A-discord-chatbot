@@ -284,38 +284,42 @@ async def extract_image_bytes(message):
     print("[IMAGE ERROR] No valid image found in message", flush=True)
     return None
 
-
 async def handle_image_message(message, mode):
     image_bytes = await extract_image_bytes(message)
     if not image_bytes:
-        print("[VISION ERROR] extract_image_bytes returned None", flush=True)
-        return None
+        print("[VISION ERROR] extract_image_bytes returned None")
+        return "bro I couldn’t load that image 💀"
 
     image_b64 = base64.b64encode(image_bytes).decode("utf-8")
     persona = PERSONAS.get(mode, PERSONAS["serious"])
 
-    prompt = (
-        persona + "\n"
-        "You received an image. Help the user with whatever they need, in the image, using the persona's style.\n"
-        f"Image (base64): {image_b64}"
-    )
+    payload = {
+        "model": "nvidia/nemotron-nano-12b-v2-vl",
+        "messages": [
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": persona},
+                    {
+                        "type": "input_image",
+                        "image_url": f"data:image/png;base64,{image_b64}"
+                    },
+                    {"type": "text", "text": "What's in this image?"}
+                ]
+            }
+        ]
+    }
 
     try:
-        response = await call_openrouter(
-            prompt=prompt,
-            model="nvidia/nemotron-nano-12b-v2-vl:free",
-            temperature=0.7
-        )
-        if response:
-            print(f"[DEBUG] Model returned: {response}")
-            return response.strip()
-        else:
-            print("[VISION ERROR] Model returned empty response", flush=True)
-            return "bro I couldn't load that image 💀"
+        response = await call_openrouter_raw(payload)
+        if not response:
+            return "bro I couldn’t load that image 💀"
+
+        return response.strip()
+
     except Exception as e:
-        print(f"[VISION ERROR] Exception from call_openrouter: {e}", flush=True)
-        import traceback; traceback.print_exc()
-        return "bro I couldn't load that image 💀"
+        print(f"[VISION ERROR] {e}")
+        return "bro I couldn’t load that image 💀"
 
 # ---------------- CHESS UTILS ----------------
 RESIGN_PHRASES = [
