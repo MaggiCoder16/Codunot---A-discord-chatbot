@@ -23,7 +23,7 @@ load_dotenv()
 DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
 BOT_NAME = os.getenv("BOT_NAME", "Codunot")
 OWNER_ID = 1220934047794987048
-MAX_MEMORY = 30
+MAX_MEMORY = 45
 RATE_LIMIT = 900
 
 # ---------------- CLIENT ----------------
@@ -303,7 +303,7 @@ async def handle_image_message(message, mode):
     try:
         response = await call_openrouter(
             prompt=prompt,
-            model="x-ai/grok-2-vision-1212",
+            model="nvidia/nemotron-nano-12b-v2-vl:free",
             temperature=0.7
         )
         if response:
