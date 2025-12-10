@@ -50,17 +50,14 @@ async def call_openrouter(prompt: str, model: str, temperature: float = 1.0, ret
                     data = await resp.json()
                     return data["choices"][0]["message"]["content"]
 
-                # Print errors
                 print("\n===== OPENROUTER ERROR =====")
                 print(f"Attempt {attempt}, Status: {resp.status}")
                 print(clean_log(text))
                 print("================================\n")
 
-                # Auth error
                 if resp.status in (401, 403):
                     return None
 
-                # Rate limit
                 if resp.status == 429:
                     await asyncio.sleep(backoff)
                     backoff = min(backoff * 2, 8)
