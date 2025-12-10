@@ -295,7 +295,7 @@ async def handle_image_message(message, mode):
 
     prompt = (
         persona + "\n"
-        "You received an image. Help the user with whatever they need, in the image, using the persona's style.\n"
+        "You received an image. See the image, read and understand it carefully, and then help the user with whatever they want, using  the persona's style. Read the image clearly, and understand it. Also, if there is TEXT in the image, read the text like a normal AI.\n"
         f"Image (base64): {image_b64}"
     )
 
