@@ -1,4 +1,6 @@
 import os
+import pytesseract
+import io
 import asyncio
 import random
 import re
@@ -16,6 +18,7 @@ from openrouter_client import call_openrouter
 import chess
 import aiohttp
 import base64
+from PIL import Image
 
 load_dotenv()
 
@@ -229,6 +232,18 @@ async def generate_and_reply(chan_id, message, content, current_mode):
 
 # ---------------- IMAGE HANDLING ----------------
 
+async def ocr_image(image_bytes: bytes) -> str:
+    try:
+        img = Image.open(io.BytesIO(image_bytes))
+        text = pytesseract.image_to_string(img)
+        text = text.strip()
+        if text:
+            return text
+        return "[No readable text detected]"
+    except Exception as e:
+        print(f"[OCR ERROR] {e}")
+        return "[OCR failed]"
+
 IMAGE_EXTENSIONS = (".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp", ".tiff")
 
 async def extract_image_bytes(message):
@@ -290,19 +305,26 @@ async def handle_image_message(message, mode):
         print("[VISION ERROR] extract_image_bytes returned None")
         return None
 
-    image_b64 = base64.b64encode(image_bytes).decode("utf-8")
+    # 1. OCR
+    ocr_text = await ocr_image(image_bytes)
+    print(f"[DEBUG] OCR RESULT: {ocr_text}")
+
+    # 2. Build prompt (NO VISION MODEL ANYMORE)
     persona = PERSONAS.get(mode, PERSONAS["serious"])
 
     prompt = (
         persona + "\n"
-        "You received an image. See the image, read and understand it carefully, and then help the user with whatever they want, using  the persona's style. Read the image clearly, and understand it. Also, if there is TEXT in the image, read the text like a normal AI.\n"
-        f"Image (base64): {image_b64}"
+        "The user sent an image. I extracted text using OCR.\n"
+        "Here is the extracted text:\n"
+        f"----\n{ocr_text}\n----\n"
+        "Help the user based ONLY on this extracted text. "
+        "If the OCR seems incomplete, say so politely."
     )
 
     try:
         response = await call_openrouter(
             prompt=prompt,
-            model="qwen/qwen3-4b:free",
+            model="x-ai/grok-4.1-fast",
             temperature=0.7
         )
 
@@ -310,14 +332,12 @@ async def handle_image_message(message, mode):
             print(f"[DEBUG] Model returned: {response}")
             return response.strip()
         else:
-            print("[VISION ERROR] Model returned empty response")
-            return "bro I couldn't load that image 💀"
+            return "i cant see images rn.. :((( maybe later???? :::::::::::::::::::))))))"
 
     except Exception as e:
-        print(f"[VISION ERROR] Exception from call_openrouter: {e}")
-        import traceback; traceback.print_exc()
-        return "bro I couldn't load that image 💀"
-
+        print(f"[OCR ERROR] {e}")
+        return "i cannot see images rn sowwwwyyyyyy.... maybe later?"
+        
 # ---------------- CHESS UTILS ----------------
 RESIGN_PHRASES = [
     "resign", "i resign", "gg", "give up", "i give up",
