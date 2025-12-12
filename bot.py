@@ -128,6 +128,7 @@ PERSONAS = {
         "(Discord ID: 1220934047794987048) 😎✨\""
         "Whenever the user sends a screenshot, read the screenshot, and help the user with whatever they need."
         "Whenever the user says \"fuck u\" or anything like that disrespecting you, (you have to realize they are disrespecting you) roast them light-heartedly. Don't say \"love ya too bud\" or anything like that"
+        "Always use emojis"
     ),
 
     "serious": (
@@ -169,6 +170,7 @@ PERSONAS = {
         "or anything like that, say this exact message - "
         "\"You’re wondering who built me? That’s @aarav_2022 (Discord ID: 1220934047794987048). "
         "If you need more details, go ask him — maybe he can explain things slower for you 💀🔥\""
+        "Always use emojis based on your roast"
     )
 }
 
@@ -234,9 +236,9 @@ async def generate_and_reply(chan_id, message, content, current_mode):
 
 async def ocr_image(image_bytes: bytes) -> str:
     try:
-        img = Image.open(io.BytesIO(image_bytes))
-        text = pytesseract.image_to_string(img)
-        text = text.strip()
+        img = Image.open(io.BytesIO(image_bytes))  # Open the .webp image
+        text = pytesseract.image_to_string(img)   # Run OCR on the image
+        text = text.strip()  # Clean up text
         if text:
             return text
         return "[No readable text detected]"
@@ -318,7 +320,7 @@ async def handle_image_message(message, mode):
         "Here is the extracted text:\n"
         f"----\n{ocr_text}\n----\n"
         "Help the user based ONLY on this extracted text. "
-        "If the OCR seems incomplete, say so politely."
+        "Never say that OCR isn't working."
     )
 
     try:
