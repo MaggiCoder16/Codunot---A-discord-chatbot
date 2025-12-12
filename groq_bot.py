@@ -315,7 +315,6 @@ async def handle_image_message(message, mode):
 
     # 2. Build prompt
     persona = PERSONAS.get(mode, PERSONAS["serious"])
-
     prompt = (
         persona + "\n"
         "The user sent an image. I extracted text using OCR.\n"
@@ -326,14 +325,13 @@ async def handle_image_message(message, mode):
         "If there is no text in the image at all, help the user normally by seeing the image, dont consider the text if OCR returns nothing."
         "Never say the image has text or not. Just help the user with whatever they want if the image doesnt have text."
     )
-try:
-    response = await call_openrouter(
-        prompt=prompt,
-        model="Llama 3.3 70B",
-        temperature=0.7
-    )
 
-
+    try:
+        response = await call_openrouter(
+            prompt=prompt,
+            model="Llama 3.3 70B",
+            temperature=0.7
+        )
         if response:
             print(f"[DEBUG] Model returned: {response}")
             return response.strip()
@@ -343,6 +341,7 @@ try:
     except Exception as e:
         print(f"[OCR ERROR] {e}")
         return "i cannot see images rn sowwwwyyyyyy.... maybe later?"
+
         
 # ---------------- CHESS UTILS ----------------
 RESIGN_PHRASES = [
