@@ -47,8 +47,8 @@ rate_buckets = {}
 # ---------------- MODEL PICKER ----------------
 def pick_model(mode: str):
     if mode in ["funny", "roast", "serious"]:
-        return "Llama 3.3 70B"
-    return "Llama 3.3 70B"  # fallback
+        return "llama-3.3-70b-versatile"
+    return "llama-3.3-70b-versatile"  # fallback
 
 # ---------------- HELPERS ----------------
 def format_duration(num: int, unit: str) -> str:
@@ -330,7 +330,7 @@ async def handle_image_message(message, mode):
     try:
         response = await call_openrouter(
             prompt=prompt,
-            model="Llama 3.3 70B",
+            model="meta-llama/llama-4-scout-17b-16e-instruct",
             temperature=0.7
         )
         if response:
