@@ -328,7 +328,7 @@ async def handle_image_message(message, mode):
     )
 
     try:
-        response = await call_openrouter(
+        response = await call_groq(
             prompt=prompt,
             model="meta-llama/llama-4-scout-17b-16e-instruct",
             temperature=0.7
