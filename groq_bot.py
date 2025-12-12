@@ -46,11 +46,9 @@ rate_buckets = {}
 
 # ---------------- MODEL PICKER ----------------
 def pick_model(mode: str):
-    if mode in ["funny", "roast"]:
-        return "meta-llama/llama-3.3-70b-instruct:free"
-    if mode == "serious":
-        return "mistralai/mistral-7b-instruct:free"
-    return "meta-llama/llama-3.3-70b-instruct:free"
+    if mode in ["funny", "roast", "serious"]:
+        return "Llama 3.3 70B"
+    return "Llama 3.3 70B"  # fallback
 
 # ---------------- HELPERS ----------------
 def format_duration(num: int, unit: str) -> str:
@@ -315,7 +313,7 @@ async def handle_image_message(message, mode):
     ocr_text = await ocr_image(image_bytes)
     print(f"[DEBUG] OCR RESULT: {ocr_text}")
 
-    # 2. Build prompt (NO VISION MODEL ANYMORE)
+    # 2. Build prompt
     persona = PERSONAS.get(mode, PERSONAS["serious"])
 
     prompt = (
@@ -328,13 +326,13 @@ async def handle_image_message(message, mode):
         "If there is no text in the image at all, help the user normally by seeing the image, dont consider the text if OCR returns nothing."
         "Never say the image has text or not. Just help the user with whatever they want if the image doesnt have text."
     )
+try:
+    response = await call_openrouter(
+        prompt=prompt,
+        model="Llama 3.3 70B",
+        temperature=0.7
+    )
 
-    try:
-        response = await call_openrouter(
-            prompt=prompt,
-            model="meta-llama/llama-3.3-70b-instruct:free",
-            temperature=0.7
-        )
 
         if response:
             print(f"[DEBUG] Model returned: {response}")
