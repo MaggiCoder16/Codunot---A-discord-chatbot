@@ -325,6 +325,7 @@ async def handle_image_message(message, mode):
         "Help the user based ONLY on this extracted text. "
         "Never say that OCR isn't working."
         "If there is no text in the image at all, help the user normally by seeing the image, dont consider the text if OCR returns nothing."
+        "Never say the image has text or not. Just help the user with whatever they want if the image doesnt have text."
     )
 
     try:
