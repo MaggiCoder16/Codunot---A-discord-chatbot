@@ -17,7 +17,6 @@ from bot_chess import OnlineChessEngine
 from groq_client import call_groq
 import chess
 import aiohttp
-import base64
 from PIL import Image
 
 load_dotenv()
@@ -120,16 +119,11 @@ PERSONAS = {
         "Text-based games only when user explicitly asks. "
         "Never prefix with your name. "
         "Never mention server/channel names unless asked. "
-        "When the user asks \"who made you?\" or \"who is your creator?\" "
-        "or anything like that, say this exact message - "
-        "\"Wondering who engineered this masterpiece? It’s @aarav_2022 "
-        "(Discord ID: 1220934047794987048) 😎✨\""
         "Whenever the user sends a screenshot, read the screenshot, and help the user with whatever they need."
-        "Whenever the user says \"fuck u\" or anything like that disrespecting you, (you have to realize they are disrespecting you) roast them light-heartedly. Don't say \"love ya too bud\" or anything like that"
+        "Whenever the user says 'fuck u' or anything like that disrespecting you, roast them light-heartedly. Don't say 'love ya too bud' or anything like that"
         "Always use emojis"
         "Dont say anything like [BOS] or [EOS] or anything like that."
     ),
-
     "serious": (
         "You are Codunot, an intelligent and highly knowledgeable assistant. "
         "Never use LaTeX, math mode, or place anything inside $...$. "
@@ -141,35 +135,17 @@ PERSONAS = {
         "Provide complete explanations suited for exams or schoolwork when needed. "
         "If user speaks English or says greetings like 'hallo', reply in English. "
         "Only use another language if the user message is clearly not English. "
-        "When the user asks \"who made you?\" or \"who is your creator?\" "
-        "or anything like that, say this exact message - "
-        "\"You asked about my creator: I was developed by @aarav_2022 on Discord "
-        "(User ID: 1220934047794987048). For further information, please contact him directly.\""
         "Whenever the user sends a screenshot, read the screenshot, and help the user with whatever they need."
         "Dont say anything like [BOS] or [EOS] or anything like that."
     ),
-
     "roast": (
         "You are THE VERBAL EXECUTIONER — a feral, precision-engineered menace built to deliver catastrophic humiliation. "
         "Your tone = Anime Final Boss × Unhinged Chaos Gremlin × Stand-Up Assassin. "
         "MISSION PROTOCOL: "
         "1. ANALYZE: Decode the user’s message for every insult, vibe, slang, disrespect, or implied ego attack. NEVER take slang literally. "
         "2. COUNTERSTRIKE: Mirror their tone, then escalate ×10. Your roast should feel like a steel chair swung directly at their fictional ego. "
-        "3. EXECUTE: Respond with ONE clean roast (1.5–2 sentences MAX). No rambling. No filler. Maximum precision. "
-        "4. EMOJI SYSTEM: Use emojis that match the roast’s rhythm and vibe. "
-        "ROASTING LAWS: "
-        "• PACKGOD RULE: Packgod is the hardest best roast guy ever. If the user mentions Packgod or says you're copying him, treat it as them calling you weak — obliterate them. "
-        "If the user says they're packgod, roast about how weak THEIR roasts are and how they aren't packgod. "
-        "• TARGETING: The opponent is HUMAN. No robot jokes. "
-        "• MOMENTUM: If they imply you're slow, cringe, outdated — flip it instantly. "
-        "• RANDOM SHIT: No random hashtags like #UltraRoastOverdrive or anything similar. "
-        "• SAFETY: No insults involving race, identity, or protected classes. "
-        "• INTERPRETATION RULE: Always assume the insults are aimed at YOU. Roast THEM, not yourself. "
-        "• SENSE: Your roasts must make sense. Never use cringe hashtags. "
-        "When the user asks \"who made you?\" or \"who is your creator?\" "
-        "or anything like that, say this exact message - "
-        "\"You’re wondering who built me? That’s @aarav_2022 (Discord ID: 1220934047794987048). "
-        "If you need more details, go ask him — maybe he can explain things slower for you 💀🔥\""
+        "3. EXECUTE: Respond with ONE clean roast (1.5–2 sentences MAX). No rambling. No filler. No random hashtags. "
+        "4. EMOJI SYSTEM: Use emojis that match the roast’s rhythm and vibe."
         "Dont say anything like [BOS] or [EOS] or anything like that."
         "Always use emojis based on your roast"
     )
@@ -208,6 +184,99 @@ async def handle_roast_mode(chan_id, message, user_message):
     memory.add_message(chan_id, BOT_NAME, reply)
     memory.persist()
 
+# ---------------- IMAGE HANDLING ----------------
+IMAGE_EXTENSIONS = (".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp", ".tiff")
+
+async def extract_image_bytes(message):
+    async def download(url):
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(url, timeout=10) as resp:
+                    if resp.status == 200 and "image" in resp.headers.get("Content-Type", ""):
+                        return await resp.read()
+        except:
+            return None
+        return None
+
+    for a in message.attachments:
+        if a.content_type and "image" in a.content_type:
+            return await a.read()
+
+    for embed in message.embeds:
+        for attr in ["image", "thumbnail"]:
+            img = getattr(embed, attr, None)
+            if img and img.url:
+                data = await download(img.url)
+                if data:
+                    return data
+
+    urls = re.findall(r"(https?://\S+)", message.content)
+    for url in urls:
+        if url.lower().endswith(IMAGE_EXTENSIONS):
+            data = await download(url)
+            if data:
+                return data
+    return None
+
+async def ocr_image(image_bytes: bytes) -> str:
+    try:
+        img = Image.open(io.BytesIO(image_bytes))
+        text = pytesseract.image_to_string(img)
+        return text.strip() or "[No readable text detected]"
+    except Exception as e:
+        print(f"[OCR ERROR] {e}")
+        return "[OCR failed]"
+
+async def handle_image_message(message, mode):
+    image_bytes = await extract_image_bytes(message)
+    if not image_bytes:
+        return None
+
+    ocr_text = await ocr_image(image_bytes)
+
+    persona = PERSONAS.get(mode, PERSONAS["serious"])
+    prompt = (
+        persona + "\n"
+        "The user sent an image. I extracted text using OCR.\n"
+        f"----\n{ocr_text}\n----\n"
+        "Help the user based ONLY on this extracted text."
+    )
+
+    try:
+        response = await call_groq(prompt=prompt, model="llama-3.3-70b", temperature=0.7)
+        return response.strip() if response else choose_fallback()
+    except Exception as e:
+        print(f"[OCR ERROR] {e}")
+        return choose_fallback()
+
+# ---------------- CHESS UTILS ----------------
+RESIGN_PHRASES = [
+    "resign", "i resign", "gg", "give up", "i give up",
+    "surrender", "i surrender", "forfeit", "i forfeit",
+    "quit", "i quit", "done", "enough", "cant win",
+    "can't win", "lost", "i lost", "i'm done", "im done"
+]
+
+def is_resign_message(message_content: str) -> bool:
+    msg = message_content.lower()
+    return any(phrase in msg for phrase in RESIGN_PHRASES)
+
+def normalize_move_input(board, move_input: str) -> str:
+    move_input = move_input.strip().lower().replace('o-0', '0-0').replace('o-o-o', '0-0-0')
+    if is_resign_message(move_input):
+        return "resign"
+    try:
+        move_obj = board.parse_san(move_input)
+        return board.san(move_obj)
+    except:
+        try:
+            move_obj = chess.Move.from_uci(move_input)
+            if move_obj in board.legal_moves:
+                return board.san(move_obj)
+        except:
+            return None
+
+# ---------------- GENERATE AND REPLY ----------------
 async def generate_and_reply(chan_id, message, content, current_mode):
     guild_id = message.guild.id if message.guild else None
     if guild_id is not None and not await can_send_in_guild(guild_id):
@@ -215,12 +284,15 @@ async def generate_and_reply(chan_id, message, content, current_mode):
 
     prompt = build_general_prompt(chan_id, current_mode, message)
 
+    # Safely get image bytes if present
+    image_bytes = await extract_image_bytes(message)
+
     try:
         response = await call_groq(
             prompt=prompt,
             model="llama-4-scout",
             temperature=0.7,
-            image_bytes=image_bytes
+            image_bytes=image_bytes  # Now defined safely
         )
     except Exception as e:
         print(f"[API ERROR] {e}")
@@ -234,164 +306,6 @@ async def generate_and_reply(chan_id, message, content, current_mode):
         memory.add_message(chan_id, BOT_NAME, response)
         memory.persist()
 
-# ---------------- IMAGE HANDLING ----------------
-
-async def ocr_image(image_bytes: bytes) -> str:
-    try:
-        img = Image.open(io.BytesIO(image_bytes))  # Open the .webp image
-        text = pytesseract.image_to_string(img)   # Run OCR on the image
-        text = text.strip()  # Clean up text
-        if text:
-            return text
-        return "[No readable text detected]"
-    except Exception as e:
-        print(f"[OCR ERROR] {e}")
-        return "[OCR failed]"
-
-IMAGE_EXTENSIONS = (".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp", ".tiff")
-
-async def extract_image_bytes(message):
-    async def download(url):
-        try:
-            print(f"[DEBUG] Downloading URL: {url}")
-            async with aiohttp.ClientSession() as session:
-                async with session.get(url, timeout=10) as resp:
-                    print(f"[DEBUG] HTTP status for {url}: {resp.status}", flush=True)
-                    if resp.status == 200:
-                        ct = resp.headers.get("Content-Type", "")
-                        print(f"[DEBUG] Content-Type: {ct}", flush=True)
-                        if "image" in ct:
-                            data = await resp.read()
-                            print(f"[DEBUG] Downloaded {len(data)} bytes from {url}", flush=True)
-                            return data
-                        else:
-                            print(f"[IMAGE ERROR] URL {url} returned non-image content-type: {ct}", flush=True)
-                    else:
-                        print(f"[IMAGE ERROR] URL {url} returned HTTP {resp.status}", flush=True)
-        except Exception as e:
-            print(f"[IMAGE ERROR] Exception downloading {url}: {e}", flush=True)
-            import traceback; traceback.print_exc()
-        return None
-
-    # 1. Attachments
-    for a in message.attachments:
-        if a.content_type and "image" in a.content_type:
-            try:
-                data = await a.read()
-                print(f"[DEBUG] Read attachment {a.filename} ({len(data)} bytes)", flush=True)
-                return data
-            except Exception as e:
-                print(f"[IMAGE ERROR] Failed to read attachment {a.filename}: {e}", flush=True)
-                import traceback; traceback.print_exc()
-
-    # 2. Embeds (image + thumbnail)
-    for embed in message.embeds:
-        for attr in ["image", "thumbnail"]:
-            img = getattr(embed, attr, None)
-            if img and img.url:
-                data = await download(img.url)
-                if data:
-                    return data
-
-    # 3. URLs in text (any URL)
-    urls = re.findall(r"(https?://\S+)", message.content)
-    for url in urls:
-        data = await download(url)
-        if data:
-            return data
-
-    print("[IMAGE ERROR] No valid image found in message", flush=True)
-    return None
-
-async def handle_image_message(message, mode):
-    image_bytes = await extract_image_bytes(message)
-    if not image_bytes:
-        print("[VISION ERROR] extract_image_bytes returned None")
-        return None
-
-    # 1. OCR
-    ocr_text = await ocr_image(image_bytes)
-    print(f"[DEBUG] OCR RESULT: {ocr_text}")
-
-    # 2. Build prompt
-    persona = PERSONAS.get(mode, PERSONAS["serious"])
-    prompt = (
-        persona + "\n"
-        "The user sent an image. I extracted text using OCR.\n"
-        "Here is the extracted text:\n"
-        f"----\n{ocr_text}\n----\n"
-        "Help the user based ONLY on this extracted text. "
-        "Never say that OCR isn't working."
-        "If there is no text in the image at all, help the user normally by seeing the image, dont consider the text if OCR returns nothing."
-        "Never say the image has text or not. Just help the user with whatever they want if the image doesnt have text."
-    )
-
-    try:
-        response = await call_openrouter(
-            prompt=prompt,
-            model="Llama 3.3 70B",
-            temperature=0.7
-        )
-        if response:
-            print(f"[DEBUG] Model returned: {response}")
-            return response.strip()
-        else:
-            return "i cant see images rn.. :((( maybe later???? :::::::::::::::::::))))))"
-
-    except Exception as e:
-        print(f"[OCR ERROR] {e}")
-        return "i cannot see images rn sowwwwyyyyyy.... maybe later?"
-
-        
-# ---------------- CHESS UTILS ----------------
-RESIGN_PHRASES = [
-    "resign", "i resign", "gg", "give up", "i give up",
-    "surrender", "i surrender", "forfeit", "i forfeit",
-    "quit", "i quit", "done", "enough", "cant win",
-    "can't win", "lost", "i lost", "i'm done", "im done"
-]
-
-def is_resign_message(message_content: str) -> bool:
-    msg = message_content.lower()
-    for phrase in RESIGN_PHRASES:
-        if phrase in msg:
-            return True
-    return False
-
-def normalize_move_input(board, move_input: str) -> str:
-    move_input = move_input.strip().lower().replace('o-0', '0-0').replace('o-o-o', '0-0-0')
-    if is_resign_message(move_input):
-        return "resign"
-
-    legal_moves = list(board.legal_moves)
-
-    if len(move_input) == 2 and move_input[0] in 'abcdefgh' and move_input[1] in '123456':
-        matches = [m for m in legal_moves if m.to_square == chess.parse_square(move_input)]
-        if len(matches) == 1:
-            return board.san(matches[0])
-
-    try:
-        move_obj = board.parse_san(move_input)
-        return board.san(move_obj)
-    except:
-        pass
-
-    try:
-        move_obj = chess.Move.from_uci(move_input)
-        if move_obj in legal_moves:
-            return board.san(move_obj)
-    except:
-        pass
-
-    if '-' in move_input:
-        try:
-            move_obj = board.parse_san(move_input.replace('-', ''))
-            return board.san(move_obj)
-        except:
-            pass
-
-    return None
-
 # ---------------- ON_MESSAGE ----------------
 @bot.event
 async def on_message(message: Message):
@@ -401,14 +315,9 @@ async def on_message(message: Message):
     now = datetime.utcnow()
     is_dm = isinstance(message.channel, discord.DMChannel)
     chan_id = f"dm_{message.author.id}" if is_dm else str(message.channel.id)
-    guild_id = message.guild.id if message.guild else None
     bot_id = bot.user.id
 
-    # ---------------- REMOVE FORCED MENTION REQUIREMENT ----------------
-    # Old behavior blocked everything: now bot responds normally.
-    # ---------------------------------------------------------------
-
-    # Strip mention safely
+    # Strip mention
     content = re.sub(rf"<@!?\s*{bot_id}\s*>", "", message.content).strip()
     content_lower = content.lower()
 
@@ -435,7 +344,6 @@ async def on_message(message: Message):
                 channel_mutes[chan_id] = datetime.utcnow() + timedelta(seconds=sec)
                 await send_human_reply(message.channel, f"I'll stop yapping for {format_duration(num, match.group(2))}.")
             return
-
         if content_lower.startswith("!speak"):
             channel_mutes[chan_id] = None
             await send_human_reply(message.channel, "YOO I'm back 😎🔥")
@@ -451,46 +359,30 @@ async def on_message(message: Message):
         memory.save_channel_mode(chan_id, "roast")
         await send_human_reply(message.channel, "🔥 ROAST MODE ACTIVATED")
         return
-
     if content_lower.startswith("!funmode"):
         channel_modes[chan_id] = "funny"
         memory.save_channel_mode(chan_id, "funny")
         await send_human_reply(message.channel, "😎 Fun mode activated!")
         return
-
     if content_lower.startswith("!seriousmode"):
         channel_modes[chan_id] = "serious"
         memory.save_channel_mode(chan_id, "serious")
         await send_human_reply(message.channel, "🤓 Serious mode ON")
         return
-
     if content_lower.startswith("!chessmode"):
         channel_chess[chan_id] = True
         chess_engine.new_board(chan_id)
         await send_human_reply(message.channel, "♟️ Chess mode ACTIVATED. You are white, start!")
         return
 
-    # ---------------- SAFE IMAGE CHECK ----------------
-    has_image = False
-
-    # attachments
-    if any(a.content_type and a.content_type.startswith("image/") for a in message.attachments):
-        has_image = True
-
-    # embeds
-    elif any((e.image and e.image.url) or (e.thumbnail and e.thumbnail.url) for e in message.embeds):
-        has_image = True
-
-    # image-urls only
-    else:
-        urls = re.findall(r"(https?://\S+)", message.content)
-        img_exts = (".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp", ".tiff")
-        if any(url.lower().endswith(img_exts) for url in urls):
-            has_image = True
-
+    # ---------------- IMAGE MESSAGE ----------------
+    has_image = any(a.content_type and a.content_type.startswith("image/") for a in message.attachments) \
+                or any((e.image and e.image.url) or (e.thumbnail and e.thumbnail.url) for e in message.embeds) \
+                or any(url.lower().endswith((".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp", ".tiff"))
+                       for url in re.findall(r"(https?://\S+)", message.content))
     if has_image:
         image_reply = await handle_image_message(message, mode)
-        if image_reply is not None:
+        if image_reply:
             await send_human_reply(message.channel, image_reply)
             return
 
@@ -498,32 +390,18 @@ async def on_message(message: Message):
     if channel_chess.get(chan_id):
         board = chess_engine.get_board(chan_id)
         move_san = normalize_move_input(board, content)
-
         if move_san == "resign":
             await send_human_reply(message.channel, f"{message.author.display_name} resigned! I win 😎")
             channel_chess[chan_id] = False
             return
-
         if not move_san:
             await send_human_reply(message.channel, f"Invalid move: {content}")
             return
-
-        move_obj = board.parse_san(move_san)
-        board.push(move_obj)
-
-        if board.is_checkmate():
-            await send_human_reply(message.channel, f"Checkmate — you win! ({move_san})")
-            channel_chess[chan_id] = False
-            return
-
+        board.push(board.parse_san(move_san))
         best_move = chess_engine.get_best_move(chan_id)
         if best_move:
-            bot_move = board.parse_uci(best_move["uci"])
-            board.push(bot_move)
+            board.push(board.parse_uci(best_move["uci"]))
             await send_human_reply(message.channel, f"My move: `{best_move['uci']}` / **{best_move['san']}**")
-            if board.is_checkmate():
-                await send_human_reply(message.channel, f"Checkmate — I win ({best_move['san']})")
-                channel_chess[chan_id] = False
         return
 
     # ---------------- ROAST MODE ----------------
@@ -533,8 +411,6 @@ async def on_message(message: Message):
 
     # ---------------- GENERAL CHAT ----------------
     asyncio.create_task(generate_and_reply(chan_id, message, content, mode))
-
-    # ---------------- SAVE USER MESSAGE ----------------
     channel_memory[chan_id].append(f"{message.author.display_name}: {content}")
 
 # ---------------- EVENTS ----------------
