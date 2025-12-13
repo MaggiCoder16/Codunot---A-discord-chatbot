@@ -358,36 +358,41 @@ def is_resign_message(message_content: str) -> bool:
     return False
 
 def normalize_move_input(board, move_input: str) -> str:
-    move_input = move_input.strip().lower().replace('o-0', '0-0').replace('o-o-o', '0-0-0')
-    if is_resign_message(move_input):
+    raw = move_input.strip()
+
+    # Handle resign
+    if is_resign_message(raw.lower()):
         return "resign"
+
+    # Normalize castling only
+    normalized = raw.replace('o-0', 'O-O').replace('o-o', 'O-O')
+    normalized = normalized.replace('o-o-o', 'O-O-O').replace('o-0-0', 'O-O-O')
 
     legal_moves = list(board.legal_moves)
 
-    if len(move_input) == 2 and move_input[0] in 'abcdefgh' and move_input[1] in '123456':
-        matches = [m for m in legal_moves if m.to_square == chess.parse_square(move_input)]
+    # Square-only input like "e4"
+    if len(raw) == 2 and raw[0].lower() in 'abcdefgh' and raw[1] in '123456':
+        matches = [
+            m for m in legal_moves
+            if m.to_square == chess.parse_square(raw.lower())
+        ]
         if len(matches) == 1:
             return board.san(matches[0])
 
+    # Try SAN (case-sensitive!)
     try:
-        move_obj = board.parse_san(move_input)
+        move_obj = board.parse_san(normalized)
         return board.san(move_obj)
     except:
         pass
 
+    # Try UCI
     try:
-        move_obj = chess.Move.from_uci(move_input)
+        move_obj = chess.Move.from_uci(raw.lower())
         if move_obj in legal_moves:
             return board.san(move_obj)
     except:
         pass
-
-    if '-' in move_input:
-        try:
-            move_obj = board.parse_san(move_input.replace('-', ''))
-            return board.san(move_obj)
-        except:
-            pass
 
     return None
 
