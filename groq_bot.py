@@ -364,14 +364,18 @@ def normalize_move_input(board, move_input: str) -> str:
     if is_resign_message(raw.lower()):
         return "resign"
 
-    # Normalize castling only
-    normalized = raw.replace('o-0', 'O-O').replace('o-o', 'O-O')
-    normalized = normalized.replace('o-o-o', 'O-O-O').replace('o-0-0', 'O-O-O')
+    # Normalize castling
+    normalized = (
+        raw.replace('o-o-o', 'O-O-O')
+           .replace('o-o', 'O-O')
+           .replace('0-0-0', 'O-O-O')
+           .replace('0-0', 'O-O')
+    )
 
     legal_moves = list(board.legal_moves)
 
-    # Square-only input like "e4"
-    if len(raw) == 2 and raw[0].lower() in 'abcdefgh' and raw[1] in '123456':
+    # Pawn square-only (e4, E4)
+    if len(raw) == 2 and raw[0].lower() in 'abcdefgh' and raw[1] in '12345678':
         matches = [
             m for m in legal_moves
             if m.to_square == chess.parse_square(raw.lower())
@@ -379,14 +383,17 @@ def normalize_move_input(board, move_input: str) -> str:
         if len(matches) == 1:
             return board.san(matches[0])
 
-    # Try SAN (case-sensitive!)
+    if len(normalized) >= 2 and normalized[0] in "nbrqk":
+        normalized = normalized[0].upper() + normalized[1:]
+
+    # Try SAN
     try:
         move_obj = board.parse_san(normalized)
         return board.san(move_obj)
     except:
         pass
 
-    # Try UCI
+    # Try UCI (g1f3)
     try:
         move_obj = chess.Move.from_uci(raw.lower())
         if move_obj in legal_moves:
@@ -500,13 +507,21 @@ async def on_message(message: Message):
             await send_human_reply(message.channel, image_reply)
             return
 
-    # ---------------- CHESS MODE ----------------
-    if channel_chess.get(chan_id):
+# ---------------- CHESS MODE ----------------
+if channel_chess.get(chan_id):
+
+    # Allow commands & normal chat during chess
+    if content_lower.startswith("!"):
+        pass  # fall through to normal command handling
+    else:
         board = chess_engine.get_board(chan_id)
         move_san = normalize_move_input(board, content)
 
         if move_san == "resign":
-            await send_human_reply(message.channel, f"{message.author.display_name} resigned! I win 😎")
+            await send_human_reply(
+                message.channel,
+                f"{message.author.display_name} resigned! I win 😎"
+            )
             channel_chess[chan_id] = False
             return
 
@@ -518,7 +533,10 @@ async def on_message(message: Message):
         board.push(move_obj)
 
         if board.is_checkmate():
-            await send_human_reply(message.channel, f"Checkmate — you win! ({move_san})")
+            await send_human_reply(
+                message.channel,
+                f"Checkmate — you win! ({move_san})"
+            )
             channel_chess[chan_id] = False
             return
 
@@ -526,9 +544,15 @@ async def on_message(message: Message):
         if best_move:
             bot_move = board.parse_uci(best_move["uci"])
             board.push(bot_move)
-            await send_human_reply(message.channel, f"My move: `{best_move['uci']}` / **{best_move['san']}**")
+            await send_human_reply(
+                message.channel,
+                f"My move: `{best_move['uci']}` / **{best_move['san']}**"
+            )
             if board.is_checkmate():
-                await send_human_reply(message.channel, f"Checkmate — I win ({best_move['san']})")
+                await send_human_reply(
+                    message.channel,
+                    f"Checkmate — I win ({best_move['san']})"
+                )
                 channel_chess[chan_id] = False
         return
 
