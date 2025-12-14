@@ -623,114 +623,132 @@ async def on_message(message: Message):
             await send_human_reply(message.channel, image_reply)
             return
 
-    # ---------------- CHESS MODE ----------------
-    if channel_chess.get(chan_id):
+# global (near other channel_* dicts)
+channel_last_chess_result = {}
 
-        board = chess_engine.get_board(chan_id)
+	# ---------------- CHESS MODE ----------------
+	if channel_chess.get(chan_id):
 
-        # -------- GAME OVER --------
-        if board.is_game_over():
-            channel_chess[chan_id] = False
-            await send_human_reply(
-                message.channel,
-                "GG 😎 game over. Wanna analyze or rematch?"
-            )
-            return
+		board = chess_engine.get_board(chan_id)
 
-        # -------- RESIGN --------
-        if is_resign_message(content):
-            channel_chess[chan_id] = False
-            await send_human_reply(
-                message.channel,
-                f"GG 😄 {message.author.display_name} resigned!"
-            )
-            return
+		# -------- GAME OVER (ENGINE / POSITION) --------
+		if board.is_game_over():
+			result = board.result()
+			if result == "1-0":
+				channel_last_chess_result[chan_id] = "user"
+				msg = "GG 😎 you won!"
+			elif result == "0-1":
+				channel_last_chess_result[chan_id] = "bot"
+				msg = "GG 😄 I win!"
+			else:
+				channel_last_chess_result[chan_id] = "draw"
+				msg = "GG 🤝 it’s a draw!"
 
-        # -------- CHESS CHAT --------
-        if looks_like_chess_chat(content):
-            chess_prompt = (
-                PERSONAS["funny"]
-                + "\nYou are a strong chess player helping during a LIVE game.\n"
-                + "Rules:\n"
-                + "- Never pretend a move was played\n"
-                + "- Never invent engine lines\n"
-                + "- Explain plans, ideas, threats\n"
-                + "- If hint requested, suggest IDEAS not forced moves\n\n"
-                + "- After the game has ended, you should always remember the result."
-                + f"FEN:\n{board.fen()}\n\n"
-                + f"User says:\n{content}\n\n"
-                + "Reply:"
-            )
+			channel_chess[chan_id] = False
+			await send_human_reply(message.channel, f"{msg} Wanna analyze or rematch?")
+			return
 
-            response = await call_groq(
-                prompt=chess_prompt,
-                model="llama-3.3-70b-versatile",
-                temperature=0.6
-            )
+		# -------- RESIGN --------
+		if is_resign_message(content):
+			if board.turn: 
+				channel_last_chess_result[chan_id] = "bot"
+				msg = f"GG 😄 {message.author.display_name} resigned — I win ♟️"
+			else:
+				channel_last_chess_result[chan_id] = "user"
+				msg = f"GG 😄 I resigned — you win ♟️"
 
-            await send_human_reply(message.channel, humanize_and_safeify(response))
-            return
+			channel_chess[chan_id] = False
+			await send_human_reply(message.channel, msg)
+			return
 
-        # -------- PLAYER MOVE --------
-        move_san = normalize_move_input(board, content)
+		# -------- CHESS CHAT / COACH --------
+		if looks_like_chess_chat(content):
+			chess_prompt = (
+				PERSONAS["funny"]
+				+ "\nYou are a strong chess player helping during a LIVE game.\n"
+				+ "Rules:\n"
+				+ "- Never claim a move was played unless it actually was\n"
+				+ "- Never invent engine lines or evaluations\n"
+				+ "- Explain plans, ideas, threats, and concepts\n"
+				+ "- If a hint is requested, suggest IDEAS not forced moves\n\n"
+				+ f"Current FEN:\n{board.fen()}\n\n"
+				+ f"User says:\n{content}\n\n"
+				+ "Reply:"
+			)
 
-        if move_san == "resign":
-            channel_chess[chan_id] = False
-            await send_human_reply(
-                message.channel,
-                f"GG 😄 {message.author.display_name} resigned!"
-            )
-            return
+			response = await call_groq(
+				prompt=chess_prompt,
+				model="llama-3.3-70b-versatile",
+				temperature=0.6
+			)
 
-        if not move_san:
-            await send_human_reply(
-                message.channel,
-                "🤔 That doesn’t look like a legal move. Want a hint?"
-            )
-            return
+			await send_human_reply(message.channel, humanize_and_safeify(response))
+			return
 
-        try:
-            player_move = board.parse_san(move_san)
-        except:
-            await send_human_reply(
-                message.channel,
-                "⚠️ That move isn’t legal in this position."
-            )
-            return
+		# -------- PLAYER MOVE --------
+		move_san = normalize_move_input(board, content)
 
-        board.push(player_move)
+		if move_san == "resign":
+			channel_last_chess_result[chan_id] = "bot"
+			channel_chess[chan_id] = False
+			await send_human_reply(
+				message.channel,
+				f"GG 😄 {message.author.display_name} resigned — I win ♟️"
+			)
+			return
 
-        if board.is_checkmate():
-            channel_chess[chan_id] = False
-            await send_human_reply(
-                message.channel,
-                f"😮 Checkmate! YOU WIN ({move_san})"
-            )
-            return
+		if not move_san:
+			await send_human_reply(
+				message.channel,
+				"🤔 That doesn’t look like a legal move. Want a hint?"
+			)
+			return
 
-        # -------- ENGINE MOVE --------
-        best = chess_engine.get_best_move(chan_id)
-        if not best:
-            channel_chess[chan_id] = False
-            await send_human_reply(message.channel, "😵 I’m out of moves — GG!")
-            return
+		try:
+			player_move = board.parse_san(move_san)
+		except:
+			await send_human_reply(
+				message.channel,
+				"⚠️ That move isn’t legal in this position."
+			)
+			return
 
-        engine_move = board.parse_uci(best["uci"])
-        board.push(engine_move)
+		board.push(player_move)
 
-        await send_human_reply(
-            message.channel,
-            f"My move: `{best['uci']}` / **{best['san']}**"
-        )
+		if board.is_checkmate():
+			channel_last_chess_result[chan_id] = "user"
+			channel_chess[chan_id] = False
+			await send_human_reply(
+				message.channel,
+				f"😮 Checkmate! YOU WIN ({move_san})"
+			)
+			return
 
-        if board.is_checkmate():
-            channel_chess[chan_id] = False
-            await send_human_reply(
-                message.channel,
-                f"💀 Checkmate — I win ({best['san']})"
-            )
+		# -------- ENGINE MOVE --------
+		best = chess_engine.get_best_move(chan_id)
+		if not best:
+			channel_last_chess_result[chan_id] = "draw"
+			channel_chess[chan_id] = False
+			await send_human_reply(message.channel, "🤝 No legal moves — draw!")
+			return
 
-        return
+		engine_move = board.parse_uci(best["uci"])
+		board.push(engine_move)
+
+		await send_human_reply(
+			message.channel,
+			f"My move: `{best['uci']}` / **{best['san']}**"
+		)
+
+		if board.is_checkmate():
+			channel_last_chess_result[chan_id] = "bot"
+			channel_chess[chan_id] = False
+			await send_human_reply(
+				message.channel,
+				f"💀 Checkmate — I win ({best['san']})"
+			)
+
+		return
 
     # ---------------- ROAST MODE ----------------
     if mode == "roast":
