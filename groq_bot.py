@@ -656,6 +656,7 @@ async def on_message(message: Message):
                 + "- Never invent engine lines\n"
                 + "- Explain plans, ideas, threats\n"
                 + "- If hint requested, suggest IDEAS not forced moves\n\n"
+                + "- After the game has ended, you should always remember the result."
                 + f"FEN:\n{board.fen()}\n\n"
                 + f"User says:\n{content}\n\n"
                 + "Reply:"
