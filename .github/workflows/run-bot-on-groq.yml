@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: codunot-bot
+  group: codunot-bot-groq
   cancel-in-progress: false
 
 jobs:
