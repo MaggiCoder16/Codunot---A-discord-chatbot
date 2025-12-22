@@ -104,7 +104,6 @@ SLANG_MAP = {
     "tbh": "to be honest",
     "imo": "in my opinion",
     "imho": "in my opinion",
-    "
     "irl": "in real life",
     "asap": "as soon as possible",
     "fomo": "fear of missing out",
