@@ -39,3 +39,11 @@ jobs:
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
         run: |
           python -u groq_bot.py
+
+      - name: Persist chat cache
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+          git add chat_cache.json
+          git commit -m "Update chat cache" || echo "No cache changes"
+          git push
