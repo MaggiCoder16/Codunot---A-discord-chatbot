@@ -85,11 +85,26 @@ SLANG_MAP = {
     "gn": "good night", "gng": "good night",
     "night": "good night",
 
+    # ---------------- LOVE / RELATIONSHIP ----------------
+    "ily": "i love you",
+    "ilym": "i love you",
+    "ilysm": "i love you",
+    "ilyb": "i love you",
+    "imy": "i miss you",
+    "imysm": "i miss you",
+    "bae": "partner",
+    "bff": "best friend",
+    "mbs": "best friend",
+    "luv": "love",
+    "qt": "cutie",
+    "xoxo": "love",
+
     # ---------------- INTERNET / GEN Z ----------------
     "ngl": "not gonna lie",
     "tbh": "to be honest",
     "imo": "in my opinion",
     "imho": "in my opinion",
+    "
     "irl": "in real life",
     "asap": "as soon as possible",
     "fomo": "fear of missing out",
