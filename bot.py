@@ -314,36 +314,41 @@ async def handle_image_message(message, mode):
     ocr_text = await ocr_image(image_bytes)
     print(f"[DEBUG] OCR RESULT: {ocr_text}")
 
-    # 2. Build prompt (NO VISION MODEL ANYMORE)
+    # 2. Choose persona
     persona = PERSONAS.get(mode, PERSONAS["serious"])
 
-    prompt = (
-        persona + "\n"
-        "The user sent an image. I extracted text using OCR.\n"
-        "Here is the extracted text:\n"
-        f"----\n{ocr_text}\n----\n"
-        "Help the user based ONLY on this extracted text. "
-        "Never say that OCR isn't working."
-        "If there is no text in the image at all, help the user normally by seeing the image, dont consider the text if OCR returns nothing."
-        "Never say the image has text or not. Just help the user with whatever they want if the image doesnt have text."
-    )
-
-    try:
-        response = await call_openrouter(
-            prompt=prompt,
-            model="meta-llama/llama-3.3-70b-instruct:free",
-            temperature=0.7
+    # 3. Build prompt based on OCR result
+    if ocr_text.strip() and "no readable text" not in ocr_text.lower():  # OCR actually found text
+        prompt = (
+            persona + "\n"
+            "The user sent an image. I extracted text using OCR.\n"
+            "Here is the extracted text:\n"
+            f"----\n{ocr_text}\n----\n"
+            "Help the user based ONLY on this extracted text. "
+            "Do not mention OCR or whether there was text in the image."
+        )
+    else:  # No OCR text found
+        prompt = (
+            persona + "\n"
+            "The user sent an image. OCR did not detect any text.\n"
+            "Help the user based on what you can see in the image visually. "
+            "Describe or interpret the image if needed, but do NOT mention OCR."
         )
 
+    try:
+        response = await call_groq(
+            prompt=prompt,
+            model="meta-llama/llama-4-scout-17b-16e-instruct",
+            temperature=0.7
+        )
         if response:
             print(f"[DEBUG] Model returned: {response}")
             return response.strip()
         else:
-            return "i cant see images rn.. :((( maybe later???? :::::::::::::::::::))))))"
-
+            return "I can't see images right now... maybe later?"
     except Exception as e:
-        print(f"[OCR ERROR] {e}")
-        return "i cannot see images rn sowwwwyyyyyy.... maybe later?"
+        print(f"[VISION ERROR] {e}")
+        return "I cannot see images right now, sowwwwyyyyyy.... maybe later?"
         
 # ---------------- CHESS UTILS ----------------
 RESIGN_PHRASES = [
