@@ -253,27 +253,27 @@ async def ocr_image(image_bytes: bytes) -> str:
     try:
         img = Image.open(io.BytesIO(image_bytes)).convert("RGB")
 
-        result = ocr_engine.ocr(
-            np.array(img),
-            cls=True
-        )
+        result = ocr_engine.predict(np.array(img))
 
-        if not result:
+        if not result or not isinstance(result, list):
             return ""
 
         lines = []
-        for block in result:
-            for line in block:
-                text, confidence = line[1]
-                if confidence > 0.5:
+
+        for page in result:
+            texts = page.get("rec_texts", [])
+            scores = page.get("rec_scores", [])
+
+            for text, confidence in zip(texts, scores):
+                if confidence is not None and confidence > 0.5:
                     lines.append(text)
 
         ocr_text = "\n".join(lines).strip()
 
         # ---------------- CLEAN OCR TEXT ----------------
-        ocr_text = re.sub(r"[ \t]+", " ", ocr_text)           # collapse spaces/tabs
-        ocr_text = re.sub(r"\n{3,}", "\n\n", ocr_text)       # collapse excessive newlines
-        ocr_text = re.sub(r"\n\s+\n", "\n\n", ocr_text)      # remove lines with only spaces
+        ocr_text = re.sub(r"[ \t]+", " ", ocr_text)
+        ocr_text = re.sub(r"\n{3,}", "\n\n", ocr_text)
+        ocr_text = re.sub(r"\n\s+\n", "\n\n", ocr_text)
 
         return ocr_text
 
