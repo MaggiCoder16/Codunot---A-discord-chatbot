@@ -812,15 +812,18 @@ async def decide_response_type(user_text: str) -> str:
     - 'text'
     """
     prompt = (
-        "You are a classifier.\n"
-        "Decide whether the user's message requires a DIAGRAM. Do not consider it a DIAGRAM unless the user explicitly mentions to give a DIAGRAM.\n"
-        "Don't give diagrams in EVERY message. YOU PROPERLY need to understand if the user message wants a diagram, or not. You can also reply with text. For you to generate a diagram, the user message must have the word \"diagram\" in it.\n"
-        "If the user asks you for a diagram, then says something like \"and of a XYZ\", basically, the user wants another diagram of \"XYZ\", whatever it is. Give them a diagram of \"XYZ\".\n"
-        "A diagram is needed if visual structure helps.\n\n"
+        "You are a strict classifier.\n\n"
+        "ONLY reply with \"diagram\" IF AND ONLY IF:\n"
+        "- The user EXPLICITLY uses the word \"diagram\"\n"
+        "- OR explicitly asks for a flowchart, graph, or visual diagram\n\n"
+        "If the user asks for a meme, joke, drawing, image, or anything else,\n"
+        "you MUST reply \"text\".\n\n"
+        "If you are unsure, ALWAYS reply \"text\".\n\n"
         "Reply with ONE WORD only:\n"
         "diagram or text\n\n"
         f"User message:\n{user_text}"
     )
+
 
     try:
         resp = await call_groq_with_health(
