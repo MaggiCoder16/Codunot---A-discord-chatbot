@@ -23,11 +23,14 @@ jobs:
         with:
           python-version: 3.11
 
-      - name: Install system dependencies (Tesseract + WebP support)
+      - name: Install system dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y tesseract-ocr libwebp-dev  # Adding libwebp-dev for WebP support
-          
+          sudo apt-get install -y \
+            tesseract-ocr \
+            libwebp-dev \
+            poppler-utils
+
       - name: Install Python dependencies
         run: |
           python -m pip install --upgrade pip
