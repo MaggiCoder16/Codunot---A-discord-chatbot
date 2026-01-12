@@ -399,6 +399,92 @@ async def handle_image_message(message, mode):
 
     finally:
         IMAGE_PROCESSING_CHANNELS.discard(channel_id)
+        
+# ---------------- FILE UPLOAD PROCESSING ----------------
+MAX_FILE_BYTES = 8_000_000  # 8 MB (Discord attachment limit)
+
+async def extract_file_bytes(message):
+    for attachment in message.attachments:
+        try:
+            if attachment.size > MAX_FILE_BYTES:
+                await message.channel.send("⚠️ File too big, max 8MB allowed.")
+                continue
+            data = await attachment.read()
+            return data, attachment.filename
+        except Exception as e:
+            print(f"[FILE ERROR] Failed to read attachment {attachment.filename}: {e}")
+    return None, None
+
+async def read_text_file(file_bytes, encoding="utf-8"):
+    try:
+        return file_bytes.decode(encoding)
+    except Exception as e:
+        print(f"[FILE ERROR] Cannot decode file: {e}")
+        return None
+
+async def handle_file_message(message, mode):
+    file_bytes, filename = await extract_file_bytes(message)
+    if not file_bytes:
+        return None
+
+    text = await read_text_file(file_bytes)
+    if not text:
+        await message.channel.send(f"⚠️ I cannot read `{filename}` as text.")
+        return None
+
+    # Build LLaMA prompt
+    persona = PERSONAS.get(mode, PERSONAS["serious"])
+    prompt = f"{persona}\nThe user uploaded a file `{filename}`. Content:\n{text}\n\nHelp the user based on this content."
+    
+    response = await call_groq(
+        prompt=prompt,
+        model="meta-llama/llama-4-scout-17b-16e-instruct",
+        temperature=0.7
+    )
+
+    if response:
+        await send_human_reply(message.channel, response.strip())
+        return response.strip()
+
+    return "❌ Couldn't process the file."
+
+# ---------------- MERMAID GENERATION ----------------
+async def generate_mermaid(user_text: str) -> str:
+    """
+    Calls Meta-LLaMA to generate Mermaid diagram code from user text.
+    Returns a string like "graph TD; A-->B;" or None if failed.
+    """
+    prompt = (
+        "You are an assistant that converts user instructions into a MERMAID diagram.\n"
+        "Always reply ONLY with valid Mermaid syntax. Do not add any explanation.\n"
+        "User instruction:\n"
+        f"{user_text}\n\n"
+        "Mermaid code:"
+    )
+
+    try:
+        resp = await call_groq(
+            prompt=prompt,
+            model="meta-llama/llama-4-scout-17b-16e-instruct",
+            temperature=0
+        )
+        mermaid_code = resp.strip()
+        if mermaid_code:
+            return mermaid_code
+        return None
+    except Exception as e:
+        print(f"[MERMAID ERROR] {e}")
+        return None
+
+# ---------------- MERMAID TO URL ----------------
+def mermaid_to_url(code: str) -> str:
+    """
+    Converts Mermaid code into a URL that renders the diagram as an image.
+    Uses the official mermaid.ink service.
+    """
+    base = "https://mermaid.ink/img/"
+    encoded = urllib.parse.quote(code)
+    return f"{base}{encoded}"
 
 # ---------------- CHESS UTILS ----------------
 
@@ -580,6 +666,50 @@ def normalize_move_input(board, move_input: str):
 # global (near other channel_* dicts)
 channel_last_chess_result = {}
 
+async def decide_response_type(user_text: str) -> str:
+    """
+    Returns either:
+    - 'diagram'
+    - 'text'
+    """
+    prompt = (
+        "You are a classifier.\n"
+        "Decide whether the user's message requires a DIAGRAM.\n"
+        "A diagram is needed if visual structure helps.\n\n"
+        "Reply with ONE WORD only:\n"
+        "diagram or text\n\n"
+        f"User message:\n{user_text}"
+    )
+
+    try:
+        resp = await call_groq(
+            prompt=prompt,
+            model="meta-llama/llama-4-scout-17b-16e-instruct",
+            temperature=0
+        )
+        return resp.strip().lower()
+    except:
+        return "text"
+    """
+    Reads a Discord attachment and returns its content as a string.
+    Handles text-based files only (txt, py, csv, json, etc.).
+    Returns None if file is too big or not readable.
+    """
+    TEXT_EXTENSIONS = (".txt", ".py", ".csv", ".json", ".md", ".log")
+    MAX_FILE_SIZE = 100_000  # 100 KB
+
+    if not file.filename.lower().endswith(TEXT_EXTENSIONS):
+        return None
+    if file.size > MAX_FILE_SIZE:
+        return f"[ERROR] File too large: {file.size} bytes (max {MAX_FILE_SIZE})"
+
+    try:
+        data = await file.read()
+        return data.decode("utf-8", errors="ignore")
+    except Exception as e:
+        print(f"[FILE READ ERROR] {e}")
+        return None
+
 # ---------------- ON_MESSAGE ----------------
 @bot.event
 async def on_message(message: Message):
@@ -689,7 +819,31 @@ async def on_message(message: Message):
             await send_human_reply(message.channel, image_reply)
             return
 
-# ---------------- CHESS MODE ----------------
+    # ---------------- FILE UPLOAD PROCESSING ----------------
+    has_file = bool(message.attachments)
+    if has_file:
+        file_reply = await handle_file_message(message, mode)
+        if file_reply is not None:
+            return
+    
+    # LLaMA ROUTER (TEXT vs DIAGRAM)
+    decision = await decide_response_type(content)
+
+    if decision == "diagram":
+        await send_human_reply(message.channel, "🧠 Generating diagram...")
+
+        mermaid_code = await generate_mermaid(content)
+        if not mermaid_code:
+            await send_human_reply(
+                message.channel,
+                "❌ I couldn't generate that diagram."
+            )
+            return
+
+        await message.channel.send(mermaid_to_url(mermaid_code))
+        return
+
+    # ---------------- CHESS MODE ----------------
     if channel_chess.get(chan_id):
         board = chess_engine.get_board(chan_id)
 
