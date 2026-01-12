@@ -449,16 +449,21 @@ async def handle_file_message(message, mode):
     return "❌ Couldn't process the file."
 
 # ---------------- MERMAID GENERATION ----------------
+import urllib.parse
+
 async def generate_mermaid(user_text: str) -> str:
     """
-    Calls Meta-LLaMA to generate Mermaid diagram code from user text.
-    Returns a string like "graph TD; A-->B;" or None if failed.
+    Generates a clean Mermaid diagram from user instructions.
+    Ensures valid Mermaid syntax (graph TD, arrows, one node per concept).
     """
     prompt = (
         "You are an assistant that converts user instructions into a MERMAID diagram.\n"
-        "Always reply ONLY with valid Mermaid syntax. Do not add any explanation.\n"
-        "User instruction:\n"
-        f"{user_text}\n\n"
+        "STRICT RULES:\n"
+        "- Use graph TD (top-down flow)\n"
+        "- One node per concept, connected with --> arrows\n"
+        "- Do NOT include backticks, markdown, or explanations\n"
+        "- Only output valid Mermaid code\n"
+        f"User instruction:\n{user_text}\n\n"
         "Mermaid code:"
     )
 
@@ -468,31 +473,51 @@ async def generate_mermaid(user_text: str) -> str:
             model="meta-llama/llama-4-scout-17b-16e-instruct",
             temperature=0
         )
-        mermaid_code = resp.strip()
-        if mermaid_code:
-            return mermaid_code
+        if not resp:
+            return None
+
+        code = sanitize_mermaid(resp)
+        if code:
+            # Ensure the diagram starts with graph TD
+            if not code.strip().startswith("graph TD"):
+                code = "graph TD\n" + code
+            return code
+
         return None
+
     except Exception as e:
         print(f"[MERMAID ERROR] {e}")
         return None
 
-# ---------------- MERMAID TO URL ----------------
-import urllib.parse
+# ---------------- SANITIZE MERMAID ----------------
+def sanitize_mermaid(code: str) -> str:
+    """
+    Cleans LLaMA-generated Mermaid code:
+    - Removes markdown fences/backticks
+    - Keeps only valid nodes and arrows
+    """
+    code = code.replace("```mermaid", "").replace("```", "").strip()
+    lines = code.splitlines()
+    valid_lines = []
 
+    for line in lines:
+        line = line.strip()
+        if not line:
+            continue
+        # Only keep lines with arrows
+        if "-->" in line:
+            valid_lines.append(line)
+        # Or allow the starting graph declaration
+        elif line.startswith("graph"):
+            valid_lines.append(line)
+    return "\n".join(valid_lines)
+
+# ---------------- MERMAID TO URL ----------------
 def mermaid_to_url(code: str) -> str:
     """
-    Converts Mermaid code into a URL that renders the diagram as an image on mermaid.ink.
-    This version strips extra whitespace, removes code fences, and safely encodes the URL.
+    Converts sanitized Mermaid code to a mermaid.ink URL.
     """
-    # Remove ```mermaid or ``` if LLaMA included them
-    code = code.strip()
-    code = code.replace("```mermaid", "").replace("```", "").strip()
-
-    # Replace multiple newlines with a single newline
-    code = "\n".join(line.strip() for line in code.splitlines() if line.strip())
-
-    # URL encode
-    encoded = urllib.parse.quote(code, safe='')  # safe='' ensures all special chars encoded
+    encoded = urllib.parse.quote(code, safe='')
     return f"https://mermaid.ink/img/{encoded}"
 
 # ---------------- CHESS UTILS ----------------
