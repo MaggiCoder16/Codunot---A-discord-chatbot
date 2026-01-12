@@ -483,6 +483,9 @@ def mermaid_to_url(code: str) -> str:
     Converts Mermaid code into a URL that renders the diagram as an image.
     Uses the official mermaid.ink service.
     """
+    # Remove ```mermaid fences if present
+    code = re.sub(r"^```mermaid\s*|```$", "", code.strip(), flags=re.MULTILINE)
+
     base = "https://mermaid.ink/img/"
     encoded = urllib.parse.quote(code)
     return f"{base}{encoded}"
