@@ -424,32 +424,76 @@ async def read_text_file(file_bytes, encoding="utf-8"):
         print(f"[FILE ERROR] Cannot decode file: {e}")
         return None
 
+import pdfplumber
+from docx import Document
+from pdf2image import convert_from_bytes
+
 async def handle_file_message(message, mode):
     file_bytes, filename = await extract_file_bytes(message)
     if not file_bytes:
         return None
 
-    text = await read_text_file(file_bytes)
-    if not text:
-        await message.channel.send(f"⚠️ I cannot read `{filename}` as text.")
+    filename_lower = filename.lower()
+    text = None
+
+    try:
+        if filename_lower.endswith(".txt"):
+            text = await read_text_file(file_bytes)
+
+        elif filename_lower.endswith(".pdf"):
+            # Try text extraction
+            try:
+                with pdfplumber.open(io.BytesIO(file_bytes)) as pdf:
+                    pages_text = [page.extract_text() or "" for page in pdf.pages]
+                    text = "\n".join(pages_text).strip()
+            except Exception as e:
+                print(f"[PDF ERROR] {e}")
+                text = None
+
+            # OCR fallback
+            if not text or not text.strip():
+                pages = convert_from_bytes(file_bytes)
+                ocr_text = ""
+                for img in pages:
+                    img_bytes = io.BytesIO()
+                    img.save(img_bytes, format="PNG")
+                    ocr_text += await ocr_image(img_bytes.getvalue()) + "\n"
+                text = ocr_text.strip()
+
+        elif filename_lower.endswith(".docx"):
+            doc = Document(io.BytesIO(file_bytes))
+            text = "\n".join(p.text for p in doc.paragraphs).strip()
+
+        else:
+            await message.channel.send(f"⚠️ I cannot read `{filename}` (unsupported file type).")
+            return None
+
+    except Exception as e:
+        print(f"[FILE ERROR] Failed to read {filename}: {e}")
+        await message.channel.send(f"⚠️ I cannot read `{filename}` as a file.")
         return None
 
-    # Build LLaMA prompt
+    if not text:
+        await message.channel.send(f"⚠️ `{filename}` appears to have no readable text.")
+        return None
+
     persona = PERSONAS.get(mode, PERSONAS["serious"])
     prompt = f"{persona}\nThe user uploaded a file `{filename}`. Content:\n{text}\n\nHelp the user based on this content."
-    
-    response = await call_groq(
-        prompt=prompt,
-        model="meta-llama/llama-4-scout-17b-16e-instruct",
-        temperature=0.7
-    )
 
-    if response:
-        await send_human_reply(message.channel, response.strip())
-        return response.strip()
+    try:
+        response = await call_groq(
+            prompt=prompt,
+            model="meta-llama/llama-4-scout-17b-16e-instruct",
+            temperature=0.7
+        )
+        if response:
+            await send_human_reply(message.channel, response.strip())
+            return response.strip()
+    except Exception as e:
+        print(f"[FILE RESPONSE ERROR] {e}")
 
     return "❌ Couldn't process the file."
-
+    
 # ---------------- MERMAID----------------
 # ---------------- SANITIZE ----------------
 def sanitize_mermaid(code: str) -> str:
