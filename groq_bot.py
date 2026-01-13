@@ -14,6 +14,8 @@ from dotenv import load_dotenv
 
 from memory import MemoryManager
 from humanizer import maybe_typo
+from huggingface_image_client import generate_image_hf as generate_image
+from huggingface_image_client import build_diagram_prompt
 from bot_chess import OnlineChessEngine
 from groq_client import call_groq
 from slang_normalizer import apply_slang_map
@@ -39,7 +41,7 @@ BOT_NAME = os.getenv("BOT_NAME", "Codunot")
 OWNER_ID = 1220934047794987048
 MAX_MEMORY = 45
 RATE_LIMIT = 900
-MAX_IMAGE_BYTES = 40_000  # 40 KB
+MAX_IMAGE_BYTES = 2_00_000  # 2 MB
 
 # ---------------- CLIENT ----------------
 intents = discord.Intents.all()
@@ -54,6 +56,7 @@ message_queue = asyncio.Queue()
 channel_modes = {}
 channel_mutes = {}
 channel_chess = {}
+channel_images = {}
 channel_memory = {}
 rate_buckets = {}
 
@@ -252,8 +255,14 @@ def choose_fallback():
 def build_general_prompt(chan_id, mode, message):
     mem = channel_memory.get(chan_id, deque())
     history_text = "\n".join(mem)
+
+    # Include info about the last image
+    last_img_info = ""
+    if chan_id in channel_images and channel_images[chan_id]:
+        last_img_info = "\nNote: The user has previously requested an image in this conversation."
+
     persona_text = PERSONAS.get(mode, PERSONAS["funny"])
-    return f"{persona_text}\n\nRecent chat:\n{history_text}\n\nReply as Codunot:"
+    return f"{persona_text}\n\nRecent chat:\n{history_text}{last_img_info}\n\nReply as Codunot:"
 
 def build_roast_prompt(user_message):
     return PERSONAS["roast"] + f"\nUser message: '{user_message}'\nGenerate ONE savage roast."
@@ -540,91 +549,36 @@ async def handle_file_message(message, mode):
         print(f"[FILE RESPONSE ERROR] {e}")
 
     return "❌ Couldn't process the file."
-    
-# ---------------- MERMAID----------------
-# ---------------- SANITIZE ----------------
-def sanitize_mermaid(code: str) -> str:
-    """
-    Cleans LLM output: removes markdown blocks, backticks, and ensures valid graph headers.
-    """
-    code = re.sub(r"```(?:mermaid)?", "", code, flags=re.IGNORECASE)
-    code = code.replace("`", "").strip()
-    
-    # Ensure it starts with a valid graph type
-    if not (code.lower().startswith("graph") or code.lower().startswith("flowchart")):
-        code = "graph TD\n" + code
-        
-    return code
 
-# ---------------- FLATTEN ----------------
-def flatten_mermaid(code: str) -> str:
-    """
-    Converts any Mermaid graph into a flat linear chain to avoid multi-parent errors.
-    Preserves node definitions.
-    """
-    lines = code.splitlines()
-    nodes = []
-    edges = []
+# ---------------- IMAGE TYPE DETECTION ----------------
 
-    for line in lines:
-        line = line.strip()
-        if not line:
-            continue
-        # Node definitions: A[Label]
-        if re.match(r"^\w+\[.*\]$", line):
-            nodes.append(line)
-        # Edge definitions: A --> B
-        else:
-            matches = re.findall(r"(\w+)\s*-->\s*(\w+)", line)
-            if matches:
-                edges.extend(matches)
-
-    flat_edges = [f"{src} --> {dst}" for src, dst in edges]
-    return "graph TD\n" + "\n".join(nodes + flat_edges)
-
-# ---------------- URL ENCODING ----------------
-def mermaid_to_url(code: str) -> str:
+async def decide_visual_type(user_text: str) -> str:
     """
-    Converts Mermaid code into a mermaid.ink URL using URL-safe Base64.
-    """
-    safe_code = sanitize_mermaid(code)
-    safe_code = flatten_mermaid(safe_code)
-    b64_string = base64.urlsafe_b64encode(safe_code.encode("utf-8")).decode("utf-8").rstrip("=")
-    return f"https://mermaid.ink/img/{b64_string}"
-
-# ---------------- GENERATE MERMAID ----------------
-async def generate_mermaid(user_text: str) -> Optional[str]:
-    """
-    Calls LLM to generate a valid Mermaid diagram and returns a mermaid.ink URL.
+    Returns:
+    - 'diagram' → for educational diagrams, charts, graphs, flowcharts
+    - 'fun' → for normal images
+    - 'text' → for normal chat
     """
     prompt = (
-        "You are a Mermaid.js diagram generator.\n"
-        "STRICT RULES:\n"
-        "1. Start with 'graph TD'.\n"
-        "2. Define nodes separately: A[Node Name].\n"
-        "3. Connect only IDs: A --> B.\n"
-        "4. Avoid multiple parents for a single node in one line.\n"
-        "5. NO markdown, NO backticks, NO explanations.\n"
-        "ONLY raw Mermaid code.\n"
-        f"User instruction: {user_text}"
+        "You are a strict classifier.\n\n"
+        "Reply ONLY with:\n"
+        "- diagram → if the user wants a diagram, chart, graph, flowchart, illustration, "
+        "visual explanation, labeled picture, or says 'diagram' or 'image'. Basically, an image for education purposes.\n"
+        "- fun → if the user wants a normal image (meme, photo, artistic image). Basically, for normal talks, fun.\n"
+        "- text → otherwise. The AI will reply in text.\n\n"
+        "ONE WORD ONLY.\n\n"
+        f"User message:\n{user_text}"
     )
 
     try:
-        resp = await call_groq(
-            prompt=prompt,
-            model="llama-3.3-70b-versatile",
-            temperature=0.2
-        )
+        resp = await call_groq_with_health(prompt, temperature=0)
+        return resp.strip().lower()
+    except:
+        return "text"
 
-        if not resp:
-            return None
-
-        return mermaid_to_url(resp.strip())
-
-    except Exception as e:
-        print(f"[MERMAID ERROR] {e}")
-        return None
-
+async def build_image_prompt(user_text: str) -> str:
+    return build_diagram_prompt(user_text)
+        
 # ---------------- CHESS UTILS ----------------
 
 RESIGN_PHRASES = [
@@ -805,35 +759,6 @@ def normalize_move_input(board, move_input: str):
 # global (near other channel_* dicts)
 channel_last_chess_result = {}
 
-async def decide_response_type(user_text: str) -> str:
-    """
-    Returns either:
-    - 'diagram'
-    - 'text'
-    """
-    prompt = (
-        "You are a strict classifier.\n\n"
-        "ONLY reply with \"diagram\" IF AND ONLY IF:\n"
-        "- The user EXPLICITLY uses the word \"diagram\"\n"
-        "- OR explicitly asks for a flowchart, graph, or visual diagram\n\n"
-        "If the user asks for a meme, joke, drawing, image, or anything else,\n"
-        "you MUST reply \"text\".\n\n"
-        "If you are unsure, ALWAYS reply \"text\".\n\n"
-        "Reply with ONE WORD only:\n"
-        "diagram or text\n\n"
-        f"User message:\n{user_text}"
-    )
-
-
-    try:
-        resp = await call_groq_with_health(
-            prompt=prompt,
-            temperature=0
-        )
-        return resp.strip().lower()
-    except:
-        return "text"
-
 # ---------------- ON_MESSAGE ----------------
 @bot.event
 async def on_message(message: Message):
@@ -949,23 +874,45 @@ async def on_message(message: Message):
         file_reply = await handle_file_message(message, mode)
         if file_reply is not None:
             return
-    
-    # LLaMA ROUTER (TEXT vs DIAGRAM)
-    decision = await decide_response_type(content)
 
-    if decision == "diagram":
-        await send_human_reply(message.channel, "🧠 Generating diagram...")
+    # ---------------- IMAGE OR TEXT ----------------
+    visual_type = await decide_visual_type(content)  # returns "diagram", "fun", or "text"
+    if visual_type in ["diagram", "fun"]:
+        await send_human_reply(message.channel, "🖼️ Generating image... hang tight!")
 
-        mermaid_url = await generate_mermaid(content)  # this returns the URL
-        if not mermaid_url:
-            await send_human_reply(
-                message.channel,
-                "❌ I couldn't generate that diagram."
-            )
-            return
+        is_diagram = visual_type == "diagram"
+        image_prompt = await build_image_prompt(content) if is_diagram else content
 
-        await message.channel.send(mermaid_url)
-        return
+        try:
+            # Generate the image
+            image_bytes = await generate_image(image_prompt, diagram=is_diagram)
+
+            # --- Resize if too large ---
+            MAX_BYTES = 5_000_000  # 5 MB
+            if len(image_bytes) > MAX_BYTES:
+                img = Image.open(io.BytesIO(image_bytes))
+                scale = (MAX_BYTES / len(image_bytes)) ** 0.5
+                new_size = (int(img.width * scale), int(img.height * scale))
+                img = img.resize(new_size, Image.ANTIALIAS)
+
+                out = io.BytesIO()
+                img.save(out, format="PNG")
+                image_bytes = out.getvalue()
+
+            # Store image in memory
+            channel_images.setdefault(chan_id, None)
+            channel_images[chan_id] = image_bytes  # store raw bytes
+
+            channel_memory.setdefault(chan_id, deque(maxlen=MAX_MEMORY))
+            channel_memory[chan_id].append(f"{BOT_NAME}: [image generated for '{content}']")
+            memory.add_message(chan_id, BOT_NAME, f"[image generated for '{content}']")
+            memory.persist()
+
+            file = discord.File(io.BytesIO(image_bytes), filename="image.png")
+            await message.channel.send(file=file)
+
+        except Exception as e:
+            await send_human_reply(message.channel, f"Couldn't generate image right now. Please try again later.")
 
     # ---------------- CHESS MODE ----------------
     if channel_chess.get(chan_id):
