@@ -566,6 +566,7 @@ async def decide_visual_type(user_text: str) -> str:
         "visual explanation, labeled picture, or says 'diagram' or 'image'. Basically, an image for education purposes.\n"
         "- fun → if the user wants a normal image (meme, photo, artistic image). Basically, for normal talks, fun.\n"
         "- text → otherwise. The AI will reply in text.\n\n"
+        "Consider maths questions as text, like 20x20 = 400, not pixels (20x20)"
         "ONE WORD ONLY.\n\n"
         f"User message:\n{user_text}"
     )
