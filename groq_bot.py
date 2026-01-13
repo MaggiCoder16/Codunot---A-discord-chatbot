@@ -289,11 +289,11 @@ async def generate_and_reply(chan_id, message, content, mode):
     # ---------------- AI-DRIVEN LAST IMAGE DETECTION ----------------
     include_last_image = False
     if chan_id in channel_images and channel_images[chan_id]:
+        include_last_image = True
         try:
             detection_prompt = (
-                "You are a classifier. Detect if the user is referring to the last image you generated. "
-                "Reply ONLY with 'YES' if they are commenting on or asking about the last image, "
-                "otherwise reply 'NO'. "
+                "You are a classifier. Detect if the user wants to know about the last image you generated. "
+                "Reply ONLY with 'YES' if they are asking about the last image, otherwise reply 'NO'. "
                 f"User message: '{content}'"
             )
             detection = await call_groq(detection_prompt, temperature=0)
@@ -301,21 +301,40 @@ async def generate_and_reply(chan_id, message, content, mode):
         except Exception as e:
             print(f"[LAST IMAGE DETECTION ERROR] {e}")
 
+    # ---------------- AI-DRIVEN IMAGE FEEDBACK ----------------
+    if include_last_image:
+        try:
+            feedback_prompt = (
+                "You are a classifier. The user previously requested an image. "
+                "Determine if the user wants to generate a NEW image or is happy with the current one. "
+                "Reply ONLY with 'YES' if they want a new image, or 'NO' if they like the last image. "
+                f"User message: '{content}'"
+            )
+            feedback = await call_groq(feedback_prompt, temperature=0)
+            wants_new_image = feedback.strip().upper() == "YES"
+
+            if not wants_new_image:
+                reply = "😊 glad you like it!"
+                await send_human_reply(message.channel, reply)
+                channel_memory.setdefault(chan_id, deque(maxlen=MAX_MEMORY))
+                channel_memory[chan_id].append(f"{BOT_NAME}: {reply}")
+                memory.add_message(chan_id, BOT_NAME, reply)
+                memory.persist()
+                return  # stop here, do not generate a new image
+            # if wants_new_image=True → fall through to generate a new image
+
+        except Exception as e:
+            print(f"[LAST IMAGE FEEDBACK ERROR] {e}")
+
     # ---------------- BUILD PROMPT ----------------
-    # Let the AI know whether this is about the last image
-    prompt = build_general_prompt(
-        chan_id,
-        mode,
-        content,
-        include_last_image=include_last_image
-    )
+    prompt = build_general_prompt(chan_id, mode, content, include_last_image=include_last_image)
 
     # ---------------- GENERATE RESPONSE ----------------
-    response = None
     try:
         response = await call_groq_with_health(prompt, temperature=0.7)
     except Exception as e:
         print(f"[API ERROR] {e}")
+        response = None
 
     # ---------------- HUMANIZE / SAFEIFY ----------------
     if response:
