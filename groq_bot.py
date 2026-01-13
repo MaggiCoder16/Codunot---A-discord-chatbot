@@ -252,13 +252,13 @@ FALLBACK_VARIANTS = [
 def choose_fallback():
     return random.choice(FALLBACK_VARIANTS)
 
-def build_general_prompt(chan_id, mode, message):
+def build_general_prompt(chan_id, mode, message, include_last_image=False):
     mem = channel_memory.get(chan_id, deque())
     history_text = "\n".join(mem)
 
     # Include info about the last image
     last_img_info = ""
-    if chan_id in channel_images and channel_images[chan_id]:
+    if include_last_image:
         last_img_info = "\nNote: The user has previously requested an image in this conversation."
 
     persona_text = PERSONAS.get(mode, PERSONAS["funny"])
@@ -329,27 +329,6 @@ async def generate_and_reply(chan_id, message, content, mode):
     channel_memory[chan_id].append(f"{BOT_NAME}: {reply}")
     memory.add_message(chan_id, BOT_NAME, reply)
     memory.persist()
-
-    prompt = build_general_prompt(chan_id, current_mode, message)
-    image_bytes = None
-
-    try:
-        response = await call_groq_with_health(
-            prompt=prompt,
-            temperature=0.7,
-        )
-    except Exception as e:
-        print(f"[API ERROR] {e}")
-        response = None
-
-    reply = humanize_and_safeify(response) if response else choose_fallback()
-    await send_human_reply(message.channel, reply)
-    normalized = apply_slang_map(content)
-
-    if response:
-        channel_memory[chan_id].append(f"{BOT_NAME}: {response}")
-        memory.add_message(chan_id, BOT_NAME, response)
-        memory.persist()
 
 # ---------------- IMAGE HANDLING ----------------
 
