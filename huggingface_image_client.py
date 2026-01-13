@@ -1,6 +1,8 @@
 import os
+import io
 import asyncio
 from huggingface_hub import InferenceClient
+from PIL import Image
 
 # ============================================================
 # CONFIG
@@ -53,33 +55,29 @@ async def generate_image_hf(
 
     client = InferenceClient(api_key=HF_API_KEY)
 
+    payload = {
+        "width": width,
+        "height": height,
+        "num_inference_steps": steps,
+        "negative_prompt": negative_prompt,
+        "guidance_scale": 7.5,
+    }
+
     # --- Primary model ---
     try:
-        results = client.text_to_image(
-            prompt=prompt,
-            model=HF_MODEL_PRIMARY,
-            width=width,
-            height=height,
-            num_inference_steps=steps,
-            negative_prompt=negative_prompt,
-            guidance_scale=7.5
-        )
-        return results[0].content
+        img = client.text_to_image(HF_MODEL_PRIMARY, prompt, **payload)
+        with io.BytesIO() as buf:
+            img.save(buf, format="PNG")
+            return buf.getvalue()
     except Exception as e:
         print(f"[HF PRIMARY FAILED] {e}")
 
     # --- Fallback model ---
     try:
-        results = client.text_to_image(
-            prompt=prompt,
-            model=HF_MODEL_FALLBACK,
-            width=width,
-            height=height,
-            num_inference_steps=steps,
-            negative_prompt=negative_prompt,
-            guidance_scale=7.5
-        )
-        return results[0].content
+        img = client.text_to_image(HF_MODEL_FALLBACK, prompt, **payload)
+        with io.BytesIO() as buf:
+            img.save(buf, format="PNG")
+            return buf.getvalue()
     except Exception as e:
         print(f"[HF FALLBACK FAILED] {e}")
         raise RuntimeError("All Hugging Face image models failed")
