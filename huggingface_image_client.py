@@ -1,6 +1,5 @@
 import os
 import io
-import asyncio
 from huggingface_hub import InferenceClient
 from PIL import Image
 
@@ -29,7 +28,7 @@ def build_diagram_prompt(user_text: str) -> str:
     )
 
 # ============================================================
-# PUBLIC IMAGE GENERATOR (FIXED)
+# PUBLIC IMAGE GENERATOR (WORKING)
 # ============================================================
 
 async def generate_image_hf(
@@ -46,7 +45,7 @@ async def generate_image_hf(
 ) -> bytes:
     """
     Generates an image using Hugging Face InferenceClient.
-    Supports diagram prompts, width/height, steps, and negative prompts.
+    Uses `parameters` dict for model options (width, height, steps, etc.).
     Automatically falls back to a secondary model.
     Returns raw PNG bytes.
     """
@@ -55,17 +54,17 @@ async def generate_image_hf(
 
     client = InferenceClient(api_key=HF_API_KEY)
 
-    payload = {
+    parameters = {
         "width": width,
         "height": height,
         "num_inference_steps": steps,
         "negative_prompt": negative_prompt,
-        "guidance_scale": 7.5,
+        "guidance_scale": 7.5
     }
 
     # --- Primary model ---
     try:
-        img = client.text_to_image(HF_MODEL_PRIMARY, prompt, **payload)
+        img = client.text_to_image(model=HF_MODEL_PRIMARY, prompt=prompt, parameters=parameters)
         with io.BytesIO() as buf:
             img.save(buf, format="PNG")
             return buf.getvalue()
@@ -74,7 +73,7 @@ async def generate_image_hf(
 
     # --- Fallback model ---
     try:
-        img = client.text_to_image(HF_MODEL_FALLBACK, prompt, **payload)
+        img = client.text_to_image(model=HF_MODEL_FALLBACK, prompt=prompt, parameters=parameters)
         with io.BytesIO() as buf:
             img.save(buf, format="PNG")
             return buf.getvalue()
