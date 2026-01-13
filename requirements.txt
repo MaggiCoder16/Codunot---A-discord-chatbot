@@ -1,5 +1,5 @@
 discord.py>=2.0.0
-openai>=0.27.0
+aiohttp>=3.8.0
 python-dotenv
 vaderSentiment
 aiohttp
@@ -11,3 +11,4 @@ pillow
 pdfplumber
 pdf2image
 python-docx
+huggingface_hub>=0.15.1
