@@ -283,10 +283,10 @@ async def handle_roast_mode(chan_id, message, user_message):
 
 async def generate_and_reply(chan_id, message, content, mode):
     guild_id = message.guild.id if message.guild else None
-    if guild_id and not await can_send_in_guild(guild_id):
+    if guild_id is not None and not await can_send_in_guild(guild_id):
         return
 
-    # Last image detection
+    # ---------------- AI-DRIVEN LAST IMAGE DETECTION ----------------
     include_last_image = False
     if chan_id in channel_images and channel_images[chan_id]:
         try:
@@ -300,23 +300,31 @@ async def generate_and_reply(chan_id, message, content, mode):
         except Exception as e:
             print(f"[LAST IMAGE DETECTION ERROR] {e}")
 
-    # Build prompt once
-    prompt = build_general_prompt(chan_id, mode, content)
+    # ---------------- BUILD PROMPT ----------------
+    prompt = build_general_prompt(chan_id, mode, content, include_last_image=include_last_image)
 
-    # Generate AI response
+    # ---------------- GENERATE RESPONSE ----------------
     try:
         response = await call_groq_with_health(prompt, temperature=0.7)
     except Exception as e:
         print(f"[API ERROR] {e}")
         response = None
 
-    # Humanize / fallback
-    reply = humanize_and_safeify(response) if response else choose_fallback()
+    # ---------------- HUMANIZE / SAFEIFY ----------------
+    if response:
+        if mode == "funny":
+            reply = humanize_and_safeify(response)
+        else:  # serious or roast handled separately
+            reply = response.strip()
+            if reply and not reply.endswith(('.', '!', '?')):
+                reply += '.'
+    else:
+        reply = choose_fallback()
 
-    # Send reply
+    # ---------------- SEND REPLY ----------------
     await send_human_reply(message.channel, reply)
 
-    # Save to memory
+    # ---------------- SAVE TO MEMORY ----------------
     channel_memory.setdefault(chan_id, deque(maxlen=MAX_MEMORY))
     channel_memory[chan_id].append(f"{BOT_NAME}: {reply}")
     memory.add_message(chan_id, BOT_NAME, reply)
