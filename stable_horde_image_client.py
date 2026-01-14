@@ -25,13 +25,25 @@ def build_diagram_prompt(user_text: str) -> str:
     )
 
 # ============================================================
-# IMAGE GENERATOR (WAIT UNTIL FINISHED) WITH LOGS
+# IMAGE GENERATOR (WAIT UNTIL FINISHED)
 # ============================================================
-async def generate_image_horde(prompt: str, *, diagram: bool = False, timeout: int = 180) -> bytes:
+async def generate_image_horde(
+    prompt: str,
+    *,
+    diagram: bool = False,
+    timeout: int = 300
+) -> bytes | None:
+    """
+    Submits an image job to Stable Horde and waits until it is finished.
+    Returns raw image bytes, or None on failure.
+    """
+
     if diagram:
         prompt = build_diagram_prompt(prompt)
 
-    headers = {"Content-Type": "application/json"}
+    headers = {
+        "Content-Type": "application/json"
+    }
     if STABLE_HORDE_API_KEY:
         headers["apikey"] = STABLE_HORDE_API_KEY
 
@@ -47,14 +59,22 @@ async def generate_image_horde(prompt: str, *, diagram: bool = False, timeout: i
         "nsfw": False
     }
 
-    print("[Stable Horde] Sending payload:", payload)
+    print("[Stable Horde] Submitting job...")
+    print("[Stable Horde] Prompt:", prompt)
 
     async with aiohttp.ClientSession() as session:
-        # ---------------------------
-        # 1️⃣ Submit the job
-        # ---------------------------
+
+        # ----------------------------------------------------
+        # Submit job
+        # ----------------------------------------------------
         try:
-            async with session.post(STABLE_HORDE_URL, json=payload, headers=headers, timeout=timeout) as resp:
+            async with session.post(
+                STABLE_HORDE_URL,
+                json=payload,
+                headers=headers,
+                timeout=30
+            ) as resp:
+
                 text = await resp.text()
                 if resp.status not in (200, 202):
                     print(f"[Stable Horde ERROR] Submission failed ({resp.status}): {text}")
@@ -62,49 +82,60 @@ async def generate_image_horde(prompt: str, *, diagram: bool = False, timeout: i
 
                 data = await resp.json()
                 job_id = data.get("id")
+
                 if not job_id:
-                    print(f"[Stable Horde ERROR] No job ID returned: {data}")
+                    print("[Stable Horde ERROR] No job ID returned:", data)
                     return None
 
                 print("[Stable Horde] Job submitted successfully! ID:", job_id)
+
         except Exception as e:
-            print("[Stable Horde ERROR] Job submission failed:", e)
+            print("[Stable Horde ERROR] Job submission exception:", e)
             return None
 
-        # ---------------------------
-        # 2️⃣ Poll until the image is ready
-        # ---------------------------
+        # ----------------------------------------------------
+        # Poll until finished
+        # ----------------------------------------------------
         start_time = asyncio.get_event_loop().time()
+
         while True:
-            await asyncio.sleep(2)
+            await asyncio.sleep(3)
+
             elapsed = asyncio.get_event_loop().time() - start_time
             if elapsed > timeout:
-                print(f"[Stable Horde ERROR] Timeout after {timeout}s waiting for image")
+                print(f"[Stable Horde ERROR] Timeout after {timeout}s waiting for job {job_id}")
                 return None
 
             try:
-                async with session.get(f"{STABLE_HORDE_CHECK_URL}/{job_id}", headers=headers, timeout=30) as check_resp:
-                    status_text = await check_resp.text()
-                    if check_resp.status in (404, 202):
-                        # Job not ready yet
-                        print(f"[Stable Horde] Job {job_id} not ready yet, status {check_resp.status}")
+                async with session.get(
+                    f"{STABLE_HORDE_CHECK_URL}/{job_id}",
+                    headers=headers,
+                    timeout=30
+                ) as check_resp:
+
+                    if check_resp.status != 200:
+                        print(f"[Stable Horde] Waiting... HTTP {check_resp.status}")
                         continue
 
-                    elif check_resp.status == 200:
-                        check_data = await check_resp.json()
-                        generations = check_data.get("generations", [])
-                        if generations:
-                            img_b64 = generations[0].get("img")
-                            if img_b64:
-                                print("[Stable Horde] Image generated successfully!")
-                                return base64.b64decode(img_b64)
-                            else:
-                                print("[Stable Horde] No image in generations yet, continuing...")
-                        else:
-                            print("[Stable Horde] Generations empty, waiting...")
-                    else:
-                        print(f"[Stable Horde] Unexpected status {check_resp.status}: {status_text}")
+                    check_data = await check_resp.json()
+
+                    if not check_data.get("done", False):
+                        print(f"[Stable Horde] Job {job_id} still running...")
+                        continue
+
+                    generations = check_data.get("generations", [])
+                    if not generations:
+                        print("[Stable Horde ERROR] Job finished but no generations returned")
+                        return None
+
+                    img_b64 = generations[0].get("img")
+                    if not img_b64:
+                        print("[Stable Horde ERROR] Generation missing image data")
+                        return None
+
+                    print("[Stable Horde] Image generated successfully!")
+                    return base64.b64decode(img_b64)
 
             except Exception as e:
-                print(f"[Stable Horde ERROR] Polling failed: {e}")
-
+                print("[Stable Horde ERROR] Polling exception:", e)
+                continue
