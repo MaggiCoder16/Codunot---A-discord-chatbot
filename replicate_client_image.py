@@ -1,23 +1,32 @@
-# replicate_client_image.py
 import os
-import replicate
+import io
+import base64
 import asyncio
+import replicate
+from PIL import Image
 
 # ============================================================
 # CONFIG
 # ============================================================
 
+# Set your Replicate API token in environment variables
 REPLICATE_API_TOKEN = os.getenv("REPLICATE_API_TOKEN", "")
-DEFAULT_MODEL = "stability-ai/stable-diffusion"  # SD model, you can change
-TIMEOUT_SECONDS = 60  # max wait per generation
+if not REPLICATE_API_TOKEN:
+    raise ValueError("Please set your REPLICATE_API_TOKEN environment variable")
+
+# Initialize client
+client = replicate.Client(api_token=REPLICATE_API_TOKEN)
+
+# Default model to use
+DEFAULT_MODEL = "stability-ai/stable-diffusion-2"
 
 # ============================================================
-# PROMPT HELPER
+# PROMPT HELPER (for diagrams)
 # ============================================================
 
 def build_diagram_prompt(user_text: str) -> str:
     """
-    Returns a diagram-style prompt (vector, educational, clean)
+    Simple, SD-friendly diagram style.
     """
     return (
         "Simple clean diagram, flat vector style, white background, "
@@ -26,58 +35,43 @@ def build_diagram_prompt(user_text: str) -> str:
     )
 
 # ============================================================
-# PUBLIC FUNCTION
+# INTERNAL: generate image async
 # ============================================================
 
-async def generate_image_replicate(prompt: str) -> bytes | None:
+async def generate_image_replicate(prompt: str, width: int = 512, height: int = 512, steps: int = 20) -> bytes | None:
     """
-    Async-friendly image generation with Replicate.
-    Returns image bytes (PNG) or None on failure.
+    Generate an image using Replicate. Returns raw PNG bytes or None on failure.
     """
-    if not REPLICATE_API_TOKEN:
-        print("[Replicate ERROR] REPLICATE_API_TOKEN not set")
-        return None
+    loop = asyncio.get_event_loop()
 
-    try:
-        loop = asyncio.get_event_loop()
-        return await loop.run_in_executor(None, _sync_generate, prompt)
-    except Exception as e:
-        print("[Replicate ERROR]", e)
-        return None
+    def sync_call():
+        try:
+            # Replicate's Python client call is synchronous
+            output_urls = client.predict(
+                model=DEFAULT_MODEL,
+                input={
+                    "prompt": prompt,
+                    "width": width,
+                    "height": height,
+                    "num_inference_steps": steps
+                }
+            )
+            if not output_urls:
+                print("[Replicate ERROR] No output URLs returned")
+                return None
 
-# ============================================================
-# INTERNAL SYNC FUNCTION
-# ============================================================
+            # The model returns a list of URLs, take first
+            img_url = output_urls[0]
+            import requests
+            resp = requests.get(img_url)
+            if resp.status_code != 200:
+                print("[Replicate ERROR] Failed to fetch image from URL:", resp.status_code)
+                return None
 
-def _sync_generate(prompt: str) -> bytes | None:
-    """
-    Blocking call to Replicate API, returns PNG bytes.
-    """
-    try:
-        client = replicate.Client(api_token=REPLICATE_API_TOKEN)
-        model = client.models.get(DEFAULT_MODEL)
-
-        output = model.predict(
-            prompt=prompt,
-            width=512,
-            height=512,
-            num_inference_steps=20
-        )
-
-        if not output or len(output) == 0:
-            print("[Replicate ERROR] no image returned")
-            return None
-
-        # Get first image URL and fetch bytes
-        import requests
-        img_url = output[0]
-        resp = requests.get(img_url, timeout=TIMEOUT_SECONDS)
-        if resp.status_code == 200:
             return resp.content
 
-        print("[Replicate ERROR] failed to download image")
-        return None
+        except Exception as e:
+            print("[Replicate ERROR]", e)
+            return None
 
-    except Exception as e:
-        print("[Replicate ERROR]", e)
-        return None
+    return await loop.run_in_executor(None, sync_call)
