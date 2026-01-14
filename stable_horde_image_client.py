@@ -2,13 +2,13 @@ import os
 import io
 import base64
 import aiohttp
+import asyncio
 from PIL import Image
 
 # ============================================================
 # CONFIG
 # ============================================================
 STABLE_HORDE_API_KEY = os.getenv("STABLE_HORDE_API_KEY", "")
-# FIXED: use async endpoint instead of old text2img
 STABLE_HORDE_URL = "https://stablehorde.net/api/v2/generate/async"
 STABLE_HORDE_STATUS_URL = "https://stablehorde.net/api/v2/status"
 
@@ -28,13 +28,12 @@ def build_diagram_prompt(user_text: str) -> str:
     )
 
 # ============================================================
-# PUBLIC IMAGE GENERATOR (DEBUG-READY)
+# PUBLIC IMAGE GENERATOR (ASYNC)
 # ============================================================
 async def generate_image_horde(prompt: str, *, diagram: bool = False, timeout: int = 120) -> bytes:
     """
-    Generate an image using Stable Horde.
+    Generate an image using Stable Horde async API.
     Returns raw PNG bytes.
-    Logs request, response, and errors for debugging.
     """
     if diagram:
         prompt = build_diagram_prompt(prompt)
@@ -55,41 +54,35 @@ async def generate_image_horde(prompt: str, *, diagram: bool = False, timeout: i
         "nsfw": False
     }
 
-    # --- Log payload ---
     print("[Stable Horde] Sending payload:", payload)
 
     async with aiohttp.ClientSession() as session:
-        try:
-            # Step 1: create job
-            async with session.post(STABLE_HORDE_URL, json=payload, headers=headers, timeout=timeout) as resp:
-                text = await resp.text()
-                if resp.status != 200:
-                    print(f"[Stable Horde ERROR] Status {resp.status}: {text}")
-                    raise RuntimeError(f"[Stable Horde] Failed with status {resp.status}: {text}")
+        # Step 1: Submit job
+        async with session.post(STABLE_HORDE_URL, json=payload, headers=headers, timeout=timeout) as resp:
+            text = await resp.text()
+            if resp.status not in (200, 202):
+                print(f"[Stable Horde ERROR] Status {resp.status}: {text}")
+                raise RuntimeError(f"[Stable Horde] Failed with status {resp.status}: {text}")
 
-                data = await resp.json()
-                print("[Stable Horde] Job response:", data)
+            data = await resp.json()
+            print("[Stable Horde] Job response:", data)
 
-            job_id = data.get("id")
-            if not job_id:
-                raise RuntimeError(f"[Stable Horde] No job ID returned: {data}")
+        job_id = data.get("id")
+        if not job_id:
+            raise RuntimeError(f"[Stable Horde] No job ID returned: {data}")
 
-            # Step 2: poll until image is ready
-            for _ in range(timeout // 2):
-                await asyncio.sleep(2)
-                try:
-                    async with session.get(f"{STABLE_HORDE_STATUS_URL}/{job_id}", headers=headers, timeout=30) as status_resp:
-                        status_data = await status_resp.json()
-                        if "generations" in status_data and status_data["generations"]:
-                            img_b64 = status_data["generations"][0].get("img")
-                            if img_b64:
-                                print("[Stable Horde] Image generated successfully")
-                                return base64.b64decode(img_b64)
-                except Exception as e:
-                    print("[Stable Horde ERROR] Polling failed:", e)
+        # Step 2: Poll until image is ready
+        for _ in range(timeout // 2):
+            await asyncio.sleep(2)
+            try:
+                async with session.get(f"{STABLE_HORDE_STATUS_URL}/{job_id}", headers=headers, timeout=30) as status_resp:
+                    status_data = await status_resp.json()
+                    if "generations" in status_data and status_data["generations"]:
+                        img_b64 = status_data["generations"][0].get("img")
+                        if img_b64:
+                            print("[Stable Horde] Image generated successfully")
+                            return base64.b64decode(img_b64)
+            except Exception as e:
+                print("[Stable Horde ERROR] Polling failed:", e)
 
-            raise RuntimeError("[Stable Horde] Timeout waiting for image")
-
-        except Exception as e:
-            print("[Stable Horde ERROR] Request failed:", e)
-            raise
+        raise RuntimeError("[Stable Horde] Timeout waiting for image")
