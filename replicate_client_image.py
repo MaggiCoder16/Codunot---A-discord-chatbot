@@ -42,7 +42,7 @@ async def generate_image(
     def sync_call():
         try:
             output = replicate.run(
-                "google/imagen-4-ultra",
+                "google/imagen-4",
                 input={
                     "prompt": prompt,
                     "aspect_ratio": aspect_ratio,
