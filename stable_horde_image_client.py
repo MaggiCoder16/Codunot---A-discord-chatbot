@@ -8,13 +8,16 @@ from PIL import Image
 # ============================================================
 # CONFIG
 # ============================================================
+
 STABLE_HORDE_API_KEY = os.getenv("STABLE_HORDE_API_KEY", "")
+
 STABLE_HORDE_URL = "https://stablehorde.net/api/v2/generate/async"
 STABLE_HORDE_CHECK_URL = "https://stablehorde.net/api/v2/generate/check"
 
 # ============================================================
 # PROMPT BUILDER (FOR DIAGRAMS)
 # ============================================================
+
 def build_diagram_prompt(user_text: str) -> str:
     return (
         "Clean educational diagram, flat vector style, "
@@ -25,16 +28,18 @@ def build_diagram_prompt(user_text: str) -> str:
     )
 
 # ============================================================
-# IMAGE GENERATOR (WAIT UNTIL FINISHED)
+# IMAGE GENERATOR (JUGGERNAUT XL)
 # ============================================================
+
 async def generate_image_horde(
     prompt: str,
     *,
     diagram: bool = False,
-    timeout: int = 300
+    timeout: int = 180
 ) -> bytes | None:
     """
-    Submits an image job to Stable Horde and waits until it is finished.
+    Submits an image job to Stable Horde using Juggernaut XL
+    and waits until it is finished.
     Returns raw image bytes, or None on failure.
     """
 
@@ -44,30 +49,28 @@ async def generate_image_horde(
     headers = {
         "Content-Type": "application/json"
     }
+
     if STABLE_HORDE_API_KEY:
         headers["apikey"] = STABLE_HORDE_API_KEY
 
     payload = {
         "prompt": prompt,
         "params": {
-            "steps": 28,
-            "width": 512,
-            "height": 512,
-            "cfg_scale": 7.5,
+            "steps": 30,
+            "width": 1024,
+            "height": 1024,
+            "cfg_scale": 6,
             "sampler_name": "k_euler"
         },
         "models": [
-            "stable_diffusion",
-            "anything-v4",
-            "dreamshaper",
-            "deliberate"
+            "Juggernaut XL"
         ],
         "nsfw": False,
-        "r2": True,
         "shared": True,
         "trusted_workers": False,
         "slow_workers": True
     }
+
     print("[Stable Horde] Submitting job...")
     print("[Stable Horde] Prompt:", prompt)
 
@@ -85,6 +88,7 @@ async def generate_image_horde(
             ) as resp:
 
                 text = await resp.text()
+
                 if resp.status not in (200, 202):
                     print(f"[Stable Horde ERROR] Submission failed ({resp.status}): {text}")
                     return None
@@ -127,6 +131,13 @@ async def generate_image_horde(
                         continue
 
                     check_data = await check_resp.json()
+
+                    # Debug info (very useful)
+                    print(
+                        "[Stable Horde]",
+                        "waiting:", check_data.get("waiting"),
+                        "queue:", check_data.get("queue_position")
+                    )
 
                     if not check_data.get("done", False):
                         print(f"[Stable Horde] Job {job_id} still running...")
