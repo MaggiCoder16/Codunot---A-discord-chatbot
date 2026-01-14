@@ -64,7 +64,7 @@ rate_buckets = {}
 
 # ---------------- MODELS ----------------
 SCOUT_MODEL = "meta-llama/llama-4-scout-17b-16e-instruct"  # seriousmode
-VERSATILE_MODEL = "meta-llama/llama-4-maverick-17b-128e-instruct"  # fun/roast
+VERSATILE_MODEL = "meta-llama/llama-4-scout-17b-16e-instruct"  # fun/roast
 
 SCOUT_COOLDOWN_UNTIL = None
 SCOUT_COOLDOWN_DURATION = timedelta(hours=1)
