@@ -1035,6 +1035,7 @@ async def on_message(message: Message):
 
             file = discord.File(io.BytesIO(image_bytes), filename="image.png")
             await message.channel.send(file=file)
+            return
 
         except Exception as e:
             print("[Codunot ERROR]", e)
