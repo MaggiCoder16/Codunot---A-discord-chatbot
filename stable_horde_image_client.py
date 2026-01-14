@@ -54,8 +54,7 @@ async def generate_image_horde(
             "width": 512,
             "height": 512,
             "cfg_scale": 7.5,
-            "sampler_name": "k_euler",
-            "seed": None
+            "sampler_name": "k_euler"
         },
         "models": [
             "stable_diffusion",
@@ -67,8 +66,7 @@ async def generate_image_horde(
         "r2": True,
         "shared": True,
         "trusted_workers": False,
-        "slow_workers": True,
-        "workers": 1
+        "slow_workers": True
     }
     print("[Stable Horde] Submitting job...")
     print("[Stable Horde] Prompt:", prompt)
