@@ -41,7 +41,7 @@ BOT_NAME = os.getenv("BOT_NAME", "Codunot")
 OWNER_ID = 1220934047794987048
 MAX_MEMORY = 45
 RATE_LIMIT = 900
-MAX_IMAGE_BYTES = 2_00_000  # 2 MB
+MAX_IMAGE_BYTES = 2_000_000  # 2 MB
 
 # ---------------- CLIENT ----------------
 intents = discord.Intents.all()
@@ -50,6 +50,8 @@ bot = discord.Client(intents=intents)
 memory = MemoryManager(limit=60, file_path="codunot_memory.json")
 chess_engine = OnlineChessEngine()
 IMAGE_PROCESSING_CHANNELS = set()
+processed_image_messages = set()
+
 
 # ---------------- STATES ----------------
 message_queue = asyncio.Queue()
@@ -988,9 +990,10 @@ async def on_message(message: Message):
     # ---------------- IMAGE OR TEXT ----------------
 
     # HARD STOP: only one image generation per message
-    if getattr(message, "_image_done", False):
+    if message.id in processed_image_messages:
         return
-    message._image_done = True
+
+    processed_image_messages.add(message.id)
 
     visual_type = await decide_visual_type(content)
 
