@@ -25,9 +25,9 @@ def build_diagram_prompt(user_text: str) -> str:
     )
 
 # ============================================================
-# IMAGE GENERATOR (WAIT UNTIL FINISHED)
+# IMAGE GENERATOR (WAIT UNTIL FINISHED) WITH LOGS
 # ============================================================
-async def generate_image_horde(prompt: str, *, diagram: bool = False, timeout: int = 120) -> bytes:
+async def generate_image_horde(prompt: str, *, diagram: bool = False, timeout: int = 180) -> bytes:
     if diagram:
         prompt = build_diagram_prompt(prompt)
 
@@ -47,30 +47,64 @@ async def generate_image_horde(prompt: str, *, diagram: bool = False, timeout: i
         "nsfw": False
     }
 
-    async with aiohttp.ClientSession() as session:
-        async with session.post(STABLE_HORDE_URL, json=payload, headers=headers, timeout=timeout) as resp:
-            data = await resp.json()
-            job_id = data.get("id")
-            if not job_id:
-                raise RuntimeError(f"No job ID returned: {data}")
+    print("[Stable Horde] Sending payload:", payload)
 
+    async with aiohttp.ClientSession() as session:
+        # ---------------------------
+        # 1️⃣ Submit the job
+        # ---------------------------
+        try:
+            async with session.post(STABLE_HORDE_URL, json=payload, headers=headers, timeout=timeout) as resp:
+                text = await resp.text()
+                if resp.status not in (200, 202):
+                    print(f"[Stable Horde ERROR] Submission failed ({resp.status}): {text}")
+                    return None
+
+                data = await resp.json()
+                job_id = data.get("id")
+                if not job_id:
+                    print(f"[Stable Horde ERROR] No job ID returned: {data}")
+                    return None
+
+                print("[Stable Horde] Job submitted successfully! ID:", job_id)
+        except Exception as e:
+            print("[Stable Horde ERROR] Job submission failed:", e)
+            return None
+
+        # ---------------------------
+        # 2️⃣ Poll until the image is ready
+        # ---------------------------
         start_time = asyncio.get_event_loop().time()
         while True:
             await asyncio.sleep(2)
             elapsed = asyncio.get_event_loop().time() - start_time
             if elapsed > timeout:
-                raise RuntimeError("Timeout waiting for image")
+                print(f"[Stable Horde ERROR] Timeout after {timeout}s waiting for image")
+                return None
 
             try:
                 async with session.get(f"{STABLE_HORDE_CHECK_URL}/{job_id}", headers=headers, timeout=30) as check_resp:
+                    status_text = await check_resp.text()
                     if check_resp.status in (404, 202):
-                        continue  # Job not ready yet
+                        # Job not ready yet
+                        print(f"[Stable Horde] Job {job_id} not ready yet, status {check_resp.status}")
+                        continue
 
-                    check_data = await check_resp.json()
-                    generations = check_data.get("generations", [])
-                    if generations:
-                        img_b64 = generations[0].get("img")
-                        if img_b64:
-                            return base64.b64decode(img_b64)
+                    elif check_resp.status == 200:
+                        check_data = await check_resp.json()
+                        generations = check_data.get("generations", [])
+                        if generations:
+                            img_b64 = generations[0].get("img")
+                            if img_b64:
+                                print("[Stable Horde] Image generated successfully!")
+                                return base64.b64decode(img_b64)
+                            else:
+                                print("[Stable Horde] No image in generations yet, continuing...")
+                        else:
+                            print("[Stable Horde] Generations empty, waiting...")
+                    else:
+                        print(f"[Stable Horde] Unexpected status {check_resp.status}: {status_text}")
+
             except Exception as e:
-                print("[Stable Horde ERROR] Polling failed:", e)
+                print(f"[Stable Horde ERROR] Polling failed: {e}")
+
