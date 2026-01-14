@@ -10,11 +10,10 @@ REPLICATE_API_TOKEN = os.getenv("REPLICATE_API_TOKEN")
 if not REPLICATE_API_TOKEN:
     raise RuntimeError("REPLICATE_API_TOKEN not set")
 
-# Replicate reads token automatically from env
 print("🔥 USING REPLICATE Imagen 4 (google/imagen-4) 🔥")
 
 # ============================================================
-# DIAGRAM PROMPT HELPER (USED BY groq_bot.py)
+# DIAGRAM PROMPT HELPER
 # ============================================================
 
 def build_diagram_prompt(user_text: str) -> str:
@@ -25,12 +24,16 @@ def build_diagram_prompt(user_text: str) -> str:
     )
 
 # ============================================================
-# IMAGE GENERATION (PUBLIC API)
+# IMAGE GENERATION (MATCHES groq_bot.py EXACTLY)
 # ============================================================
 
-async def generate_image(prompt: str) -> bytes:
+async def generate_image(
+    prompt: str,
+    aspect_ratio: str = "1:1",
+    steps: int = 20
+) -> bytes:
     """
-    Generates an image using Google Imagen 4 via Replicate.
+    Generate image using Google Imagen 4 via Replicate.
     Returns raw PNG bytes.
     """
 
@@ -42,7 +45,7 @@ async def generate_image(prompt: str) -> bytes:
                 "google/imagen-4",
                 input={
                     "prompt": prompt,
-                    "aspect_ratio": "1:1",  # safe default for Discord
+                    "aspect_ratio": aspect_ratio,
                     "output_format": "png",
                     "safety_filter_level": "block_medium_and_above"
                 }
