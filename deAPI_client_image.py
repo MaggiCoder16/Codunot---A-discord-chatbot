@@ -91,12 +91,13 @@ async def generate_image(
                 "Content-Type": "application/json"
             }
             payload = {
-                "model": MODEL_NAME,
+                "model": MODEL_NAME,           # "Flux.1 schnell"
                 "prompt": prompt,
                 "width": width,
                 "height": height,
                 "steps": steps,
-                "negative_prompt": ""
+                "negative_prompt": "",
+                "seed": None                   # required; null = random
             }
             response = requests.post(url, json=payload, headers=headers)
             response.raise_for_status()
