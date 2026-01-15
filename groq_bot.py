@@ -654,10 +654,6 @@ async def decide_visual_type(user_text: str) -> str:
     """
     user_text_lower = user_text.lower()
     
-    # Quick hardcoded check for memes
-    if "meme" in user_text_lower:
-        return "text"
-    
     prompt = (
         "You are a strict classifier.\n\n"
         "Classify the user's message as ONE of the following:\n"
