@@ -3,7 +3,6 @@ import asyncio
 import requests
 import io
 import re
-import random
 
 # ============================================================
 # CONFIG
@@ -13,7 +12,6 @@ DEAPI_API_KEY = os.getenv("DEAPI_API_KEY")
 if not DEAPI_API_KEY:
     raise RuntimeError("DEAPI_API_KEY not set")
 
-# Correct deAPI model slug
 MODEL_NAME = "Flux1schnell"
 print(f"🔥 USING deAPI model {MODEL_NAME} 🔥")
 
@@ -38,14 +36,14 @@ def build_diagram_prompt(user_text: str) -> str:
 def clean_prompt(prompt: str) -> str:
     """
     Ensures the prompt is valid: non-empty, no newlines, max 900 chars.
-    If empty, returns a safe default.
+    If empty, returns a minimal placeholder to satisfy deAPI.
     """
     if not prompt:
-        prompt = ""
+        prompt = " "  # single space, deAPI requires non-empty prompt
     prompt = prompt.strip()
     prompt = re.sub(r'[\r\n]+', ' ', prompt)
     if len(prompt) == 0:
-        prompt = "Simple diagram, white background"  # fallback default
+        prompt = " "  # fallback minimal prompt
     if len(prompt) > 900:
         prompt = prompt[:900]
     return prompt
@@ -57,31 +55,29 @@ def clean_prompt(prompt: str) -> str:
 async def generate_image(
     prompt: str,
     aspect_ratio: str = "1:1",
-    steps: int = 4,  # default low steps
-    seed: int = None
+    steps: int = 8
 ) -> bytes:
     """
-    Generate image using deAPI (Flux1schnell).
+    Generate image using deAPI (Flux1schnell or other models).
     Returns raw PNG bytes.
     """
 
-    # Ensure prompt is valid
+    # Always ensure prompt is valid
     prompt = clean_prompt(prompt)
 
     # Width/height rules
-    width = height = 768  # safe default for Flux1schnell
-    if aspect_ratio == "16:9":
-        width, height = 768, 432
-    elif aspect_ratio == "9:16":
-        width, height = 432, 768
-    elif aspect_ratio == "1:2":
-        width, height = 384, 768
+    if MODEL_NAME.lower() == "flux1schnell" or MODEL_NAME.lower() == "flux.1 schnell":
+        width = height = 768  # safe, divisible by 8, inside 256–2048
+    else:
+        if aspect_ratio == "16:9":
+            width, height = 768, 432
+        elif aspect_ratio == "9:16":
+            width, height = 432, 768
+        elif aspect_ratio == "1:2":
+            width, height = 384, 768
+        else:
+            width, height = 768, 768
 
-    # Ensure seed exists
-    if seed is None:
-        seed = random.randint(0, 2**32 - 1)
-
-    # Async wrapper for sync requests
     loop = asyncio.get_event_loop()
 
     def sync_call():
@@ -97,10 +93,15 @@ async def generate_image(
                 "width": width,
                 "height": height,
                 "steps": steps,
-                "negative_prompt": "",
-                "seed": seed
+                "seed": None,
+                "negative_prompt": ""
             }
             response = requests.post(url, json=payload, headers=headers)
+
+            if response.status_code == 422:
+                # THIS WILL TELL YOU EXACTLY WHAT IS WRONG
+                print(f"❌ API validation error: {response.text}")
+
             response.raise_for_status()
             return io.BytesIO(response.content).getvalue()
         except Exception as e:
