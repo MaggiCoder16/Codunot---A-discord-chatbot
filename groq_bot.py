@@ -518,6 +518,7 @@ async def handle_image_message(message, mode):
                 persona + "\n"
                 "The user sent an image. There is no readable text in it.\n"
                 "Help the user based on the image content itself, without considering OCR."
+                "As there is no text, do not say anything like: 'Yooo, what's good? Can't read the image, but what's poppin' in the pic? Describe it, I gotchu!' because, There might be no text in the image."
             )
 
         response = await call_groq_with_health(
