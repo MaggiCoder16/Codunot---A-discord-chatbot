@@ -3,7 +3,6 @@ import asyncio
 import aiohttp
 import re
 import random
-import base64
 
 # ============================================================
 # CONFIG
@@ -24,24 +23,16 @@ DEFAULT_HEIGHT = 512
 TXT2IMG_URL = "https://api.deapi.ai/api/v1/client/txt2img"
 STATUS_URL = "https://api.deapi.ai/api/v1/client/request-status"
 
-MAX_POLL_SECONDS = 120  # hard stop (2 minutes)
+MAX_POLL_SECONDS = 120
 
 # ============================================================
 # PROMPT HELPERS
 # ============================================================
 
-def build_diagram_prompt(user_text: str) -> str:
-    return (
-        "Simple clean diagram, flat vector style, white background, "
-        "clear labels, arrows, minimal design, educational, no realism.\n\n"
-        + user_text
-    )
-
 def clean_prompt(prompt: str) -> str:
     if not prompt or not prompt.strip():
         return "A clean, simple diagram"
-    prompt = re.sub(r"[\r\n]+", " ", prompt.strip())
-    return prompt[:900]
+    return re.sub(r"[\r\n]+", " ", prompt.strip())[:900]
 
 # ============================================================
 # IMAGE GENERATION
@@ -60,7 +51,6 @@ async def generate_image(
     prompt = clean_prompt(prompt)
     steps = min(int(steps), MAX_STEPS)
 
-    # ---- RESOLUTION ----
     width = height = DEFAULT_WIDTH
     if aspect_ratio == "16:9":
         width, height = 768, 432
@@ -85,50 +75,44 @@ async def generate_image(
     }
 
     async with aiohttp.ClientSession() as session:
-        # ====================================================
-        # SEND REQUEST
-        # ====================================================
-        async with session.post(
-            TXT2IMG_URL,
-            json=payload,
-            headers=headers,
-        ) as resp:
-            text = await resp.text()
+        # ---------------------------
+        # SUBMIT JOB
+        # ---------------------------
+        async with session.post(TXT2IMG_URL, json=payload, headers=headers) as resp:
             if resp.status != 200:
-                raise RuntimeError(
-                    f"deAPI txt2img failed ({resp.status}): {text}"
-                )
+                raise RuntimeError(await resp.text())
             data = await resp.json()
 
-        request_id = data.get("data", {}).get("request_id")
-        if not request_id:
-            raise RuntimeError(f"deAPI returned no request_id: {data}")
-
+        request_id = data["data"]["request_id"]
         print(f"[deAPI] request_id = {request_id}", flush=True)
 
+        # ---------------------------
+        # POLL STATUS
+        # ---------------------------
         waited = 0
-
         while waited < MAX_POLL_SECONDS:
-            async with session.get(
-                f"{STATUS_URL}/{request_id}",
-                headers=headers,
-            ) as poll_resp:
-                poll_data = await poll_resp.json()
-                print("[deAPI STATUS]", poll_data, flush=True)
+            async with session.get(f"{STATUS_URL}/{request_id}", headers=headers) as r:
+                status_data = await r.json()
+                print("[deAPI STATUS]", status_data, flush=True)
 
-                status = poll_data.get("data", {}).get("status")
+                data = status_data["data"]
+                status = data["status"]
 
-                if status == "succeeded":
-                    image_base64 = poll_data["data"]["result"]["image_base64"]
-                    return base64.b64decode(image_base64)
+                if status == "done":
+                    result_url = data.get("result_url")
+                    if not result_url:
+                        raise RuntimeError("Job done but no result_url returned")
+
+                    # ---------------------------
+                    # DOWNLOAD IMAGE
+                    # ---------------------------
+                    async with session.get(result_url) as img_resp:
+                        if img_resp.status != 200:
+                            raise RuntimeError("Failed to download image")
+                        return await img_resp.read()
 
                 if status == "failed":
-                    raise RuntimeError(
-                        f"deAPI image generation failed: {poll_data}"
-                    )
-
-                # queued / processing / running
-                print(f"[deAPI] status = {status}", flush=True)
+                    raise RuntimeError(f"Generation failed: {status_data}")
 
             await asyncio.sleep(1)
             waited += 1
