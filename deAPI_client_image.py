@@ -12,7 +12,8 @@ DEAPI_API_KEY = os.getenv("DEAPI_API_KEY")
 if not DEAPI_API_KEY:
     raise RuntimeError("DEAPI_API_KEY not set")
 
-MODEL_NAME = "Flux1schnell"
+# Replace with a model your account can actually access
+MODEL_NAME = "Flux.1 schnell"
 print(f"🔥 USING deAPI model {MODEL_NAME} 🔥")
 
 # ============================================================
@@ -30,19 +31,20 @@ def build_diagram_prompt(user_text: str) -> str:
     )
 
 # ============================================================
-# PROMPT CLEANING
+# PROMPT CLEANING / FALLBACK
 # ============================================================
 
 def clean_prompt(prompt: str) -> str:
     """
     Ensures the prompt is valid: non-empty, no newlines, max 900 chars.
+    If empty, returns a safe default.
     """
     if not prompt:
         prompt = ""
     prompt = prompt.strip()
     prompt = re.sub(r'[\r\n]+', ' ', prompt)
     if len(prompt) == 0:
-        prompt = "Simple diagram, white background"
+        prompt = "Simple diagram, white background"  # fallback default
     if len(prompt) > 900:
         prompt = prompt[:900]
     return prompt
@@ -57,14 +59,15 @@ async def generate_image(
     steps: int = 8  # low steps by default
 ) -> bytes:
     """
-    Generate image using deAPI (Flux1schnell or other models).
+    Generate image using deAPI (Flux.1 schnell or other models).
     Returns raw PNG bytes.
     """
 
+    # Always ensure prompt is valid
     prompt = clean_prompt(prompt)
 
     # Width/height rules
-    if MODEL_NAME == "Flux.1 schnell":
+    if MODEL_NAME.lower() == "flux.1 schnell":
         width = height = 768  # safe, divisible by 8, inside 256–2048
     else:
         # Other models like ZImageTurbo_INT8 can support different aspect ratios
