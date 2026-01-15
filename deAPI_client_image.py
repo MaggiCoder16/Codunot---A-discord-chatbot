@@ -64,7 +64,7 @@ async def generate_image(
     prompt = clean_prompt(prompt)
 
     # Width/height rules
-    if MODEL_NAME == "Flux1schnell":
+    if MODEL_NAME == "Flux.1 schnell":
         width = height = 768  # safe, divisible by 8, inside 256–2048
     else:
         # Other models like ZImageTurbo_INT8 can support different aspect ratios
