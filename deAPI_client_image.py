@@ -1,11 +1,9 @@
 import os
 import asyncio
 import aiohttp
-import io
 import re
 import random
 import base64
-from typing import Optional
 
 # ============================================================
 # CONFIG
@@ -15,18 +13,19 @@ DEAPI_API_KEY = os.getenv("DEAPI_API_KEY")
 if not DEAPI_API_KEY:
     raise RuntimeError("DEAPI_API_KEY not set")
 
-MODEL_NAME = "Flux1schnell"
+MODEL_NAME = "ZImageTurbo_INT8"
 
-DEFAULT_STEPS = 4
+DEFAULT_STEPS = 8          # Turbo is designed for 8 steps
 MAX_STEPS = 10
 
-DEFAULT_WIDTH = 768
-DEFAULT_HEIGHT = 768
+DEFAULT_WIDTH = 512
+DEFAULT_HEIGHT = 512
 
 TXT2IMG_URL = "https://api.deapi.ai/api/v1/client/txt2img"
 POLL_URL = "https://api.deapi.ai/api/v1/client/inference"
 
-MAX_POLL_SECONDS = 120  # hard stop (2 minutes)
+MAX_POLL_SECONDS = 120     # hard stop (2 minutes)
+MAX_404_SECONDS = 15       # abort early if never scheduled
 
 # ============================================================
 # PROMPT HELPERS
@@ -55,13 +54,13 @@ async def generate_image(
     steps: int = DEFAULT_STEPS,
 ) -> bytes:
     """
-    Generate image using deAPI (Flux1schnell).
+    Generate image using deAPI (ZImageTurbo_INT8).
     Returns raw PNG bytes.
     """
 
     prompt = clean_prompt(prompt)
 
-    # ---- SAFETY: ENFORCE STEP LIMIT ----
+    # ---- SAFETY ----
     steps = min(int(steps), MAX_STEPS)
 
     # ---- RESOLUTION ----
@@ -90,7 +89,7 @@ async def generate_image(
 
     async with aiohttp.ClientSession() as session:
         # ====================================================
-        # SEND GENERATION REQUEST
+        # SEND REQUEST
         # ====================================================
         async with session.post(
             TXT2IMG_URL,
@@ -102,7 +101,6 @@ async def generate_image(
                 raise RuntimeError(
                     f"deAPI txt2img failed ({resp.status}): {text}"
                 )
-
             data = await resp.json()
 
         request_id = data.get("data", {}).get("request_id")
@@ -112,9 +110,10 @@ async def generate_image(
         print(f"[deAPI] request_id = {request_id}", flush=True)
 
         # ====================================================
-        # POLL FOR RESULT
+        # POLLING
         # ====================================================
         waited = 0
+        consecutive_404s = 0
 
         while waited < MAX_POLL_SECONDS:
             async with session.get(
@@ -124,10 +123,19 @@ async def generate_image(
                 print(f"[deAPI POLL] HTTP {poll_resp.status}", flush=True)
 
                 if poll_resp.status == 404:
+                    consecutive_404s += 1
                     print("[deAPI POLL] not ready yet (404)", flush=True)
+
+                    if consecutive_404s >= MAX_404_SECONDS:
+                        raise RuntimeError(
+                            "deAPI did not schedule the job (backend overload)"
+                        )
+
                     await asyncio.sleep(1)
                     waited += 1
                     continue
+
+                consecutive_404s = 0
 
                 poll_data = await poll_resp.json()
                 print("[deAPI POLL DATA]", poll_data, flush=True)
@@ -135,7 +143,7 @@ async def generate_image(
                 status = poll_data.get("data", {}).get("status")
 
                 if status == "succeeded":
-                    result = poll_data.get("data", {}).get("result", {})
+                    result = poll_data["data"].get("result", {})
                     image_base64 = result.get("image_base64")
                     if not image_base64:
                         raise RuntimeError(
@@ -148,15 +156,11 @@ async def generate_image(
                         f"deAPI image generation failed: {poll_data}"
                     )
 
-                # queued / processing / running
                 print(f"[deAPI] status = {status}", flush=True)
 
             await asyncio.sleep(1)
             waited += 1
 
-        # ====================================================
-        # TIMEOUT
-        # ====================================================
         raise RuntimeError(
-            "deAPI image servers overloaded — job stuck in queue too long"
+            "deAPI image generation timed out"
         )
