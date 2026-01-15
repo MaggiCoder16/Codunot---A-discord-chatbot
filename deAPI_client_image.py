@@ -13,7 +13,7 @@ if not DEAPI_API_KEY:
     raise RuntimeError("DEAPI_API_KEY not set")
 
 # Replace with a model your account can actually access
-MODEL_NAME = "Flux.1 schnell"
+MODEL_NAME = "Flux1schnell"
 print(f"🔥 USING deAPI model {MODEL_NAME} 🔥")
 
 # ============================================================
