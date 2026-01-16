@@ -1017,57 +1017,68 @@ async def on_message(message: Message):
     if visual_type == "fun":
         await send_human_reply(message.channel, "🖼️ Generating image... please wait for some time.")
 
-        # ---------------- AI-DRIVEN IMAGE FEEDBACK ----------------
-        image_intent = "NEW"
-        include_last_image = chan_id in channel_images and bool(channel_images[chan_id])
-        if include_last_image:
-            try:
-                last_image_prompt = channel_images.get(chan_id, [])[-1]
+        # Handle Codunot self-image request
+        if await is_codunot_self_image(content):
+			image_prompt = CODUNOT_SELF_IMAGE_PROMPT
+        else:
+            image_prompt = content
 
-                feedback_prompt = (
-                    "You are a strict classifier.\n\n"
-                    "The assistant previously generated an image.\n\n"
-                    "ORIGINAL IMAGE REQUEST:\n"
-                    f"{last_image_prompt}\n\n"
-                    "USER'S NEW MESSAGE:\n"
-                    f"{content}\n\n"
-                    "Classify the user's intent as ONE of the following:\n\n"
-                    "PRAISE → user likes or compliments the image\n"
-                    "MODIFY → user wants changes or refinements to the SAME image\n"
-                    "REGENERATE → user wants a completely new image\n"
-                    "IGNORE → message is unrelated to the image\n\n"
-                    "Reply with ONLY ONE WORD."
+        # Save current prompt for potential refinements
+        channel_images.setdefault(chan_id, deque(maxlen=3))
+        channel_images[chan_id].append(image_prompt)
+
+        try:
+            # Set fixed aspect ratio
+            aspect = "16:9"
+
+            # Generate image
+            image_bytes = await generate_image(image_prompt, aspect_ratio=aspect, steps=4)
+
+            # Resize if too large
+            MAX_BYTES = 5_000_000
+            if len(image_bytes) > MAX_BYTES:
+                img = Image.open(io.BytesIO(image_bytes))
+                scale = (MAX_BYTES / len(image_bytes)) ** 0.5
+                img = img.resize(
+                    (int(img.width * scale), int(img.height * scale)),
+                    Image.ANTIALIAS
                 )
+                out = io.BytesIO()
+                img.save(out, format="PNG")
+                image_bytes = out.getvalue()
 
-                feedback = await call_groq_with_health(
-                    feedback_prompt,
-                    temperature=0,
-                    mode="serious"
-                )
+            # Send image
+            file = discord.File(io.BytesIO(image_bytes), filename="image.png")
+            await message.channel.send(file=file)
+            return
 
-                result = feedback.strip().upper()
-                if result not in ["PRAISE", "MODIFY", "REGENERATE", "IGNORE"]:
-                    result = "IGNORE"
+        except Exception as e:
+            print("[Codunot ERROR]", e)
+            await send_human_reply(
+                message.channel,
+                "Couldn't generate image right now. Please try again later."
+            )
 
-                if result == "PRAISE":
-                    reply = "😊 glad you like it!"
-                    await send_human_reply(message.channel, reply)
+    # ---------------- CHESS MODE ----------------
+    if channel_chess.get(chan_id):
+        board = chess_engine.get_board(chan_id)
 
-                    channel_memory.setdefault(chan_id, deque(maxlen=MAX_MEMORY))
-                    channel_memory[chan_id].append(f"{BOT_NAME}: {reply}")
-                    memory.add_message(chan_id, BOT_NAME, reply)
-                    memory.persist()
-                    return  # STOP — do NOT generate a new image
+        # -------- GAME OVER (ENGINE / POSITION) --------
+        if board.is_game_over():
+            result = board.result()
+            if result == "1-0":
+                channel_last_chess_result[chan_id] = "user"
+                msg = "GG 😎 you won!"
+            elif result == "0-1":
+                channel_last_chess_result[chan_id] = "bot"
+                msg = "GG 😄 I win!"
+            else:
+                channel_last_chess_result[chan_id] = "draw"
+                msg = "GG 🤝 it’s a draw!"
 
-                if result == "MODIFY":
-                    image_intent = "MODIFY"
-                elif result == "REGENERATE":
-                    image_intent = "NEW"
-
-                # IGNORE → continue normal text handling
-
-            except Exception as e:
-                print(f"[LAST IMAGE FEEDBACK ERROR] {e}")
+            channel_chess[chan_id] = False
+            await send_human_reply(message.channel, f"{msg} Wanna analyze or rematch?")
+            return
 
         # ---------------- BUILD IMAGE PROMPT ----------------
         if await is_codunot_self_image(content):
