@@ -997,70 +997,67 @@ async def on_message(message: Message):
         if file_reply is not None:
             return
 
-# ---------------- IMAGE OR TEXT ----------------
-if message.id in processed_image_messages:
-    return
+	# ---------------- IMAGE OR TEXT ----------------
+	if message.id in processed_image_messages:
+    	return
 
-processed_image_messages.add(message.id)
+	processed_image_messages.add(message.id)
 
-# Decide visual type (fun/diagram/text)
-visual_type = await decide_visual_type(content, chan_id)
+	# Decide visual type (fun/diagram/text)
+	visual_type = await decide_visual_type(content, chan_id)
 
-# Only proceed if AI thinks it's an image request
-if visual_type in ["diagram", "fun"]:
-    await send_human_reply(message.channel, "🖼️ Generating image... please wait for some time.")
+	# Only proceed if AI thinks it's an image request
+	if visual_type in ["diagram", "fun"]:
+    	await send_human_reply(message.channel, "🖼️ Generating image... please wait for some time.")
 
-    # Handle Codunot self-image request
-    if await is_codunot_self_image(content):
-        image_prompt = CODUNOT_SELF_IMAGE_PROMPT
-        is_diagram = False
-    else:
-        # Merge new user text with previous prompt if any
-        previous_prompt = channel_images[chan_id][-1] if chan_id in channel_images and channel_images[chan_id] else ""
-        merged_prompt = f"{previous_prompt}, {content}" if previous_prompt else content
+    	# Handle Codunot self-image request
+    	if await is_codunot_self_image(content):
+        	image_prompt = CODUNOT_SELF_IMAGE_PROMPT
+        	is_diagram = False
+    	else:
+        	# Merge new user text with previous prompt if any
+        	previous_prompt = channel_images[chan_id][-1] if chan_id in channel_images and channel_images[chan_id] else ""
+        	merged_prompt = f"{previous_prompt}, {content}" if previous_prompt else content
 
-        # Add style instructions based on type
-        style_instructions = (
-            "clean digital art, high quality, detailed, coherent, vivid colors"
-            if visual_type == "fun"
-            else "clean digital art, minimal, clear composition"
-        )
+        	# Add style instructions based on type
+        	style_instructions = (
+            	"clean digital art, high quality, detailed, coherent, vivid colors"
+            	if visual_type == "fun"
+            	else "clean digital art, minimal, clear composition"
+        	)
 
-        image_prompt = f"{merged_prompt}, {style_instructions}"
-        is_diagram = visual_type == "diagram"
+        	image_prompt = f"{merged_prompt}, {style_instructions}"
+        	is_diagram = visual_type == "diagram"
 
-    # Save current prompt for potential refinements
-    channel_images.setdefault(chan_id, deque(maxlen=3))
-    channel_images[chan_id].append(image_prompt)
+    	# Save current prompt for potential refinements
+    	channel_images.setdefault(chan_id, deque(maxlen=3))
+    	channel_images[chan_id].append(image_prompt)
 
-    try:
-        # Set aspect ratio
-        aspect = "1:1" if is_diagram else "16:9"
 
-        # Generate image
-        image_bytes = await generate_image(image_prompt, aspect_ratio=aspect, steps=4)
+        	aspect = "16:9"
+        	image_bytes = await generate_image(image_prompt, aspect_ratio=aspect, steps=4)
 
-        # Resize if too large
-        MAX_BYTES = 5_000_000
-        if len(image_bytes) > MAX_BYTES:
-            img = Image.open(io.BytesIO(image_bytes))
-            scale = (MAX_BYTES / len(image_bytes)) ** 0.5
-            img = img.resize((int(img.width * scale), int(img.height * scale)), Image.ANTIALIAS)
-            out = io.BytesIO()
-            img.save(out, format="PNG")
-            image_bytes = out.getvalue()
+        	# Resize if too large
+        	MAX_BYTES = 5_000_000
+       		if len(image_bytes) > MAX_BYTES:
+            	img = Image.open(io.BytesIO(image_bytes))
+            	scale = (MAX_BYTES / len(image_bytes)) ** 0.5
+            	img = img.resize((int(img.width * scale), int(img.height * scale)), Image.ANTIALIAS)
+            	out = io.BytesIO()
+            	img.save(out, format="PNG")
+            	image_bytes = out.getvalue()
 
-        # Send image
-        file = discord.File(io.BytesIO(image_bytes), filename="image.png")
-        await message.channel.send(file=file)
-        return
+        	# Send image
+        	file = discord.File(io.BytesIO(image_bytes), filename="image.png")
+        	await message.channel.send(file=file)
+        	return
 
-    except Exception as e:
-        print("[Codunot ERROR]", e)
-        await send_human_reply(
-            message.channel,
-            "Couldn't generate image right now. Please try again later."
-        )
+    	except Exception as e:
+        	print("[Codunot ERROR]", e)
+        	await send_human_reply(
+            	message.channel,
+            	"Couldn't generate image right now. Please try again later."
+        	)
 
     # ---------------- CHESS MODE ----------------
     if channel_chess.get(chan_id):
