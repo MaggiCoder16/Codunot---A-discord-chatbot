@@ -645,37 +645,41 @@ async def handle_file_message(message, mode):
 
 # ---------------- IMAGE TYPE DETECTION ----------------
 
-async def decide_visual_type(user_text: str) -> str:
-    """
-    Classifies user message into:
-    - 'diagram' → educational image / chart / flowchart
-    - 'fun' → normal image / artistic / meme
-    - 'text' → everything else
+async def decide_visual_type(user_text: str, chan_id: str) -> str:
+    # Get last 4 messages from channel memory for context (if any)
+    recent_messages = channel_memory.get(chan_id, [])
+    recent_context = "\n".join(list(recent_messages)[-4:]) if recent_messages else ""
 
-    Rule: Only classify as 'diagram' or 'fun' if the user explicitly
-    mentions words like 'image', 'generate', 'picture', 'draw', etc.
-    Otherwise, always return 'text'.
-    """
-    user_text_lower = user_text.lower()
-    
     prompt = (
-        "You are a strict classifier.\n\n"
-        "Classify the user's message as ONE of the following:\n"
-        "- diagram → if the user explicitly wants an educational diagram, chart, graph, flowchart, or labeled illustration.\n"
-        "- fun → if the user explicitly wants a normal image, artistic image, or picture.\n"
-        "- text → otherwise. Everything else should be text.\n\n"
-        "CRITICAL RULE: Only classify as 'diagram' or 'fun' if the user message specifically contains words like "
-        "'image', 'generate', 'picture', 'draw', or anything similar indicating they want an image.\n"
-        "Do not classify as diagram or fun just because the message sounds like a description.\n"
-        "Return ONE WORD ONLY: diagram, fun, or text.\n\n"
-        f"User message:\n{user_text}"
+        "You are a very strict intent classifier.\n\n"
+        "Your task is to determine if the user is explicitly asking you to generate or create an image or diagram.\n\n"
+        "Return ONE WORD ONLY:\n"
+        "- diagram → if the user clearly asks you to generate or create a diagram, chart, or drawing\n"
+        "- fun → if the user clearly asks you to generate or create an image or picture\n"
+        "- text → everything else (including talking about images, using the word 'image', or game inputs)\n\n"
+        "IMPORTANT:\n"
+        "- Simply mentioning the word 'image', 'picture', or similar is NOT enough to generate.\n"
+        "- Talking about an existing image or referencing images is NOT a request to generate.\n"
+        "- Game inputs or guesses are ALWAYS text.\n"
+        "- The user must explicitly ask to generate, create, draw, or produce an image or diagram.\n\n"
+        "Here is the recent conversation context:\n"
+        f"{recent_context}\n\n"
+        "Current user message:\n"
+        f"{user_text}"
     )
 
-    try:
-        resp = await call_groq_with_health(prompt, temperature=0)
-        return resp.strip().lower()
-    except:
-        return "text"
+    # Call your AI model here with the prompt
+    feedback = await call_groq_with_health(
+        prompt,
+        temperature=0,
+        mode="serious"
+    )
+
+    result = feedback.strip().lower()
+
+    if result in ["diagram", "fun", "text"]:
+        return result
+    return "text"  # default fallback
 
 async def build_image_prompt(user_text: str) -> str:
     return build_diagram_prompt(user_text)
