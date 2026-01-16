@@ -15,7 +15,6 @@ from dotenv import load_dotenv
 from memory import MemoryManager
 from humanizer import maybe_typo
 from deAPI_client_image import generate_image
-from deAPI_client_image import build_diagram_prompt
 from bot_chess import OnlineChessEngine
 from groq_client import call_groq
 from slang_normalizer import apply_slang_map
@@ -646,43 +645,33 @@ async def handle_file_message(message, mode):
 # ---------------- IMAGE TYPE DETECTION ----------------
 
 async def decide_visual_type(user_text: str, chan_id: str) -> str:
-    # Get last 4 messages from channel memory for context (if any)
+    """
+    Determines if the user is explicitly requesting an image (fun/diagram) or just text.
+    Includes last 4 messages for context.
+    """
     recent_messages = channel_memory.get(chan_id, [])
     recent_context = "\n".join(list(recent_messages)[-4:]) if recent_messages else ""
 
     prompt = (
         "You are a very strict intent classifier.\n\n"
-        "Your task is to determine if the user is explicitly asking you to generate or create an image or diagram.\n\n"
+        "Determine if the user is explicitly asking to generate or create an image.\n\n"
         "Return ONE WORD ONLY:\n"
-        "- diagram → if the user clearly asks you to generate or create a diagram, chart, or drawing\n"
-        "- fun → if the user clearly asks you to generate or create an image or picture\n"
-        "- text → everything else (including talking about images, using the word 'image', or game inputs)\n\n"
+        "- fun → if the user clearly asks to generate or create an image, picture, or visual\n"
+        "- text → everything else (including talking about images, referencing images, or game inputs)\n\n"
         "IMPORTANT:\n"
-        "- Simply mentioning the word 'image', 'picture', or similar is NOT enough to generate.\n"
-        "- Talking about an existing image or referencing images is NOT a request to generate.\n"
+        "- Simply mentioning 'image' or 'picture' is NOT enough.\n"
+        "- Talking about existing images is NOT a generation request.\n"
         "- Game inputs or guesses are ALWAYS text.\n"
-        "- The user must explicitly ask to generate, create, draw, or produce an image or diagram.\n\n"
-        "Here is the recent conversation context:\n"
+        "- The user must explicitly ask to generate, create, draw, or produce an image.\n\n"
+        "Recent conversation context:\n"
         f"{recent_context}\n\n"
         "Current user message:\n"
         f"{user_text}"
     )
 
-    # Call your AI model here with the prompt
-    feedback = await call_groq_with_health(
-        prompt,
-        temperature=0,
-        mode="serious"
-    )
-
+    feedback = await call_groq_with_health(prompt, temperature=0, mode="serious")
     result = feedback.strip().lower()
-
-    if result in ["diagram", "fun", "text"]:
-        return result
-    return "text"  # default fallback
-
-async def build_image_prompt(user_text: str) -> str:
-    return build_diagram_prompt(user_text)
+    return "fun" if result == "fun" else "text"
 
 # ---------------- DETECT IF USER IS ASKING CODUNOT FOR IT'S OWN IMAGE ----------------
 
@@ -1008,57 +997,70 @@ async def on_message(message: Message):
         if file_reply is not None:
             return
 
-    # ---------------- IMAGE OR TEXT ----------------
-    if message.id in processed_image_messages:
+# ---------------- IMAGE OR TEXT ----------------
+if message.id in processed_image_messages:
+    return
+
+processed_image_messages.add(message.id)
+
+# Decide visual type (fun/diagram/text)
+visual_type = await decide_visual_type(content, chan_id)
+
+# Only proceed if AI thinks it's an image request
+if visual_type in ["diagram", "fun"]:
+    await send_human_reply(message.channel, "🖼️ Generating image... please wait for some time.")
+
+    # Handle Codunot self-image request
+    if await is_codunot_self_image(content):
+        image_prompt = CODUNOT_SELF_IMAGE_PROMPT
+        is_diagram = False
+    else:
+        # Merge new user text with previous prompt if any
+        previous_prompt = channel_images[chan_id][-1] if chan_id in channel_images and channel_images[chan_id] else ""
+        merged_prompt = f"{previous_prompt}, {content}" if previous_prompt else content
+
+        # Add style instructions based on type
+        style_instructions = (
+            "clean digital art, high quality, detailed, coherent, vivid colors"
+            if visual_type == "fun"
+            else "clean digital art, minimal, clear composition"
+        )
+
+        image_prompt = f"{merged_prompt}, {style_instructions}"
+        is_diagram = visual_type == "diagram"
+
+    # Save current prompt for potential refinements
+    channel_images.setdefault(chan_id, deque(maxlen=3))
+    channel_images[chan_id].append(image_prompt)
+
+    try:
+        # Set aspect ratio
+        aspect = "1:1" if is_diagram else "16:9"
+
+        # Generate image
+        image_bytes = await generate_image(image_prompt, aspect_ratio=aspect, steps=4)
+
+        # Resize if too large
+        MAX_BYTES = 5_000_000
+        if len(image_bytes) > MAX_BYTES:
+            img = Image.open(io.BytesIO(image_bytes))
+            scale = (MAX_BYTES / len(image_bytes)) ** 0.5
+            img = img.resize((int(img.width * scale), int(img.height * scale)), Image.ANTIALIAS)
+            out = io.BytesIO()
+            img.save(out, format="PNG")
+            image_bytes = out.getvalue()
+
+        # Send image
+        file = discord.File(io.BytesIO(image_bytes), filename="image.png")
+        await message.channel.send(file=file)
         return
 
-    processed_image_messages.add(message.id)
-
-    visual_type = await decide_visual_type(content, chan_id)
-
-    if visual_type in ["diagram", "fun"]:
-        await send_human_reply(message.channel, "🖼️ Generating image... please wait for some time.")
-
-        if await is_codunot_self_image(content):
-            image_prompt = CODUNOT_SELF_IMAGE_PROMPT + " Clean digital art, no humans."
-            is_diagram = False
-        else:
-            is_diagram = visual_type == "diagram"
-            image_prompt = (
-                await build_image_prompt(content)
-                if is_diagram
-                else content
-            )
-
-        channel_images.setdefault(chan_id, deque(maxlen=3))
-        channel_images[chan_id].append(image_prompt)
-
-        try:
-            aspect = "1:1" if is_diagram else "16:9"
-            image_bytes = await generate_image(image_prompt, aspect_ratio=aspect, steps=4)
-
-            MAX_BYTES = 5_000_000
-            if len(image_bytes) > MAX_BYTES:
-                img = Image.open(io.BytesIO(image_bytes))
-                scale = (MAX_BYTES / len(image_bytes)) ** 0.5
-                img = img.resize(
-                    (int(img.width * scale), int(img.height * scale)),
-                    Image.ANTIALIAS
-                )
-                out = io.BytesIO()
-                img.save(out, format="PNG")
-                image_bytes = out.getvalue()
-
-            file = discord.File(io.BytesIO(image_bytes), filename="image.png")
-            await message.channel.send(file=file)
-            return
-
-        except Exception as e:
-            print("[Codunot ERROR]", e)
-            await send_human_reply(
-                message.channel,
-                "Couldn't generate image right now. Please try again later."
-            )
+    except Exception as e:
+        print("[Codunot ERROR]", e)
+        await send_human_reply(
+            message.channel,
+            "Couldn't generate image right now. Please try again later."
+        )
 
     # ---------------- CHESS MODE ----------------
     if channel_chess.get(chan_id):
