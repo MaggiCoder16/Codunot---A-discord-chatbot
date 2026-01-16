@@ -1017,11 +1017,66 @@ async def on_message(message: Message):
     if visual_type == "fun":
         await send_human_reply(message.channel, "🖼️ Generating image... please wait for some time.")
 
-        # Handle Codunot self-image request
+        # ---------------- AI-DRIVEN IMAGE FEEDBACK ----------------
+        image_intent = "NEW"
+        include_last_image = chan_id in channel_images and bool(channel_images[chan_id])
+        if include_last_image:
+            try:
+                last_image_prompt = channel_images.get(chan_id, [])[-1]
+
+                feedback_prompt = (
+                    "You are a strict classifier.\n\n"
+                    "The assistant previously generated an image.\n\n"
+                    "ORIGINAL IMAGE REQUEST:\n"
+                    f"{last_image_prompt}\n\n"
+                    "USER'S NEW MESSAGE:\n"
+                    f"{content}\n\n"
+                    "Classify the user's intent as ONE of the following:\n\n"
+                    "PRAISE → user likes or compliments the image\n"
+                    "MODIFY → user wants changes or refinements to the SAME image\n"
+                    "REGENERATE → user wants a completely new image\n"
+                    "IGNORE → message is unrelated to the image\n\n"
+                    "Reply with ONLY ONE WORD."
+                )
+
+                feedback = await call_groq_with_health(
+                    feedback_prompt,
+                    temperature=0,
+                    mode="serious"
+                )
+
+                result = feedback.strip().upper()
+                if result not in ["PRAISE", "MODIFY", "REGENERATE", "IGNORE"]:
+                    result = "IGNORE"
+
+                if result == "PRAISE":
+                    reply = "😊 glad you like it!"
+                    await send_human_reply(message.channel, reply)
+
+                    channel_memory.setdefault(chan_id, deque(maxlen=MAX_MEMORY))
+                    channel_memory[chan_id].append(f"{BOT_NAME}: {reply}")
+                    memory.add_message(chan_id, BOT_NAME, reply)
+                    memory.persist()
+                    return  # STOP — do NOT generate a new image
+
+                if result == "MODIFY":
+                    image_intent = "MODIFY"
+                elif result == "REGENERATE":
+                    image_intent = "NEW"
+
+                # IGNORE → continue normal text handling
+
+            except Exception as e:
+                print(f"[LAST IMAGE FEEDBACK ERROR] {e}")
+
+        # ---------------- BUILD IMAGE PROMPT ----------------
         if await is_codunot_self_image(content):
             image_prompt = CODUNOT_SELF_IMAGE_PROMPT
         else:
- 			image_prompt = content
+            if image_intent == "MODIFY" and chan_id in channel_images and channel_images[chan_id]:
+                image_prompt = f"{channel_images[chan_id][-1]}, {content}"
+            else:
+                image_prompt = content
 
         # Save current prompt for potential refinements
         channel_images.setdefault(chan_id, deque(maxlen=3))
