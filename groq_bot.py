@@ -1019,7 +1019,7 @@ async def on_message(message: Message):
 
         # Handle Codunot self-image request
         if await is_codunot_self_image(content):
-			image_prompt = CODUNOT_SELF_IMAGE_PROMPT
+            image_prompt = CODUNOT_SELF_IMAGE_PROMPT
         else:
             image_prompt = content
 
