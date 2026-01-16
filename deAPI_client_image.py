@@ -29,13 +29,6 @@ MAX_POLL_SECONDS = 120
 # PROMPT HELPERS
 # ============================================================
 
-def build_diagram_prompt(user_text: str) -> str:
-    return (
-        "Simple clean diagram, flat vector style, white background, "
-        "clear labels, arrows, minimal design, educational, no realism.\n\n"
-        + user_text
-    )
-
 def clean_prompt(prompt: str) -> str:
     if not prompt or not prompt.strip():
         return "A clean, simple diagram"
