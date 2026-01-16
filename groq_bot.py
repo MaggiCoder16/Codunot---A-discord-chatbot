@@ -120,12 +120,13 @@ def pick_model(mode: str = ""):
     return VERSATILE_MODEL
 
 # ---------------- CODUNOT SELF IMAGE PROMPT ----------------
-
 CODUNOT_SELF_IMAGE_PROMPT = (
-    "An image of Codunot, an AI assistant. "
-    "Codunot must appear ONLY as a robot or a chatbot avatar. "
-    "No human appearance. No realistic human face. "
-    "Robot or digital AI style only."
+    "Cute chibi robot avatar of Codunot, a friendly AI assistant, "
+    "glossy orange and yellow robot body, rounded head with a dark face screen "
+    "and glowing yellow eyes, small antenna on top, waving hand, "
+    "cartoon mascot style, clean digital illustration, "
+    "dark tech background with warm glow, "
+    "robot only, no humans, no realistic human features."
 )
     
 # ---------------- HELPERS ----------------
@@ -528,7 +529,7 @@ async def handle_image_message(message, mode):
                 persona + "\n"
                 "The user sent an image. There is no readable text in it.\n"
                 "Help the user based on the image content itself, without considering OCR."
-                "As there is no text, do not say anything like: 'Yooo, what's good? Can't read the image, but what's poppin' in the pic? Describe it, I gotchu!' because, There might be no text in the image."
+                "As there is no text, tell the user that you are an AI model that can only understand images with text, and you cannot find any text in that image."
             )
 
         response = await call_groq_with_health(
