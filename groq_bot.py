@@ -470,55 +470,51 @@ async def handle_image_message(message, mode):
     # ---------------- IMAGE SIZE GUARD ----------------
     if is_large_image:
         print(f"[IMAGE] Large image detected: {len(image_bytes)} bytes")
-
-        # lock channel
         IMAGE_PROCESSING_CHANNELS.add(channel_id)
-
-        # immediate ack
         await send_human_reply(message.channel, "wait a min, pls.")
 
     try:
-        # 1. OCR
+        # ---------------- OCR ----------------
         ocr_text = await ocr_image(image_bytes)
         print(f"[DEBUG] OCR RESULT: {ocr_text}")
 
-        # 2. Choose persona
+        # ---------------- BUILD PROMPT ----------------
         persona = PERSONAS.get(mode, PERSONAS["serious"])
 
-        # 3. Build prompt
         if ocr_text.strip():
             prompt = (
                 persona + "\n"
-                "The user sent an image. I extracted text using OCR.\n"
-                "Here is the extracted text:\n"
+                "The user sent an image. OCR detected some text in it:\n"
                 f"----\n{ocr_text}\n----\n"
-                "Help the user based ONLY on this extracted text. "
-                "Do not mention OCR or whether there was text in the image."
-                "Remember the image and the text in the image, for future questions by the user. Remember the latest image."
+                "Help the user based on both the image and the text above. "
+                "Do not mention OCR or that you extracted text. "
+                "Be concise and clear."
             )
         else:
             prompt = (
                 persona + "\n"
                 "The user sent an image. There is no readable text in it.\n"
-                "Help the user based on the image content itself, without considering OCR."
-                "As there is no text, tell the user that you are an AI model that can only understand images with text, and you cannot find any text in that image."
+                "Help the user based ONLY on the image content itself. "
+                "Be concise and clear."
             )
 
-        response = await call_groq_vision(
+        # ---------------- CALL VISION MODEL ----------------
+        response = await call_groq_with_health(
             prompt=prompt,
-            image_bytes=image_bytes,
-            image_mime="image/png"
+            image_bytes=image_bytes,  # feed the image to the vision model
+            temperature=0.7,
+            mode=mode
         )
 
         if response:
-            print(f"[DEBUG] Model returned: {response}")
+            print(f"[DEBUG] Vision model returned: {response}")
             return response.strip()
 
-        return "i cant see images rn.. :((( maybe later???? :::::::::::::::::::))))))"
+        return "I can't see images right now… maybe later?"
 
     except Exception as e:
-        print(f"[OCR ERROR] {e}")
-        return "i cannot see images rn sowwwwyyyyyy.... maybe later?"
+        print(f"[VISION ERROR] {e}")
+        return "I cannot see images right now… sorry!"
 
     finally:
         IMAGE_PROCESSING_CHANNELS.discard(channel_id)
