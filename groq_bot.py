@@ -345,7 +345,10 @@ async def generate_and_reply(chan_id, message, content, mode):
         return
 			
     # ---------------- BUILD PROMPT ----------------
-    prompt = build_general_prompt(chan_id, mode, message, include_last_image=False)
+    prompt = (
+        build_general_prompt(chan_id, mode, message, include_last_image=False)
+        + f"\nUser says:\n{content}\n\nReply:"
+    )
 
     # ---------------- GENERATE RESPONSE ----------------
     try:
@@ -664,6 +667,45 @@ async def is_codunot_self_image(user_text: str) -> bool:
         return resp.strip().lower() == "yes"
     except:
         return False
+
+async def boost_image_prompt(user_prompt: str) -> str:
+    """
+    Uses LLaMA to rewrite a user image idea into a strong image-generation prompt.
+    Falls back to original prompt if boosting fails.
+    """
+
+    boost_instruction = (
+        "You are a professional image prompt engineer.\n\n"
+        "Rewrite the user's idea into a single, high-quality image generation prompt.\n\n"
+        "STRICT RULES:\n"
+        "- Preserve the user's original idea exactly (no new subjects or story changes)\n"
+        "- If a named person, character, place, or object is mentioned, you MAY clarify it "
+        "with widely-known, neutral descriptors (e.g., role or visual identity)\n"
+        "- Do NOT invent unknown facts or niche details\n"
+        "- Expand ONLY with visual details: appearance, clothing, setting, lighting, mood, composition\n"
+        "- Use concrete, vivid language suitable for AI image models\n"
+        "- Do NOT mention artist names, camera brands, or model names\n"
+        "- Do NOT include explanations or formatting\n"
+        "- Output ONE paragraph only, under 80 words\n\n"
+        "User idea:\n"
+        f"{user_prompt}"
+    )
+
+    try:
+        boosted = await call_groq(
+            prompt=boost_instruction,
+            model="llama-3.3-70b-versatile",
+            temperature=0.6
+        )
+
+        if boosted:
+            return boosted.strip()
+
+    except Exception as e:
+        print("[PROMPT BOOST ERROR]", e)
+
+    # Fallback — NEVER break image generation
+    return user_prompt
         
 # ---------------- CHESS UTILS ----------------
 
@@ -989,7 +1031,7 @@ async def on_message(message: Message):
         if await is_codunot_self_image(content):
             image_prompt = CODUNOT_SELF_IMAGE_PROMPT
         else:
-            image_prompt = content
+            image_prompt = await boost_image_prompt(content)
 
         try:
             # Set fixed aspect ratio
@@ -1012,6 +1054,8 @@ async def on_message(message: Message):
                 img.save(out, format="PNG")
                 image_bytes = out.getvalue()
 
+            channel_last_image_bytes[chan_id] = image_bytes
+			
             # Send image
             file = discord.File(io.BytesIO(image_bytes), filename="image.png")
             await message.channel.send(file=file)
@@ -1023,27 +1067,6 @@ async def on_message(message: Message):
                 message.channel,
                 "Couldn't generate image right now. Please try again later."
             )
-
-    # ---------------- CHESS MODE ----------------
-    if channel_chess.get(chan_id):
-        board = chess_engine.get_board(chan_id)
-
-        # -------- GAME OVER (ENGINE / POSITION) --------
-        if board.is_game_over():
-            result = board.result()
-            if result == "1-0":
-                channel_last_chess_result[chan_id] = "user"
-                msg = "GG 😎 you won!"
-            elif result == "0-1":
-                channel_last_chess_result[chan_id] = "bot"
-                msg = "GG 😄 I win!"
-            else:
-                channel_last_chess_result[chan_id] = "draw"
-                msg = "GG 🤝 it’s a draw!"
-
-            channel_chess[chan_id] = False
-            await send_human_reply(message.channel, f"{msg} Wanna analyze or rematch?")
-            return
 
     # ---------------- CHESS MODE ----------------
     if channel_chess.get(chan_id):
