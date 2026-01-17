@@ -16,7 +16,7 @@ from memory import MemoryManager
 from humanizer import maybe_typo
 from deAPI_client_image import generate_image
 from bot_chess import OnlineChessEngine
-from groq_client import call_groq, call_groq_vision
+from groq_client import call_groq, call_vision_model
 from slang_normalizer import apply_slang_map
 
 import chess
