@@ -384,7 +384,7 @@ async def ocr_image(image_bytes: bytes) -> str:
         img = Image.open(io.BytesIO(image_bytes)).convert("RGB")
         img_np = np.array(img)
 
-        result = ocr_engine.ocr(img_np, cls=True)
+        result = ocr_engine.ocr(img_np)
 
         if not result:
             return ""
@@ -459,9 +459,14 @@ async def extract_image_bytes(message):
     return None
 
 async def handle_image_message(message, mode):
+    """
+    Process an image sent by the user and generate a response using the vision model.
+    OCR is optional — vision model can see the image itself.
+    """
+    # Extract bytes
     image_bytes = await extract_image_bytes(message)
     if not image_bytes:
-        print("[VISION ERROR] extract_image_bytes returned None")
+        print("[VISION ERROR] No valid image found in message")
         return None
 
     channel_id = message.channel.id
@@ -471,39 +476,50 @@ async def handle_image_message(message, mode):
     if is_large_image:
         print(f"[IMAGE] Large image detected: {len(image_bytes)} bytes")
         IMAGE_PROCESSING_CHANNELS.add(channel_id)
-        await send_human_reply(message.channel, "wait a min, pls.")
+        await send_human_reply(message.channel, "Wait a min, pls.")
 
     try:
-        # ---------------- OCR ----------------
-        ocr_text = await ocr_image(image_bytes)
-        print(f"[DEBUG] OCR RESULT: {ocr_text}")
+        # 1. OCR (optional, vision model can still see the image)
+        ocr_text = ""
+        try:
+            img = Image.open(io.BytesIO(image_bytes)).convert("RGB")
+            img_np = np.array(img)
+            ocr_result = ocr_engine.ocr(img_np)  # NEW PaddleOCR syntax
+            if ocr_result:
+                lines = []
+                for line in ocr_result:
+                    for word_info in line:
+                        text = word_info[1][0]
+                        confidence = word_info[1][1]
+                        if confidence >= 0.3:
+                            lines.append(text)
+                ocr_text = "\n".join(lines).strip()
+            print(f"[DEBUG] OCR RESULT: {ocr_text}")
+        except Exception as e:
+            print(f"[OCR WARNING] OCR failed: {e}")
 
-        # ---------------- BUILD PROMPT ----------------
+        # 2. Choose persona
         persona = PERSONAS.get(mode, PERSONAS["serious"])
 
-        if ocr_text.strip():
+        # 3. Build prompt
+        if ocr_text:
             prompt = (
-                persona + "\n"
-                "The user sent an image. OCR detected some text in it:\n"
+                persona + "\nThe user sent an image. OCR detected some text:\n"
                 f"----\n{ocr_text}\n----\n"
-                "Help the user based on both the image and the text above. "
-                "Do not mention OCR or that you extracted text. "
-                "Be concise and clear."
+                "Help the user based on both the image and the text above. Keep replies concise."
             )
         else:
             prompt = (
-                persona + "\n"
-                "The user sent an image. There is no readable text in it.\n"
-                "Help the user based ONLY on the image content itself. "
-                "Be concise and clear."
+                persona + "\nThe user sent an image. There is no readable text.\n"
+                "Help the user based ONLY on the image content. Keep replies concise."
             )
 
-        # ---------------- CALL VISION MODEL ----------------
-        response = await call_groq_with_health(
+        # 4. Call vision model directly
+        response = await call_groq(
             prompt=prompt,
-            image_bytes=image_bytes,  # feed the image to the vision model
+            image_bytes=image_bytes,  # vision model sees the image
             temperature=0.7,
-            mode=mode
+            model=SCOUT_MODEL
         )
 
         if response:
