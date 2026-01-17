@@ -4,10 +4,7 @@ python-dotenv
 vaderSentiment
 aiohttp
 python-chess
-paddlepaddle
-paddleocr
 numpy
-pillow
 pdfplumber
 pdf2image
 python-docx
