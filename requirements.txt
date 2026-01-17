@@ -14,4 +14,3 @@ python-docx
 huggingface_hub>=0.15.1
 replicate
 requests
-groq
