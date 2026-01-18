@@ -29,20 +29,38 @@ async def get_session():
 
 # ---------------- TEXT ONLY CLIENT ----------------
 async def call_groq(
-    prompt: str | None = None,
+    prompt: str,
     model: str = "llama-3.3-70b-versatile",
     temperature: float = 1.0,
+    image_bytes: bytes | None = None,
     retries: int = 4
 ) -> str | None:
-    """Call Groq for text completions only."""
     if not GROQ_API_KEY:
         print("Missing GROQ API Key")
         return None
 
     session = await get_session()
+
+    content = [{"type": "text", "text": prompt}]
+
+    if image_bytes is not None:
+        model = SCOUT_MODEL  # override model automatically
+        b64 = base64.b64encode(image_bytes).decode("utf-8")
+        content.append({
+            "type": "image_url",
+            "image_url": {
+                "url": f"data:image/png;base64,{b64}"
+            }
+        })
+
     payload = {
         "model": model,
-        "messages": [{"role": "user", "content": [{"type": "text", "text": prompt}]}],
+        "messages": [
+            {
+                "role": "user",
+                "content": content
+            }
+        ],
         "temperature": temperature,
         "max_tokens": 500
     }
@@ -60,20 +78,23 @@ async def call_groq(
                 if resp.status == 200:
                     data = await resp.json()
                     return data["choices"][0]["message"]["content"]
+
                 print("\n===== GROQ ERROR =====")
                 print(f"Attempt {attempt}, Status: {resp.status}")
                 print(clean_log(text))
                 print("================================\n")
+
                 if resp.status in (401, 403):
                     return None
                 if resp.status == 429:
                     await asyncio.sleep(backoff)
                     backoff = min(backoff * 2, 8)
-                    continue
+
         except Exception as e:
-            print(f"Exception on attempt {attempt}: {clean_log(str(e))}")
+            print(f"[GROQ ERROR] Attempt {attempt}: {clean_log(str(e))}")
             await asyncio.sleep(backoff)
             backoff = min(backoff * 2, 8)
+
     return None
 
 # ---------------- VISION CLIENT ----------------
