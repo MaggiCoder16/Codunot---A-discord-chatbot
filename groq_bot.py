@@ -248,6 +248,19 @@ async def autosave_usage():
         save_usage()
         await asyncio.sleep(60)
 
+def load_tier_file(path: str) -> set[str]:
+    ids = set()
+    try:
+        with open(path, "r") as f:
+            for line in f:
+                line = line.strip()
+                if not line or line.startswith("#"):
+                    continue
+                ids.add(line)
+    except FileNotFoundError:
+        print(f"[WARN] Tier file missing: {path}")
+    return ids
+
 # ---------------- HELPERS ----------------
 def format_duration(num: int, unit: str) -> str:
     units = {"s": "second", "m": "minute", "h": "hour", "d": "day"}
