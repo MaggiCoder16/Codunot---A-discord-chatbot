@@ -57,8 +57,6 @@ chess_engine = OnlineChessEngine()
 IMAGE_PROCESSING_CHANNELS = set()
 processed_image_messages = set()
 
-bot.loop.create_task(autosave_usage())
-
 # ---------------- STATES ----------------
 message_queue = asyncio.Queue()
 channel_modes = {}
