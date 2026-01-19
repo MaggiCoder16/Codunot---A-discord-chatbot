@@ -1043,8 +1043,6 @@ async def on_message(message: Message):
             await message.reply(response)
             return
 
-
-	
     # ---------------- IMAGE GENERATION ----------------
     if message.id in processed_image_messages:
         return
@@ -1055,7 +1053,7 @@ async def on_message(message: Message):
     visual_type = await decide_visual_type(content, chan_id)
 
     # Only proceed if AI thinks it's an image request
-if visual_type == "fun":
+	if visual_type == "fun":
         await send_human_reply(message.channel, "🖼️ Generating image... please wait.")
 
         chan_id_str = str(message.channel.id)
