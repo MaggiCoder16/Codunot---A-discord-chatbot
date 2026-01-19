@@ -25,17 +25,18 @@ import base64
 from typing import Optional
 
 from usage_manager import (
-    load_usage,
-    save_usage,
     check_limit,
-    consume,
     check_total_limit,
-    consume_total
+    consume,
+    consume_total,
+    deny_limit,
+    load_usage,
+    autosave_usage,
 )
 
 load_dotenv()
 load_usage()
-print("[USAGE] Loaded daily and total counts")
+bot.loop.create_task(autosave_usage())
 
 # ---------------- CONFIG ----------------
 DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
@@ -47,41 +48,6 @@ OWNER_IDS = [
 MAX_MEMORY = 45
 RATE_LIMIT = 900
 MAX_IMAGE_BYTES = 2_000_000  # 2 MB
-
-# ---------------- DAILY LIMITS ----------------
-LIMITS = {
-    "basic": {
-        "messages": 50,
-        "images": 7,
-        "files": 5
-    },
-    "premium": {
-        "messages": 100,
-        "images": 10,
-        "files": 10
-    },
-    "gold": {
-        "messages": float("inf"),
-        "images": float("inf"),
-        "files": float("inf")
-    }
-}
-
-# ---------------- TOTAL LIMITS (LIFETIME) ----------------
-TOTAL_LIMITS = {
-    "basic": {
-        "images": 30,
-        "files": 20
-    },
-    "premium": {
-        "images": 50,
-        "files": 35
-    },
-    "gold": {
-        "images": float("inf"),
-        "files": float("inf")
-    }
-}
 
 # ---------------- CLIENT ----------------
 intents = discord.Intents.all()
@@ -101,9 +67,6 @@ channel_images = {}
 channel_memory = {}
 rate_buckets = {}
 channel_last_image_bytes = {}
-channel_usage = {}
-total_image_count = {}
-total_file_count = {}
 
 # ---------------- MODELS ----------------
 SCOUT_MODEL = "meta-llama/llama-4-scout-17b-16e-instruct"  # seriousmode
@@ -171,95 +134,6 @@ CODUNOT_SELF_IMAGE_PROMPT = (
     "dark tech background with warm glow, "
     "robot only, no humans, no realistic human features."
 )
-
-def load_channels(path):
-    if not os.path.exists(path):
-        return set()
-    with open(path, "r") as f:
-        return {line.strip() for line in f if line.strip()}
-
-PREMIUM_CHANNELS = load_channels("tiers_premium.txt")
-GOLD_CHANNELS = load_channels("tiers_gold.txt")
-
-def get_channel_tier(chan_id: str) -> str:
-    if chan_id in GOLD_CHANNELS:
-        return "gold"
-    if chan_id in PREMIUM_CHANNELS:
-        return "premium"
-    return "basic"
-
-def get_usage(chan_id):
-    today = date.today().isoformat()
-
-    usage = channel_usage.setdefault(chan_id, {
-        "day": today,
-        "messages": 0,
-        "images": 0,
-        "files": 0
-    })
-
-    # reset daily
-    if usage["day"] != today:
-        usage.update({
-            "day": today,
-            "messages": 0,
-            "images": 0,
-            "files": 0
-        })
-
-    return usage
-
-def check_limit(chan_id, kind: str) -> bool:
-    tier = get_channel_tier(chan_id)
-    limits = LIMITS[tier]
-    usage = get_usage(chan_id)
-
-    return usage[kind] < limits[kind]
-
-def consume(chan_id, kind: str):
-    usage = get_usage(chan_id)
-    usage[kind] += 1
-
-async def deny_limit(message, kind):
-    tier = get_channel_tier(str(message.channel.id))
-    await message.reply(
-        f"🚫 **{tier.upper()}** limit hit for `{kind}` today.\n"
-        "Contact aarav_2022 for an upgrade."
-    )
-
-def check_total_limit(chan_id: str, kind: str) -> bool:
-    tier = get_channel_tier(chan_id)
-    limit = TOTAL_LIMITS[tier][kind]
-
-    if limit == float("inf"):
-        return True
-
-    store = total_image_count if kind == "images" else total_file_count
-    used = store.get(chan_id, 0)
-
-    return used < limit
-
-def consume_total(chan_id: str, kind: str):
-    store = total_image_count if kind == "images" else total_file_count
-    store[chan_id] = store.get(chan_id, 0) + 1
-
-async def autosave_usage():
-    while True:
-        save_usage()
-        await asyncio.sleep(60)
-
-def load_tier_file(path: str) -> set[str]:
-    ids = set()
-    try:
-        with open(path, "r") as f:
-            for line in f:
-                line = line.strip()
-                if not line or line.startswith("#"):
-                    continue
-                ids.add(line)
-    except FileNotFoundError:
-        print(f"[WARN] Tier file missing: {path}")
-    return ids
 
 # ---------------- HELPERS ----------------
 def format_duration(num: int, unit: str) -> str:
