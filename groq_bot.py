@@ -36,7 +36,6 @@ from usage_manager import (
 
 load_dotenv()
 load_usage()
-bot.loop.create_task(autosave_usage())
 
 # ---------------- CONFIG ----------------
 DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
@@ -57,6 +56,8 @@ memory = MemoryManager(limit=60, file_path="codunot_memory.json")
 chess_engine = OnlineChessEngine()
 IMAGE_PROCESSING_CHANNELS = set()
 processed_image_messages = set()
+
+bot.loop.create_task(autosave_usage())
 
 # ---------------- STATES ----------------
 message_queue = asyncio.Queue()
