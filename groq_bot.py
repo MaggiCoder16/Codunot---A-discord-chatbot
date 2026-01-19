@@ -4,7 +4,7 @@ import asyncio
 import random
 import re
 import numpy as np
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta, timezone, date
 from collections import deque
 import urllib.parse
 
@@ -24,7 +24,18 @@ import aiohttp
 import base64
 from typing import Optional
 
+from usage_manager import (
+    load_usage,
+    save_usage,
+    check_limit,
+    consume,
+    check_total_limit,
+    consume_total
+)
+
 load_dotenv()
+load_usage()
+print("[USAGE] Loaded daily and total counts")
 
 # ---------------- CONFIG ----------------
 DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
@@ -37,6 +48,41 @@ MAX_MEMORY = 45
 RATE_LIMIT = 900
 MAX_IMAGE_BYTES = 2_000_000  # 2 MB
 
+# ---------------- DAILY LIMITS ----------------
+LIMITS = {
+    "basic": {
+        "messages": 50,
+        "images": 7,
+        "files": 5
+    },
+    "premium": {
+        "messages": 100,
+        "images": 10,
+        "files": 10
+    },
+    "gold": {
+        "messages": float("inf"),
+        "images": float("inf"),
+        "files": float("inf")
+    }
+}
+
+# ---------------- TOTAL LIMITS (LIFETIME) ----------------
+TOTAL_LIMITS = {
+    "basic": {
+        "images": 30,
+        "files": 20
+    },
+    "premium": {
+        "images": 50,
+        "files": 35
+    },
+    "gold": {
+        "images": float("inf"),
+        "files": float("inf")
+    }
+}
+
 # ---------------- CLIENT ----------------
 intents = discord.Intents.all()
 intents.message_content = True
@@ -45,7 +91,6 @@ memory = MemoryManager(limit=60, file_path="codunot_memory.json")
 chess_engine = OnlineChessEngine()
 IMAGE_PROCESSING_CHANNELS = set()
 processed_image_messages = set()
-
 
 # ---------------- STATES ----------------
 message_queue = asyncio.Queue()
@@ -56,6 +101,9 @@ channel_images = {}
 channel_memory = {}
 rate_buckets = {}
 channel_last_image_bytes = {}
+channel_usage = {}
+total_image_count = {}
+total_file_count = {}
 
 # ---------------- MODELS ----------------
 SCOUT_MODEL = "meta-llama/llama-4-scout-17b-16e-instruct"  # seriousmode
@@ -123,7 +171,83 @@ CODUNOT_SELF_IMAGE_PROMPT = (
     "dark tech background with warm glow, "
     "robot only, no humans, no realistic human features."
 )
-    
+
+def load_channels(path):
+    if not os.path.exists(path):
+        return set()
+    with open(path, "r") as f:
+        return {line.strip() for line in f if line.strip()}
+
+PREMIUM_CHANNELS = load_channels("tiers_premium.txt")
+GOLD_CHANNELS = load_channels("tiers_gold.txt")
+
+def get_channel_tier(chan_id: str) -> str:
+    if chan_id in GOLD_CHANNELS:
+        return "gold"
+    if chan_id in PREMIUM_CHANNELS:
+        return "premium"
+    return "basic"
+
+def get_usage(chan_id):
+    today = date.today().isoformat()
+
+    usage = channel_usage.setdefault(chan_id, {
+        "day": today,
+        "messages": 0,
+        "images": 0,
+        "files": 0
+    })
+
+    # reset daily
+    if usage["day"] != today:
+        usage.update({
+            "day": today,
+            "messages": 0,
+            "images": 0,
+            "files": 0
+        })
+
+    return usage
+
+def check_limit(chan_id, kind: str) -> bool:
+    tier = get_channel_tier(chan_id)
+    limits = LIMITS[tier]
+    usage = get_usage(chan_id)
+
+    return usage[kind] < limits[kind]
+
+def consume(chan_id, kind: str):
+    usage = get_usage(chan_id)
+    usage[kind] += 1
+
+async def deny_limit(message, kind):
+    tier = get_channel_tier(str(message.channel.id))
+    await message.reply(
+        f"🚫 **{tier.upper()}** limit hit for `{kind}` today.\n"
+        "Contact aarav_2022 for an upgrade."
+    )
+
+def check_total_limit(chan_id: str, kind: str) -> bool:
+    tier = get_channel_tier(chan_id)
+    limit = TOTAL_LIMITS[tier][kind]
+
+    if limit == float("inf"):
+        return True
+
+    store = total_image_count if kind == "images" else total_file_count
+    used = store.get(chan_id, 0)
+
+    return used < limit
+
+def consume_total(chan_id: str, kind: str):
+    store = total_image_count if kind == "images" else total_file_count
+    store[chan_id] = store.get(chan_id, 0) + 1
+
+async def autosave_usage():
+    while True:
+        save_usage()
+        await asyncio.sleep(60)
+
 # ---------------- HELPERS ----------------
 def format_duration(num: int, unit: str) -> str:
     units = {"s": "second", "m": "minute", "h": "hour", "d": "day"}
@@ -485,6 +609,22 @@ from docx import Document
 from pdf2image import convert_from_bytes
 
 async def handle_file_message(message, mode):
+    chan_id_str = str(message.channel.id)
+
+    # Check daily limit
+    if not check_limit(chan_id_str, "files"):
+        await deny_limit(message, "files")
+        return None
+
+    # Check total lifetime limit
+    if not check_total_limit(chan_id_str, "files"):
+        await message.reply(
+            "🚫 You've hit your **total file upload limit**.\n"
+            "Contact aarav_2022 for an upgrade."
+        )
+        return None
+
+    # Extract file bytes
     file_bytes, filename = await extract_file_bytes(message)
     if not file_bytes:
         return None
@@ -497,7 +637,6 @@ async def handle_file_message(message, mode):
             text = await read_text_file(file_bytes)
 
         elif filename_lower.endswith(".pdf"):
-            # Try text extraction
             try:
                 with pdfplumber.open(io.BytesIO(file_bytes)) as pdf:
                     pages_text = [page.extract_text() or "" for page in pdf.pages]
@@ -511,21 +650,33 @@ async def handle_file_message(message, mode):
             text = "\n".join(p.text for p in doc.paragraphs).strip()
 
         else:
-            await message.channel.send(f"⚠️ I cannot read `{filename}` (unsupported file type).")
+            await message.channel.send(
+                f"⚠️ I cannot read `{filename}` (unsupported file type)."
+            )
             return None
 
     except Exception as e:
         print(f"[FILE ERROR] Failed to read {filename}: {e}")
-        await message.channel.send(f"⚠️ I cannot read `{filename}` as a file.")
+        await message.channel.send(
+            f"⚠️ I cannot read `{filename}` as a file."
+        )
         return None
 
     if not text:
-        await message.channel.send(f"⚠️ `{filename}` appears to have no readable text.")
+        await message.channel.send(
+            f"⚠️ `{filename}` appears to have no readable text."
+        )
         return None
 
+    # Build prompt
     persona = PERSONAS.get(mode, PERSONAS["serious"])
-    prompt = f"{persona}\nThe user uploaded a file `{filename}`. Content:\n{text}\n\nHelp the user based on this content."
+    prompt = (
+        f"{persona}\n"
+        f"The user uploaded a file `{filename}`. Content:\n{text}\n\n"
+        "Help the user based on this content."
+    )
 
+    # Call Groq and reply
     try:
         response = await call_groq_with_health(
             prompt=prompt,
@@ -534,11 +685,18 @@ async def handle_file_message(message, mode):
         )
         if response:
             await send_human_reply(message.channel, response.strip())
+
+            # Update counts
+            consume(chan_id_str, "files")        # daily
+            consume_total(chan_id_str, "files")  # total
+            save_usage()  # save after consuming
+
             return response.strip()
     except Exception as e:
         print(f"[FILE RESPONSE ERROR] {e}")
 
     return "❌ Couldn't process the file."
+
 
 # ---------------- IMAGE TYPE DETECTION ----------------
 
@@ -635,9 +793,14 @@ async def boost_image_prompt(user_prompt: str) -> str:
 def build_vision_followup_prompt(message):
     return (
         "You are Codunot.\n"
-        "The user is continuing a conversation about the previously shown image.\n"
-        "Answer their message using ONLY what you can see in that image.\n"
-        "If the question is unclear, describe the image briefly.\n\n"
+        "An image was shown earlier in this channel.\n\n"
+
+        "RULES:\n"
+        "- ONLY talk about the image if the user's message is clearly referring to it.\n"
+        "- If the user asks something unrelated (greetings, bot info, creator, general chat, etc.), "
+        "IGNORE the image completely and reply normally.\n"
+        "- If the user is unclear, ask ONE short clarification question.\n\n"
+
         f"User message:\n{message.content}"
     )
         
@@ -963,6 +1126,8 @@ async def on_message(message: Message):
             await message.reply(response)
             return
 
+
+	
     # ---------------- IMAGE GENERATION ----------------
     if message.id in processed_image_messages:
         return
@@ -975,6 +1140,31 @@ async def on_message(message: Message):
     # Only proceed if AI thinks it's an image request
     if visual_type == "fun":
         await send_human_reply(message.channel, "🖼️ Generating image... please wait for some time.")
+
+        chan_id_str = str(message.channel.id)
+
+    # Daily limit
+    if not check_limit(chan_id_str, "images"):
+        await deny_limit(message, "images")
+        return
+
+    # Daily limit
+    if not check_limit(chan_id_str, "images"):
+        await deny_limit(message, "images")
+        return
+
+    # Total lifetime limit
+    if not check_total_limit(chan_id_str, "images"):
+        await message.reply(
+            "🚫 You've hit your **total image generation limit**.\n"
+            "Contact aarav_2022 for an upgrade."
+        )
+        return
+
+    # After generating + sending image
+    consume(chan_id_str, "images")       # daily
+    consume_total(chan_id_str, "images") # total
+    save_usage()  # persist counts
 
         # Handle Codunot self-image request
         if await is_codunot_self_image(content):
@@ -1009,7 +1199,11 @@ async def on_message(message: Message):
             # Send image
             file = discord.File(io.BytesIO(image_bytes), filename="image.png")
             await message.channel.send(file=file)
-            return
+			
+			consume(chan_id_str, "images")       # daily
+            consume_total(chan_id_str, "images") # total
+			save_usage()
+			return
 
         except Exception as e:
             print("[Codunot ERROR]", e)
@@ -1146,7 +1340,16 @@ async def on_message(message: Message):
         await handle_roast_mode(chan_id, message, content)
         return
 
+
+
     # ---------------- GENERAL CHAT ----------------
+	chan_id = str(message.channel.id)
+
+    if not check_limit(chan_id, "messages"):
+        await deny_limit(message, "messages")
+        return
+
+    consume(chan_id, "messages")
     asyncio.create_task(generate_and_reply(chan_id, message, content, mode))
 
     # ---------------- SAVE USER MESSAGE ----------------
@@ -1157,6 +1360,7 @@ async def on_message(message: Message):
 async def on_ready():
     print(f"{BOT_NAME} is ready!")
     asyncio.create_task(process_queue())
+    asyncio.create_task(autosave_usage())
 
 # ---------------- RUN ----------------
 def run():
