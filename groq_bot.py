@@ -15,6 +15,7 @@ from dotenv import load_dotenv
 from memory import MemoryManager
 from humanizer import maybe_typo
 from deAPI_client_image import generate_image
+from deAPI_client_image_edit import edit_image
 from bot_chess import OnlineChessEngine
 from groq_client import call_groq
 from slang_normalizer import apply_slang_map
@@ -68,6 +69,7 @@ channel_images = {}
 channel_memory = {}
 rate_buckets = {}
 channel_last_image_bytes = {}
+channel_recent_images = {}
 
 # ---------------- MODELS ----------------
 SCOUT_MODEL = "meta-llama/llama-4-scout-17b-16e-instruct"  # seriousmode
@@ -191,6 +193,31 @@ async def can_send_in_guild(guild_id):
         bucket.append(now)
         return True
     return False
+
+def pil_merge_images(image_bytes_list):
+    images = [Image.open(io.BytesIO(b)).convert("RGBA") for b in image_bytes_list]
+
+    max_h = max(img.height for img in images)
+
+    resized = [
+        img.resize(
+            (int(img.width * max_h / img.height), max_h),
+            Image.LANCZOS
+        )
+        for img in images
+    ]
+
+    total_width = sum(img.width for img in resized)
+    canvas = Image.new("RGBA", (total_width, max_h), (255, 255, 255, 255))
+
+    x = 0
+    for img in resized:
+        canvas.paste(img, (x, 0))
+        x += img.width
+
+    out = io.BytesIO()
+    canvas.save(out, format="PNG")
+    return out.getvalue()
 
 # ---------------- PERSONAS ----------------
 PERSONAS = {
@@ -587,6 +614,48 @@ async def decide_visual_type(user_text: str, chan_id: str) -> str:
     result = feedback.strip().lower()
     return "fun" if result == "fun" else "text"
 
+# ---------------- MERGE, EDIT, OR NONE DETECTION ----------------
+
+async def decide_image_action(user_text: str, image_count: int) -> str:
+    """
+    Returns one of: 'MERGE', 'EDIT', 'NO'
+    """
+
+    prompt = (
+        "You are an intent classifier.\n"
+        "Answer with ONLY ONE WORD: MERGE, EDIT, or NO.\n\n"
+
+        "Definitions:\n"
+        "- MERGE: combine multiple images or people into ONE image\n"
+        "- EDIT: modify existing image(s) without combining people\n"
+        "- NO: user is not asking for image editing\n\n"
+
+        "Examples:\n"
+        "User: 'merge these two' → MERGE\n"
+        "User: 'put us together in a park' → MERGE\n"
+        "User: 'change the background' → EDIT\n"
+        "User: 'make it anime style' → EDIT\n"
+        "User: 'who is this?' → NO\n\n"
+
+        f"Number of images: {image_count}\n\n"
+        f"User message:\n{user_text}\n\n"
+        "Answer:"
+    )
+
+    try:
+        response = await call_groq(
+            prompt=prompt,
+            model="llama-3.3-70b-versatile",
+            temperature=0
+        )
+        answer = response.strip().upper()
+        if answer in {"MERGE", "EDIT", "NO"}:
+            return answer
+        return "NO"
+    except Exception as e:
+        print("[LLAMA IMAGE ACTION ERROR]", e)
+        return "NO"
+
 # ---------------- DETECT IF USER IS ASKING CODUNOT FOR IT'S OWN IMAGE ----------------
 
 async def is_codunot_self_image(user_text: str) -> bool:
@@ -872,220 +941,248 @@ def normalize_move_input(board, text: str):
     return None
 	
 # ---------------- ON_MESSAGE ----------------
-@bot.event
-async def on_message(message: Message):
-    if message.author.bot:
-        return
-
-    now = datetime.utcnow()
-    is_dm = isinstance(message.channel, discord.DMChannel)
-    chan_id = f"dm_{message.author.id}" if is_dm else str(message.channel.id)
-    guild_id = message.guild.id if message.guild else None
-    bot_id = bot.user.id
-
-    # Bot only responds in servers when pinged
-    if not is_dm:
-        if bot.user not in message.mentions:
+    @bot.event
+    async def on_message(message: Message):
+        if message.author.bot:
             return
 
-    # ---------------- IMAGE PROCESSING LOCK ----------------
-    if message.channel.id in IMAGE_PROCESSING_CHANNELS:
-        print("[LOCK] Ignoring message during image processing")
-        return
+        # ---------- BASIC SETUP ----------
+        content = message.content.strip()
+        image_bytes_list = []
 
-    # Strip mention safely
-    content = re.sub(rf"<@!?\s*{bot_id}\s*>", "", message.content).strip()
-    content_lower = content.lower()
+        now = datetime.utcnow()
+        is_dm = isinstance(message.channel, discord.DMChannel)
+        chan_id = f"dm_{message.author.id}" if is_dm else str(message.channel.id)
+        guild_id = message.guild.id if message.guild else None
+        bot_id = bot.user.id
 
-    # Load or set default mode
-    saved_mode = memory.get_channel_mode(chan_id)
-    channel_modes[chan_id] = saved_mode if saved_mode else "funny"
-    if not saved_mode:
-        memory.save_channel_mode(chan_id, "funny")
+        # ---------- BOT PING RULE ----------
+        if not is_dm:
+            if bot.user not in message.mentions:
+                return
 
-    # Ensure mem slots
-    channel_mutes.setdefault(chan_id, None)
-    channel_chess.setdefault(chan_id, False)
-    channel_memory.setdefault(chan_id, deque(maxlen=MAX_MEMORY))
-    channel_modes.setdefault(chan_id, "funny")
-    mode = channel_modes[chan_id]
-
-    # ---------------- OWNER COMMANDS ----------------
-    if message.author.id in OWNER_IDS:
-        if content_lower.startswith("!quiet"):
-            match = re.search(r"!quiet (\d+)([smhd])", content_lower)
-            if match:
-                num = int(match.group(1))
-                sec = num * {"s":1,"m":60,"h":3600,"d":86400}[match.group(2)]
-                channel_mutes[chan_id] = datetime.utcnow() + timedelta(seconds=sec)
-                await send_human_reply(message.channel, f"I'll stop yapping for {format_duration(num, match.group(2))}.")
+        # ---------- IMAGE PROCESSING LOCK ----------
+        if message.channel.id in IMAGE_PROCESSING_CHANNELS:
+            print("[LOCK] Ignoring message during image processing")
             return
 
-        if content_lower.startswith("!speak"):
-            channel_mutes[chan_id] = None
-            await send_human_reply(message.channel, "YOO I'm back 😎🔥")
+        # ---------- STRIP BOT MENTION ----------
+        content = re.sub(rf"<@!?\s*{bot_id}\s*>", "", message.content).strip()
+        content_lower = content.lower()
+
+        # ---------- EXTRACT IMAGE BYTES FOR EDITING ----------
+        if message.attachments:
+            for attachment in message.attachments:
+                if attachment.content_type and attachment.content_type.startswith("image/"):
+                    image_bytes_list.append(await attachment.read())
+
+        # ---------- LOAD MODE ----------
+        saved_mode = memory.get_channel_mode(chan_id)
+        channel_modes[chan_id] = saved_mode if saved_mode else "funny"
+        if not saved_mode:
+            memory.save_channel_mode(chan_id, "funny")
+
+        channel_mutes.setdefault(chan_id, None)
+        channel_chess.setdefault(chan_id, False)
+        channel_memory.setdefault(chan_id, deque(maxlen=MAX_MEMORY))
+        channel_modes.setdefault(chan_id, "funny")
+        mode = channel_modes[chan_id]
+
+        # ---------- OWNER COMMANDS ----------
+        if message.author.id in OWNER_IDS:
+            if content_lower.startswith("!quiet"):
+                match = re.search(r"!quiet (\d+)([smhd])", content_lower)
+                if match:
+                    num = int(match.group(1))
+                    sec = num * {"s":1,"m":60,"h":3600,"d":86400}[match.group(2)]
+                    channel_mutes[chan_id] = datetime.utcnow() + timedelta(seconds=sec)
+                    await send_human_reply(
+                        message.channel,
+                        f"I'll stop yapping for {format_duration(num, match.group(2))}."
+                    )
+                return
+
+            if content_lower.startswith("!speak"):
+                channel_mutes[chan_id] = None
+                await send_human_reply(message.channel, "YOO I'm back 😎🔥")
+                return
+
+        # ---------- QUIET MODE ----------
+        if channel_mutes.get(chan_id) and now < channel_mutes[chan_id]:
             return
 
-    # ---------------- QUIET MODE ----------------
-    if channel_mutes.get(chan_id) and now < channel_mutes[chan_id]:
-        return
-
-    # ---------------- MODE SWITCHING ----------------
-    if content_lower.startswith("!funmode"):
-        channel_modes[chan_id] = "funny"
-        memory.save_channel_mode(chan_id, "funny")
-        if channel_chess.get(chan_id):
+        # ---------- MODE SWITCHING ----------
+        if content_lower.startswith("!funmode"):
+            channel_modes[chan_id] = "funny"
+            memory.save_channel_mode(chan_id, "funny")
             channel_chess[chan_id] = False
-            await send_human_reply(message.channel, "😎 Fun mode activated! ♟️ Chess mode ended.")
-        else:
             await send_human_reply(message.channel, "😎 Fun mode activated!")
-        return
+            return
 
-    if content_lower.startswith("!seriousmode"):
-        channel_modes[chan_id] = "serious"
-        memory.save_channel_mode(chan_id, "serious")
-        if channel_chess.get(chan_id):
+        if content_lower.startswith("!seriousmode"):
+            channel_modes[chan_id] = "serious"
+            memory.save_channel_mode(chan_id, "serious")
             channel_chess[chan_id] = False
-            await send_human_reply(message.channel, "🤓 Serious mode ON. ♟️ Chess mode ended.")
-        else:
             await send_human_reply(message.channel, "🤓 Serious mode ON")
-        return
+            return
 
-    if content_lower.startswith("!roastmode"):
-        channel_modes[chan_id] = "roast"
-        memory.save_channel_mode(chan_id, "roast")
-        if channel_chess.get(chan_id):
+        if content_lower.startswith("!roastmode"):
+            channel_modes[chan_id] = "roast"
+            memory.save_channel_mode(chan_id, "roast")
             channel_chess[chan_id] = False
-            await send_human_reply(message.channel, "🔥 ROAST MODE ACTIVATED. ♟️ Chess mode ended.")
-        else:
             await send_human_reply(message.channel, "🔥 ROAST MODE ACTIVATED")
-        return
+            return
 
-    if content_lower.startswith("!chessmode"):
-        channel_chess[chan_id] = True
-        chess_engine.new_board(chan_id)
-        await send_human_reply(message.channel, "♟️ Chess mode ACTIVATED. You are white, start!")
-        return
+        if content_lower.startswith("!chessmode"):
+            channel_chess[chan_id] = True
+            chess_engine.new_board(chan_id)
+            await send_human_reply(message.channel, "♟️ Chess mode ACTIVATED. You are white, start!")
+            return
 
-    # ---------------- SAFE IMAGE CHECK ----------------
-    has_image = False
+        # ---------- AI IMAGE EDIT / MERGE (counts as image generation) ----------
+        if image_bytes_list and content:
+            action = await decide_image_action(content, len(image_bytes_list))
 
-    # attachments
-    if any(a.content_type and a.content_type.startswith("image/") for a in message.attachments):
-        has_image = True
+            if action == "MERGE" and len(image_bytes_list) >= 2:
+                await send_human_reply(message.channel, "🖼️ Merging images...")
 
-    # embeds
-    elif any((e.image and e.image.url) or (e.thumbnail and e.thumbnail.url) for e in message.embeds):
-        has_image = True
+                merged_ref = pil_merge_images(image_bytes_list)
 
-    # image-urls only
-    else:
-        urls = re.findall(r"(https?://\S+)", message.content)
-        img_exts = (".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp", ".tiff")
-        if any(url.lower().endswith(img_exts) for url in urls):
+                try:
+                    result = await edit_image(
+                        image_bytes=merged_ref,
+                        prompt=content,
+                        steps=15
+                    )
+
+                    await message.channel.send(
+                        file=discord.File(io.BytesIO(result), filename="merged.png")
+                    )
+
+                    # ---------- Consume limits like normal image generation ----------
+                    consume(message, "images")
+                    consume_total(message, "images")
+                    save_usage()
+
+                except Exception as e:
+                    print("[IMAGE MERGE ERROR]", e)
+                    await send_human_reply(
+                        message.channel,
+                        "🤔 Couldn't merge the images right now."
+                    )
+
+                return
+
+            if action == "EDIT":
+                ref_image = image_bytes_list[0]
+                await send_human_reply(message.channel, "🎨 Editing image...")
+
+                try:
+                    result = await edit_image(
+                        image_bytes=ref_image,
+                        prompt=content,
+                        steps=15
+                    )
+
+                    await message.channel.send(
+                        file=discord.File(io.BytesIO(result), filename="edited.png")
+                    )
+
+                    # ---------- Consume limits like normal image generation ----------
+                    consume(message, "images")
+                    consume_total(message, "images")
+                    save_usage()
+
+                except Exception as e:
+                    print("[IMAGE EDIT ERROR]", e)
+                    await send_human_reply(
+                        message.channel,
+                        "🤔 Couldn't edit the image right now."
+                    )
+
+                return
+
+        # ---------- SAFE IMAGE CHECK ----------
+        has_image = False
+
+        if any(a.content_type and a.content_type.startswith("image/") for a in message.attachments):
             has_image = True
-
-    if has_image:
-        image_reply = await handle_image_message(message, mode)
-        if image_reply is not None:
-            await send_human_reply(message.channel, image_reply)
-            return
-
-    # ---------------- FILE UPLOAD PROCESSING ----------------
-    has_file = bool(message.attachments)
-    if has_file:
-        file_reply = await handle_file_message(message, mode)
-        if file_reply is not None:
-            return
-
-    # ---------------- LAST IMAGE FOLLOW-UP ----------------
-    if chan_id in channel_last_image_bytes:
-        mode = channel_modes.get(chan_id, "funny")  # preserve current mode
-
-        # Ask AI whether the new message is explicitly about the previous image
-        visual_check = await decide_visual_type(content, chan_id)
-
-        if visual_check == "fun":
-            # User wants a new image → continue to image generation block
-            pass
+        elif any((e.image and e.image.url) or (e.thumbnail and e.thumbnail.url) for e in message.embeds):
+            has_image = True
         else:
-            # User message is NOT about the image → normal chat
-            await generate_and_reply(chan_id, message, content, mode)
+            urls = re.findall(r"(https?://\S+)", message.content)
+            img_exts = (".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp", ".tiff")
+            if any(url.lower().endswith(img_exts) for url in urls):
+                has_image = True
+
+        if has_image:
+            image_reply = await handle_image_message(message, mode)
+            if image_reply is not None:
+                await send_human_reply(message.channel, image_reply)
+                return
+
+        # ---------- FILE UPLOAD PROCESSING ----------
+        if message.attachments:
+            file_reply = await handle_file_message(message, mode)
+            if file_reply is not None:
+                return
+
+        # ---------- LAST IMAGE FOLLOW-UP ----------
+        if chan_id in channel_last_image_bytes:
+            visual_check = await decide_visual_type(content, chan_id)
+            if visual_check != "fun":
+                await generate_and_reply(chan_id, message, content, mode)
+                return
+
+        # ---------- IMAGE GENERATION ----------
+        if message.id in processed_image_messages:
             return
 
-    # ---------------- IMAGE GENERATION ----------------
-    if message.id in processed_image_messages:
-        return
+        processed_image_messages.add(message.id)
 
-    processed_image_messages.add(message.id)
+        visual_type = await decide_visual_type(content, chan_id)
 
-    # Decide if user is explicitly requesting an image
-    visual_type = await decide_visual_type(content, chan_id)
+        if visual_type == "fun":
+            await send_human_reply(message.channel, "🖼️ Generating image... please wait.")
 
-    # Only proceed if AI thinks it's an image request
-    if visual_type == "fun":
-        await send_human_reply(message.channel, "🖼️ Generating image... please wait.")
+            if not check_limit(message, "images"):
+                await deny_limit(message, "images")
+                return
 
-        # Daily limit
-        if not check_limit(message, "images"):
-            await deny_limit(message, "images")
-            return
-
-        # Total lifetime limit
-        if not check_total_limit(message, "images"):
-            await message.reply(
-                "🚫 You've hit your **total image generation limit**.\n"
-                "Contact aarav_2022 for an upgrade."
-            )
-            return
-
-        # Decide prompt
-        if await is_codunot_self_image(content):
-            image_prompt = CODUNOT_SELF_IMAGE_PROMPT
-        else:
-            image_prompt = await boost_image_prompt(content)
-
-        print(f"[IMAGE PROMPT BOOSTED] ({chan_id}) {image_prompt}")
-
-        try:
-            # Generate image
-            aspect = "16:9"
-            image_bytes = await generate_image(image_prompt, aspect_ratio=aspect, steps=15)
-
-            # Resize if too large
-            MAX_BYTES = 5_000_000
-            if len(image_bytes) > MAX_BYTES:
-                img = Image.open(io.BytesIO(image_bytes))
-                scale = (MAX_BYTES / len(image_bytes)) ** 0.5
-                img = img.resize(
-                    (int(img.width * scale), int(img.height * scale)),
-                    Image.ANTIALIAS
+            if not check_total_limit(message, "images"):
+                await message.reply(
+                    "🚫 You've hit your **total image generation limit**.\n"
+                    "Contact aarav_2022 for an upgrade."
                 )
-                out = io.BytesIO()
-                img.save(out, format="PNG")
-                image_bytes = out.getvalue()
+                return
 
-            # Save last image
-            channel_last_image_bytes[chan_id] = image_bytes
+            if await is_codunot_self_image(content):
+                image_prompt = CODUNOT_SELF_IMAGE_PROMPT
+            else:
+                image_prompt = await boost_image_prompt(content)
 
-            # Send image
-            file = discord.File(io.BytesIO(image_bytes), filename="image.png")
-            await message.channel.send(file=file)
+            try:
+                image_bytes = await generate_image(image_prompt, aspect_ratio="16:9", steps=15)
 
-            # Update usage counts once
-            consume(message, "images")       # daily
-            consume_total(message, "images") # total
-            save_usage()
-            return
+                channel_last_image_bytes[chan_id] = image_bytes
 
-        except Exception as e:
-            print("[IMAGE GEN ERROR]", e)
-            await send_human_reply(
-                message.channel,
-                "🤔 Couldn't generate image right now. Please try again later."
-            )
-            return
+                await message.channel.send(
+                    file=discord.File(io.BytesIO(image_bytes), filename="image.png")
+                )
 
+                consume(message, "images")
+                consume_total(message, "images")
+                save_usage()
+                return
+
+            except Exception as e:
+                print("[IMAGE GEN ERROR]", e)
+                await send_human_reply(
+                    message.channel,
+                    "🤔 Couldn't generate image right now. Please try again later."
+                )
+                return
+				
     # ---------------- CHESS MODE ----------------
     if channel_chess.get(chan_id):
         board = chess_engine.get_board(chan_id)
