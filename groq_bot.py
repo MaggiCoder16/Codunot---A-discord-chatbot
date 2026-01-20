@@ -1076,7 +1076,7 @@ async def on_message(message: Message):
             consume(message, "images")       # daily
             consume_total(message, "images") # total
             save_usage()
-			return
+            return
 
         except Exception as e:
             print("[IMAGE GEN ERROR]", e)
