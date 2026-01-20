@@ -2,12 +2,10 @@ discord.py>=2.0.0
 aiohttp>=3.8.0
 python-dotenv
 vaderSentiment
-aiohttp
 python-chess
 numpy
 pdfplumber
 pdf2image
+Pillow
 python-docx
-huggingface_hub>=0.15.1
-replicate
 requests
