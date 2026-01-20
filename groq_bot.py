@@ -940,395 +940,394 @@ def normalize_move_input(board, text: str):
 
     return None
 	
-# ---------------- ON_MESSAGE ----------------
-    @bot.event
-    async def on_message(message: Message):
-        if message.author.bot:
+@bot.event
+async def on_message(message: Message):
+    if message.author.bot:
+        return
+
+    # ---------- BASIC SETUP ----------
+    content = message.content.strip()
+    image_bytes_list = []
+
+    now = datetime.utcnow()
+    is_dm = isinstance(message.channel, discord.DMChannel)
+    chan_id = f"dm_{message.author.id}" if is_dm else str(message.channel.id)
+    guild_id = message.guild.id if message.guild else None
+    bot_id = bot.user.id
+
+    # ---------- BOT PING RULE ----------
+    if not is_dm:
+        if bot.user not in message.mentions:
             return
 
-        # ---------- BASIC SETUP ----------
-        content = message.content.strip()
-        image_bytes_list = []
+    # ---------- IMAGE PROCESSING LOCK ----------
+    if message.channel.id in IMAGE_PROCESSING_CHANNELS:
+        print("[LOCK] Ignoring message during image processing")
+        return
 
-        now = datetime.utcnow()
-        is_dm = isinstance(message.channel, discord.DMChannel)
-        chan_id = f"dm_{message.author.id}" if is_dm else str(message.channel.id)
-        guild_id = message.guild.id if message.guild else None
-        bot_id = bot.user.id
+    # ---------- STRIP BOT MENTION ----------
+    content = re.sub(rf"<@!?\s*{bot_id}\s*>", "", message.content).strip()
+    content_lower = content.lower()
 
-        # ---------- BOT PING RULE ----------
-        if not is_dm:
-            if bot.user not in message.mentions:
-                return
+    # ---------- EXTRACT IMAGE BYTES FOR EDITING ----------
+    if message.attachments:
+        for attachment in message.attachments:
+            if attachment.content_type and attachment.content_type.startswith("image/"):
+                image_bytes_list.append(await attachment.read())
 
-        # ---------- IMAGE PROCESSING LOCK ----------
-        if message.channel.id in IMAGE_PROCESSING_CHANNELS:
-            print("[LOCK] Ignoring message during image processing")
+    # ---------- LOAD MODE ----------
+    saved_mode = memory.get_channel_mode(chan_id)
+    channel_modes[chan_id] = saved_mode if saved_mode else "funny"
+    if not saved_mode:
+        memory.save_channel_mode(chan_id, "funny")
+
+    channel_mutes.setdefault(chan_id, None)
+    channel_chess.setdefault(chan_id, False)
+    channel_memory.setdefault(chan_id, deque(maxlen=MAX_MEMORY))
+    channel_modes.setdefault(chan_id, "funny")
+    mode = channel_modes[chan_id]
+
+    # ---------- OWNER COMMANDS ----------
+    if message.author.id in OWNER_IDS:
+        if content_lower.startswith("!quiet"):
+            match = re.search(r"!quiet (\d+)([smhd])", content_lower)
+            if match:
+                num = int(match.group(1))
+                sec = num * {"s":1,"m":60,"h":3600,"d":86400}[match.group(2)]
+                channel_mutes[chan_id] = datetime.utcnow() + timedelta(seconds=sec)
+                await send_human_reply(
+                    message.channel,
+                    f"I'll stop yapping for {format_duration(num, match.group(2))}."
+                )
             return
 
-        # ---------- STRIP BOT MENTION ----------
-        content = re.sub(rf"<@!?\s*{bot_id}\s*>", "", message.content).strip()
-        content_lower = content.lower()
-
-        # ---------- EXTRACT IMAGE BYTES FOR EDITING ----------
-        if message.attachments:
-            for attachment in message.attachments:
-                if attachment.content_type and attachment.content_type.startswith("image/"):
-                    image_bytes_list.append(await attachment.read())
-
-        # ---------- LOAD MODE ----------
-        saved_mode = memory.get_channel_mode(chan_id)
-        channel_modes[chan_id] = saved_mode if saved_mode else "funny"
-        if not saved_mode:
-            memory.save_channel_mode(chan_id, "funny")
-
-        channel_mutes.setdefault(chan_id, None)
-        channel_chess.setdefault(chan_id, False)
-        channel_memory.setdefault(chan_id, deque(maxlen=MAX_MEMORY))
-        channel_modes.setdefault(chan_id, "funny")
-        mode = channel_modes[chan_id]
-
-        # ---------- OWNER COMMANDS ----------
-        if message.author.id in OWNER_IDS:
-            if content_lower.startswith("!quiet"):
-                match = re.search(r"!quiet (\d+)([smhd])", content_lower)
-                if match:
-                    num = int(match.group(1))
-                    sec = num * {"s":1,"m":60,"h":3600,"d":86400}[match.group(2)]
-                    channel_mutes[chan_id] = datetime.utcnow() + timedelta(seconds=sec)
-                    await send_human_reply(
-                        message.channel,
-                        f"I'll stop yapping for {format_duration(num, match.group(2))}."
-                    )
-                return
-
-            if content_lower.startswith("!speak"):
-                channel_mutes[chan_id] = None
-                await send_human_reply(message.channel, "YOO I'm back 😎🔥")
-                return
-
-        # ---------- QUIET MODE ----------
-        if channel_mutes.get(chan_id) and now < channel_mutes[chan_id]:
+        if content_lower.startswith("!speak"):
+            channel_mutes[chan_id] = None
+            await send_human_reply(message.channel, "YOO I'm back 😎🔥")
             return
 
-        # ---------- MODE SWITCHING ----------
-        if content_lower.startswith("!funmode"):
-            channel_modes[chan_id] = "funny"
-            memory.save_channel_mode(chan_id, "funny")
-            channel_chess[chan_id] = False
-            await send_human_reply(message.channel, "😎 Fun mode activated!")
-            return
+    # ---------- QUIET MODE ----------
+    if channel_mutes.get(chan_id) and now < channel_mutes[chan_id]:
+        return
 
-        if content_lower.startswith("!seriousmode"):
-            channel_modes[chan_id] = "serious"
-            memory.save_channel_mode(chan_id, "serious")
-            channel_chess[chan_id] = False
-            await send_human_reply(message.channel, "🤓 Serious mode ON")
-            return
+    # ---------- MODE SWITCHING ----------
+    if content_lower.startswith("!funmode"):
+        channel_modes[chan_id] = "funny"
+        memory.save_channel_mode(chan_id, "funny")
+        channel_chess[chan_id] = False
+        await send_human_reply(message.channel, "😎 Fun mode activated!")
+        return
 
-        if content_lower.startswith("!roastmode"):
-            channel_modes[chan_id] = "roast"
-            memory.save_channel_mode(chan_id, "roast")
-            channel_chess[chan_id] = False
-            await send_human_reply(message.channel, "🔥 ROAST MODE ACTIVATED")
-            return
+    if content_lower.startswith("!seriousmode"):
+        channel_modes[chan_id] = "serious"
+        memory.save_channel_mode(chan_id, "serious")
+        channel_chess[chan_id] = False
+        await send_human_reply(message.channel, "🤓 Serious mode ON")
+        return
 
-        if content_lower.startswith("!chessmode"):
-            channel_chess[chan_id] = True
-            chess_engine.new_board(chan_id)
-            await send_human_reply(message.channel, "♟️ Chess mode ACTIVATED. You are white, start!")
-            return
+    if content_lower.startswith("!roastmode"):
+        channel_modes[chan_id] = "roast"
+        memory.save_channel_mode(chan_id, "roast")
+        channel_chess[chan_id] = False
+        await send_human_reply(message.channel, "🔥 ROAST MODE ACTIVATED")
+        return
 
-        # ---------- AI IMAGE EDIT / MERGE (counts as image generation) ----------
-        if image_bytes_list and content:
-            # Decide what the user wants
+    if content_lower.startswith("!chessmode"):
+        channel_chess[chan_id] = True
+        chess_engine.new_board(chan_id)
+        await send_human_reply(message.channel, "♟️ Chess mode ACTIVATED. You are white, start!")
+        return
+
+    # ---------- AI IMAGE EDIT / MERGE (counts as image generation) ----------
+    if image_bytes_list and content:
+        # Decide what the user wants
+        try:
+            action = await decide_image_action(content, len(image_bytes_list))
+            print(f"[DEBUG] decide_image_action returned: {action}, images in message: {len(image_bytes_list)}")
+        except Exception as e:
+            print("[DEBUG] decide_image_action failed:", e)
+            action = None
+
+        # ---------- MERGE ----------
+        if action == "MERGE" and len(image_bytes_list) >= 2:
+            print("[DEBUG] User requested MERGE")
+            await send_human_reply(message.channel, "🖼️ Merging images...")
+
             try:
-                action = await decide_image_action(content, len(image_bytes_list))
-                print(f"[DEBUG] decide_image_action returned: {action}, images in message: {len(image_bytes_list)}")
+                merged_ref = pil_merge_images(image_bytes_list)
+                print(f"[DEBUG] Merged image bytes length: {len(merged_ref)}")
             except Exception as e:
-                print("[DEBUG] decide_image_action failed:", e)
-                action = None
-
-            # ---------- MERGE ----------
-            if action == "MERGE" and len(image_bytes_list) >= 2:
-                print("[DEBUG] User requested MERGE")
-                await send_human_reply(message.channel, "🖼️ Merging images...")
-
-                try:
-                    merged_ref = pil_merge_images(image_bytes_list)
-                    print(f"[DEBUG] Merged image bytes length: {len(merged_ref)}")
-                except Exception as e:
-                    print("[ERROR] pil_merge_images failed:", e)
-                    await send_human_reply(message.channel, "🤔 Couldn't merge the images right now.")
-                    return
-
-                try:
-                    print("[DEBUG] Calling edit_image for merged image")
-                    result = await edit_image(
-                        image_bytes=merged_ref,
-                        prompt=content,
-                        steps=15
-                    )
-                    print(f"[DEBUG] edit_image returned bytes length: {len(result)}")
-                    
-                    await message.channel.send(
-                        file=discord.File(io.BytesIO(result), filename="merged.png")
-                    )
-
-                    # ---------- Consume limits like normal image generation ----------
-                    consume(message, "images")
-                    consume_total(message, "images")
-                    save_usage()
-                    print("[DEBUG] MERGE completed and limits consumed")
-
-                except Exception as e:
-                    print("[ERROR] IMAGE MERGE failed:", e)
-                    await send_human_reply(
-                        message.channel,
-                        "🤔 Couldn't merge the images right now."
-                    )
-
+                print("[ERROR] pil_merge_images failed:", e)
+                await send_human_reply(message.channel, "🤔 Couldn't merge the images right now.")
                 return
-
-            # ---------- EDIT ----------
-            if action == "EDIT":
-                ref_image = image_bytes_list[0]
-                print("[DEBUG] User requested EDIT")
-                await send_human_reply(message.channel, "🎨 Editing image...")
-
-                try:
-                    result = await edit_image(
-                        image_bytes=ref_image,
-                        prompt=content,
-                        steps=15
-                    )
-                    print(f"[DEBUG] edit_image returned bytes length: {len(result)}")
-                    
-                    await message.channel.send(
-                        file=discord.File(io.BytesIO(result), filename="edited.png")
-                    )
-
-                    # ---------- Consume limits like normal image generation ----------
-                    consume(message, "images")
-                    consume_total(message, "images")
-                    save_usage()
-                    print("[DEBUG] EDIT completed and limits consumed")
-
-                except Exception as e:
-                    print("[ERROR] IMAGE EDIT failed:", e)
-                    await send_human_reply(
-                        message.channel,
-                        "🤔 Couldn't edit the image right now."
-                    )
-
-                return
-
-            # ---------- ACTION NONE ----------
-            if action not in ("EDIT", "MERGE"):
-                print(f"[DEBUG] No valid action returned by decide_image_action: {action}")
-
-        # ---------- SAFE IMAGE CHECK ----------
-        has_image = False
-
-        if any(a.content_type and a.content_type.startswith("image/") for a in message.attachments):
-            has_image = True
-        elif any((e.image and e.image.url) or (e.thumbnail and e.thumbnail.url) for e in message.embeds):
-            has_image = True
-        else:
-            urls = re.findall(r"(https?://\S+)", message.content)
-            img_exts = (".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp", ".tiff")
-            if any(url.lower().endswith(img_exts) for url in urls):
-                has_image = True
-
-        if has_image:
-            image_reply = await handle_image_message(message, mode)
-            if image_reply is not None:
-                await send_human_reply(message.channel, image_reply)
-                return
-
-        # ---------- FILE UPLOAD PROCESSING ----------
-        if message.attachments:
-            file_reply = await handle_file_message(message, mode)
-            if file_reply is not None:
-                return
-
-        # ---------- LAST IMAGE FOLLOW-UP ----------
-        if chan_id in channel_last_image_bytes:
-            visual_check = await decide_visual_type(content, chan_id)
-            if visual_check != "fun":
-                await generate_and_reply(chan_id, message, content, mode)
-                return
-
-        # ---------- IMAGE GENERATION ----------
-        if message.id in processed_image_messages:
-            return
-
-        processed_image_messages.add(message.id)
-
-        visual_type = await decide_visual_type(content, chan_id)
-
-        if visual_type == "fun":
-            await send_human_reply(message.channel, "🖼️ Generating image... please wait.")
-
-            if not check_limit(message, "images"):
-                await deny_limit(message, "images")
-                return
-
-            if not check_total_limit(message, "images"):
-                await message.reply(
-                    "🚫 You've hit your **total image generation limit**.\n"
-                    "Contact aarav_2022 for an upgrade."
-                )
-                return
-
-            if await is_codunot_self_image(content):
-                image_prompt = CODUNOT_SELF_IMAGE_PROMPT
-            else:
-                image_prompt = await boost_image_prompt(content)
 
             try:
-                image_bytes = await generate_image(image_prompt, aspect_ratio="16:9", steps=15)
-
-                channel_last_image_bytes[chan_id] = image_bytes
-
+                print("[DEBUG] Calling edit_image for merged image")
+                result = await edit_image(
+                    image_bytes=merged_ref,
+                    prompt=content,
+                    steps=15
+                )
+                print(f"[DEBUG] edit_image returned bytes length: {len(result)}")
+                
                 await message.channel.send(
-                    file=discord.File(io.BytesIO(image_bytes), filename="image.png")
+                    file=discord.File(io.BytesIO(result), filename="merged.png")
                 )
 
+                # ---------- Consume limits like normal image generation ----------
                 consume(message, "images")
                 consume_total(message, "images")
                 save_usage()
-                return
+                print("[DEBUG] MERGE completed and limits consumed")
 
             except Exception as e:
-                print("[IMAGE GEN ERROR]", e)
+                print("[ERROR] IMAGE MERGE failed:", e)
                 await send_human_reply(
                     message.channel,
-                    "🤔 Couldn't generate image right now. Please try again later."
-                )
-                return
-				
-        # ---------------- CHESS MODE ----------------
-        if channel_chess.get(chan_id):
-            board = chess_engine.get_board(chan_id)
-
-            # -------- GAME OVER --------
-            if board.is_game_over():
-                result = board.result()
-                if result == "1-0":
-                    msg = "GG 😎 you won!"
-                elif result == "0-1":
-                    msg = "GG 😄 I win!"
-                else:
-                    msg = "GG 🤝 it’s a draw!"
-
-                channel_chess[chan_id] = False
-                await send_human_reply(message.channel, f"{msg} Wanna analyze or rematch?")
-                return
-
-            # -------- RESIGN --------
-            cleaned = clean_chess_input(content, bot.user.id)
-            if cleaned.lower() in ["resign", "i resign", "quit"]:
-                channel_chess[chan_id] = False
-                await send_human_reply(
-                    message.channel,
-                    f"GG 😄 {message.author.display_name} resigned — I win ♟️"
-                )
-                return
-
-            # -------- CHESS CHAT --------
-            if looks_like_chess_chat(cleaned):
-                chess_prompt = (
-                    PERSONAS["funny"]
-                    + "\nYou are a strong chess player helping during a LIVE game.\n"
-                    + "Rules:\n"
-                    + "- Never invent engine lines\n"
-                    + "- Explain ideas, not forced moves\n\n"
-                    + f"Current FEN:\n{board.fen()}\n\n"
-                    + f"User says:\n{cleaned}\n\nReply:"
+                    "🤔 Couldn't merge the images right now."
                 )
 
-                response = await call_groq(
-                    prompt=chess_prompt,
-                    model="llama-3.3-70b-versatile",
-                    temperature=0.6
-                )
+            return
 
-                await send_human_reply(message.channel, humanize_and_safeify(response))
-                return
-
-            # -------- PLAYER MOVE --------
-            move_san = normalize_move_input(board, cleaned)
-
-            if not move_san:
-                await send_human_reply(
-                    message.channel,
-                    "🤔 That doesn’t look like a legal move. Try something like `e4` or `Bc4`."
-                )
-                return
+        # ---------- EDIT ----------
+        if action == "EDIT":
+            ref_image = image_bytes_list[0]
+            print("[DEBUG] User requested EDIT")
+            await send_human_reply(message.channel, "🎨 Editing image...")
 
             try:
-                player_move = board.parse_san(move_san)
-            except:
+                result = await edit_image(
+                    image_bytes=ref_image,
+                    prompt=content,
+                    steps=15
+                )
+                print(f"[DEBUG] edit_image returned bytes length: {len(result)}")
+                
+                await message.channel.send(
+                    file=discord.File(io.BytesIO(result), filename="edited.png")
+                )
+
+                # ---------- Consume limits like normal image generation ----------
+                consume(message, "images")
+                consume_total(message, "images")
+                save_usage()
+                print("[DEBUG] EDIT completed and limits consumed")
+
+            except Exception as e:
+                print("[ERROR] IMAGE EDIT failed:", e)
                 await send_human_reply(
                     message.channel,
-                    "⚠️ That move isn’t legal in this position."
+                    "🤔 Couldn't edit the image right now."
                 )
-                return
 
-            board.push(player_move)
+            return
 
-            if board.is_checkmate():
-                channel_chess[chan_id] = False
-                await send_human_reply(
-                    message.channel,
-                    f"😮 Checkmate! YOU WIN ({move_san})"
-                )
-                return
+        # ---------- ACTION NONE ----------
+        if action not in ("EDIT", "MERGE"):
+            print(f"[DEBUG] No valid action returned by decide_image_action: {action}")
 
-            # -------- ENGINE MOVE --------
-            best = chess_engine.get_best_move(chan_id)
+    # ---------- SAFE IMAGE CHECK ----------
+    has_image = False
 
-            if not best:
-                await send_human_reply(
-                    message.channel,
-                    "⚠️ Engine hiccup — your turn again!"
-                )
-                return
+    if any(a.content_type and a.content_type.startswith("image/") for a in message.attachments):
+        has_image = True
+    elif any((e.image and e.image.url) or (e.thumbnail and e.thumbnail.url) for e in message.embeds):
+        has_image = True
+    else:
+        urls = re.findall(r"(https?://\S+)", message.content)
+        img_exts = (".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp", ".tiff")
+        if any(url.lower().endswith(img_exts) for url in urls):
+            has_image = True
 
-            engine_move = board.parse_uci(best["uci"])
-            board.push(engine_move)
+    if has_image:
+        image_reply = await handle_image_message(message, mode)
+        if image_reply is not None:
+            await send_human_reply(message.channel, image_reply)
+            return
 
-            await send_human_reply(
-                message.channel,
-                f"My move: `{best['san']}`"
+    # ---------- FILE UPLOAD PROCESSING ----------
+    if message.attachments:
+        file_reply = await handle_file_message(message, mode)
+        if file_reply is not None:
+            return
+
+    # ---------- LAST IMAGE FOLLOW-UP ----------
+    if chan_id in channel_last_image_bytes:
+        visual_check = await decide_visual_type(content, chan_id)
+        if visual_check != "fun":
+            await generate_and_reply(chan_id, message, content, mode)
+            return
+
+    # ---------- IMAGE GENERATION ----------
+    if message.id in processed_image_messages:
+        return
+
+    processed_image_messages.add(message.id)
+
+    visual_type = await decide_visual_type(content, chan_id)
+
+    if visual_type == "fun":
+        await send_human_reply(message.channel, "🖼️ Generating image... please wait.")
+
+        if not check_limit(message, "images"):
+            await deny_limit(message, "images")
+            return
+
+        if not check_total_limit(message, "images"):
+            await message.reply(
+                "🚫 You've hit your **total image generation limit**.\n"
+                "Contact aarav_2022 for an upgrade."
+            )
+            return
+
+        if await is_codunot_self_image(content):
+            image_prompt = CODUNOT_SELF_IMAGE_PROMPT
+        else:
+            image_prompt = await boost_image_prompt(content)
+
+        try:
+            image_bytes = await generate_image(image_prompt, aspect_ratio="16:9", steps=15)
+
+            channel_last_image_bytes[chan_id] = image_bytes
+
+            await message.channel.send(
+                file=discord.File(io.BytesIO(image_bytes), filename="image.png")
             )
 
-            if board.is_checkmate():
-                channel_chess[chan_id] = False
-                await send_human_reply(
-                    message.channel,
-                    f"💀 Checkmate — I win ({best['san']})"
-                )
-
+            consume(message, "images")
+            consume_total(message, "images")
+            save_usage()
             return
 
-        # ---------------- ROAST MODE ----------------
-        if mode == "roast":
-            await handle_roast_mode(chan_id, message, content)
+        except Exception as e:
+            print("[IMAGE GEN ERROR]", e)
+            await send_human_reply(
+                message.channel,
+                "🤔 Couldn't generate image right now. Please try again later."
+            )
+            return
+            
+    # ---------------- CHESS MODE ----------------
+    if channel_chess.get(chan_id):
+        board = chess_engine.get_board(chan_id)
+
+        # -------- GAME OVER --------
+        if board.is_game_over():
+            result = board.result()
+            if result == "1-0":
+                msg = "GG 😎 you won!"
+            elif result == "0-1":
+                msg = "GG 😄 I win!"
+            else:
+                msg = "GG 🤝 it’s a draw!"
+
+            channel_chess[chan_id] = False
+            await send_human_reply(message.channel, f"{msg} Wanna analyze or rematch?")
             return
 
-        # ---------------- GENERAL CHAT ----------------
-
-        if not check_limit(message, "messages"):
-            await deny_limit(message, "messages")
+        # -------- RESIGN --------
+        cleaned = clean_chess_input(content, bot.user.id)
+        if cleaned.lower() in ["resign", "i resign", "quit"]:
+            channel_chess[chan_id] = False
+            await send_human_reply(
+                message.channel,
+                f"GG 😄 {message.author.display_name} resigned — I win ♟️"
+            )
             return
 
-        consume(message, "messages")
-        asyncio.create_task(generate_and_reply(chan_id, message, content, mode))
+        # -------- CHESS CHAT --------
+        if looks_like_chess_chat(cleaned):
+            chess_prompt = (
+                PERSONAS["funny"]
+                + "\nYou are a strong chess player helping during a LIVE game.\n"
+                + "Rules:\n"
+                + "- Never invent engine lines\n"
+                + "- Explain ideas, not forced moves\n\n"
+                + f"Current FEN:\n{board.fen()}\n\n"
+                + f"User says:\n{cleaned}\n\nReply:"
+            )
 
-        # ---------------- SAVE USER MESSAGE ----------------
-        channel_memory[chan_id].append(f"{message.author.display_name}: {content}")
+            response = await call_groq(
+                prompt=chess_prompt,
+                model="llama-3.3-70b-versatile",
+                temperature=0.6
+            )
+
+            await send_human_reply(message.channel, humanize_and_safeify(response))
+            return
+
+        # -------- PLAYER MOVE --------
+        move_san = normalize_move_input(board, cleaned)
+
+        if not move_san:
+            await send_human_reply(
+                message.channel,
+                "🤔 That doesn’t look like a legal move. Try something like `e4` or `Bc4`."
+            )
+            return
+
+        try:
+            player_move = board.parse_san(move_san)
+        except:
+            await send_human_reply(
+                message.channel,
+                "⚠️ That move isn’t legal in this position."
+            )
+            return
+
+        board.push(player_move)
+
+        if board.is_checkmate():
+            channel_chess[chan_id] = False
+            await send_human_reply(
+                message.channel,
+                f"😮 Checkmate! YOU WIN ({move_san})"
+            )
+            return
+
+        # -------- ENGINE MOVE --------
+        best = chess_engine.get_best_move(chan_id)
+
+        if not best:
+            await send_human_reply(
+                message.channel,
+                "⚠️ Engine hiccup — your turn again!"
+            )
+            return
+
+        engine_move = board.parse_uci(best["uci"])
+        board.push(engine_move)
+
+        await send_human_reply(
+            message.channel,
+            f"My move: `{best['san']}`"
+        )
+
+        if board.is_checkmate():
+            channel_chess[chan_id] = False
+            await send_human_reply(
+                message.channel,
+                f"💀 Checkmate — I win ({best['san']})"
+            )
+
+        return
+
+    # ---------------- ROAST MODE ----------------
+    if mode == "roast":
+        await handle_roast_mode(chan_id, message, content)
+        return
+
+    # ---------------- GENERAL CHAT ----------------
+
+    if not check_limit(message, "messages"):
+        await deny_limit(message, "messages")
+        return
+
+    consume(message, "messages")
+    asyncio.create_task(generate_and_reply(chan_id, message, content, mode))
+
+    # ---------------- SAVE USER MESSAGE ----------------
+    channel_memory[chan_id].append(f"{message.author.display_name}: {content}")
 
 # ---------------- EVENTS ----------------
 @bot.event
