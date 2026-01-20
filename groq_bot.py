@@ -31,6 +31,7 @@ from usage_manager import (
     consume_total,
     deny_limit,
     load_usage,
+    save_usage,
     autosave_usage,
 )
 
@@ -495,15 +496,14 @@ from docx import Document
 from pdf2image import convert_from_bytes
 
 async def handle_file_message(message, mode):
-    chan_id_str = str(message.channel.id)
 
     # Check daily limit
-    if not check_limit(chan_id_str, "files"):
+    if not check_limit(message, "files"):
         await deny_limit(message, "files")
         return None
 
     # Check total lifetime limit
-    if not check_total_limit(chan_id_str, "files"):
+    if not check_total_limit(message, "files"):
         await message.reply(
             "🚫 You've hit your **total file upload limit**.\n"
             "Contact aarav_2022 for an upgrade."
@@ -573,8 +573,8 @@ async def handle_file_message(message, mode):
             await send_human_reply(message.channel, response.strip())
 
             # Update counts
-            consume(chan_id_str, "files")        # daily
-            consume_total(chan_id_str, "files")  # total
+            consume(message, "files")        # daily
+            consume_total(message, "files")  # total
             save_usage()  # save after consuming
 
             return response.strip()
@@ -582,7 +582,6 @@ async def handle_file_message(message, mode):
         print(f"[FILE RESPONSE ERROR] {e}")
 
     return "❌ Couldn't process the file."
-
 
 # ---------------- IMAGE TYPE DETECTION ----------------
 
@@ -1055,15 +1054,13 @@ async def on_message(message: Message):
     if visual_type == "fun":
         await send_human_reply(message.channel, "🖼️ Generating image... please wait.")
 
-        chan_id_str = str(message.channel.id)
-
         # Daily limit
-        if not check_limit(chan_id_str, "images"):
+        if not check_limit(message, "images"):
             await deny_limit(message, "images")
             return
 
         # Total lifetime limit
-        if not check_total_limit(chan_id_str, "images"):
+        if not check_total_limit(message, "images"):
             await message.reply(
                 "🚫 You've hit your **total image generation limit**.\n"
                 "Contact aarav_2022 for an upgrade."
@@ -1104,8 +1101,8 @@ async def on_message(message: Message):
             await message.channel.send(file=file)
 
             # Update usage counts once
-            consume(chan_id_str, "images")       # daily
-            consume_total(chan_id_str, "images") # total
+            consume(message, "images")       # daily
+            consume_total(message, "images") # total
             save_usage()
 
         except Exception as e:
@@ -1228,11 +1225,11 @@ async def on_message(message: Message):
     # ---------------- GENERAL CHAT ----------------
     chan_id = str(message.channel.id)
 
-    if not check_limit(chan_id, "messages"):
+    if not check_limit(message, "messages"):
         await deny_limit(message, "messages")
         return
 
-    consume(chan_id, "messages")
+    consume(message, "messages")
     asyncio.create_task(generate_and_reply(chan_id, message, content, mode))
 
     # ---------------- SAVE USER MESSAGE ----------------
