@@ -73,7 +73,6 @@ def load_tier_file(path: str) -> set[str]:
             if not line or line.startswith("#"):
                 continue
 
-            # allow inline comments
             if "#" in line:
                 line = line.split("#", 1)[0].strip()
 
@@ -91,11 +90,8 @@ GOLD_IDS = load_tier_file(GOLD_FILE)
 # ======================================================
 
 def get_tier_key(message) -> str:
-    # Server message → server ID
     if message.guild is not None:
         return str(message.guild.id)
-
-    # DM → channel ID
     return str(message.channel.id)
 
 
@@ -109,7 +105,7 @@ def get_tier_from_message(message) -> str:
     return "basic"
 
 # ======================================================
-# DAILY USAGE (RESETS AUTOMATICALLY)
+# DAILY USAGE (AUTO RESET)
 # ======================================================
 
 def get_usage(key: str) -> dict:
@@ -133,15 +129,16 @@ def get_usage(key: str) -> dict:
     return usage
 
 
-def check_limit(message, key: str, kind: str) -> bool:
+def check_limit(message, kind: str) -> bool:
+    key = get_tier_key(message)
     tier = get_tier_from_message(message)
-    limits = LIMITS[tier]
     usage = get_usage(key)
+    limit = LIMITS[tier][kind]
+    return usage[kind] < limit
 
-    return usage[kind] < limits[kind]
 
-
-def consume(key: str, kind: str):
+def consume(message, kind: str):
+    key = get_tier_key(message)
     usage = get_usage(key)
     usage[kind] += 1
 
@@ -149,7 +146,8 @@ def consume(key: str, kind: str):
 # TOTAL (LIFETIME) LIMITS
 # ======================================================
 
-def check_total_limit(message, key: str, kind: str) -> bool:
+def check_total_limit(message, kind: str) -> bool:
+    key = get_tier_key(message)
     tier = get_tier_from_message(message)
     limit = TOTAL_LIMITS[tier][kind]
 
@@ -160,7 +158,8 @@ def check_total_limit(message, key: str, kind: str) -> bool:
     return store.get(key, 0) < limit
 
 
-def consume_total(key: str, kind: str):
+def consume_total(message, kind: str):
+    key = get_tier_key(message)
     store = total_image_count if kind == "images" else total_file_count
     store[key] = store.get(key, 0) + 1
 
@@ -176,7 +175,7 @@ async def deny_limit(message, kind: str):
     )
 
 # ======================================================
-# SAVE / LOAD (GITHUB ACTIONS SAFE)
+# SAVE / LOAD
 # ======================================================
 
 def save_usage():
