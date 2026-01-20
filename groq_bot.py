@@ -18,6 +18,7 @@ from deAPI_client_image import generate_image
 from bot_chess import OnlineChessEngine
 from groq_client import call_groq
 from slang_normalizer import apply_slang_map
+from PIL import Image
 
 import chess
 import aiohttp
@@ -391,7 +392,6 @@ async def handle_image_message(message, mode):
         print("[VISION ERROR] No image found in message")
         return None
 
-    chan_id = str(message.channel.id)
     channel_last_image_bytes[chan_id] = image_bytes
 
     channel_id = message.channel.id
@@ -535,8 +535,8 @@ async def handle_file_message(message, mode):
             await send_human_reply(message.channel, response.strip())
 
             # Update counts
-            consume(chan_id, "files")        # daily
-            consume_total(chan_id, "files")  # total
+            consume(message, "files")        # daily
+            consume_total(message, "files")  # total
             save_usage()  # save after consuming
 
             return response.strip()
@@ -1066,8 +1066,8 @@ async def on_message(message: Message):
             await message.channel.send(file=file)
 
             # Update usage counts once
-            consume(chan_id, "images")       # daily
-            consume_total(chan_id, "images") # total
+            consume(message, "images")       # daily
+            consume_total(message, "images") # total
             save_usage()
 
         except Exception as e:
@@ -1189,13 +1189,12 @@ async def on_message(message: Message):
         return
 
     # ---------------- GENERAL CHAT ----------------
-    chan_id = str(message.channel.id)
 
     if not check_limit(message, "messages"):
         await deny_limit(message, "messages")
         return
 
-    consume(chan_id, "messages")
+    consume(message, "messages")
     asyncio.create_task(generate_and_reply(chan_id, message, content, mode))
 
     # ---------------- SAVE USER MESSAGE ----------------
