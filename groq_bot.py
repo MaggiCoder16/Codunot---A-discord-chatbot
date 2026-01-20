@@ -1063,9 +1063,10 @@ async def on_message(message: Message):
 
             try:
                 print("[DEBUG] Calling edit_image for merged image")
+                safe_prompt = content.replace("\n", " ").replace("\r", " ").strip()
                 result = await edit_image(
                     image_bytes=merged_ref,
-                    prompt=content,
+                    prompt=safe_prompt,
                     steps=15
                 )
                 print(f"[DEBUG] edit_image returned bytes length: {len(result)}")
@@ -1096,9 +1097,10 @@ async def on_message(message: Message):
             await send_human_reply(message.channel, "🎨 Editing image...")
 
             try:
+                safe_prompt = content.replace("\n", " ").replace("\r", " ").strip()
                 result = await edit_image(
                     image_bytes=ref_image,
-                    prompt=content,
+                    prompt=safe_prompt,
                     steps=15
                 )
                 print(f"[DEBUG] edit_image returned bytes length: {len(result)}")
