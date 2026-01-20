@@ -1,23 +1,35 @@
 import os
-import discord
-from discord.ext import commands
+import requests
 
 TOKEN = os.getenv("DISCORD_TOKEN")
+APP_ID = "1435987186502733878"
+
 if not TOKEN:
-    raise RuntimeError("DISCORD_TOKEN missing!")
+    raise RuntimeError("DISCORD_TOKEN is missing")
 
-intents = discord.Intents.none()  # we don't need message intents
-bot = commands.Bot(command_prefix="!", intents=intents)
+BASE_URL = f"https://discord.com/api/v10/applications/{APP_ID}/commands"
 
-@bot.event
-async def on_ready():
-    print(f"Logged in as {bot.user}")
+HEADERS = {
+    "Authorization": f"Bot {TOKEN}",
+    "Content-Type": "application/json"
+}
 
-    # remove ALL global slash commands (all servers)
-    await bot.tree.clear_commands(guild=None)  # guild=None = global commands
-    await bot.tree.sync()
+# Fetch all global commands
+resp = requests.get(BASE_URL, headers=HEADERS)
+resp.raise_for_status()
+commands = resp.json()
 
-    print("ALL global slash commands deleted.")
-    await bot.close()
+print(f"Found {len(commands)} global commands")
 
-bot.run(TOKEN)
+# Delete each command
+for cmd in commands:
+    cmd_id = cmd["id"]
+    name = cmd["name"]
+
+    r = requests.delete(f"{BASE_URL}/{cmd_id}", headers=HEADERS)
+    if r.status_code == 204:
+        print(f"Deleted: {name}")
+    else:
+        print(f"Failed to delete {name}: {r.status_code} {r.text}")
+
+print("DONE. All global slash commands deleted.")
