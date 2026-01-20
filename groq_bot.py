@@ -286,40 +286,6 @@ def build_general_prompt(chan_id, mode, message, include_last_image=False):
     persona_text = PERSONAS.get(mode, PERSONAS["funny"])
     return f"{persona_text}\n\nRecent chat:\n{history_text}{last_img_info}\n\nReply as Codunot:"
 
-async def handle_last_generated_image(chan_id, message, content):
-    image_bytes = channel_last_image_bytes.get(chan_id)
-    if not image_bytes:
-        return False
-
-    vision_prompt = (
-        "You are Codunot.\n"
-        "You generated the image shown to the user.\n\n"
-        f"User message:\n{content}\n\n"
-        "Rules:\n"
-        "- NEVER deny generating the image\n"
-        "- If the user dislikes it, apologize briefly and offer to fix or regenerate\n"
-        "- If the user is confused, explain what the image shows\n"
-        "- If the user wants changes, ask what to modify or describe the changes\n"
-        "- Keep replies short and natural\n"
-    )
-
-    try:
-        reply = await call_groq_vision(
-            prompt=vision_prompt,
-            image_bytes=image_bytes,
-            image_mime="image/png"
-        )
-
-        if reply:
-            await send_human_reply(message.channel, reply)
-            return True
-
-        return False
-
-    except Exception as e:
-        print("[LAST IMAGE HANDLER ERROR]", e)
-        return False
-
 def build_roast_prompt(user_message):
     return PERSONAS["roast"] + f"\nUser message: '{user_message}'\nGenerate ONE savage roast."
 
@@ -341,10 +307,6 @@ async def generate_and_reply(chan_id, message, content, mode):
     image_intent = "NEW"
     guild_id = message.guild.id if message.guild else None
     if guild_id is not None and not await can_send_in_guild(guild_id):
-        return
-
-    handled = await handle_last_generated_image(chan_id, message, content)
-    if handled:
         return
 			
     # ---------------- BUILD PROMPT ----------------
@@ -573,8 +535,8 @@ async def handle_file_message(message, mode):
             await send_human_reply(message.channel, response.strip())
 
             # Update counts
-            consume(message, "files")        # daily
-            consume_total(message, "files")  # total
+            consume(chan_id, "files")        # daily
+            consume_total(chan_id, "files")  # total
             save_usage()  # save after consuming
 
             return response.strip()
@@ -1032,14 +994,17 @@ async def on_message(message: Message):
         and not message.attachments
         and not message.embeds
     ):
-        response = await call_groq(
-            prompt=build_vision_followup_prompt(message),
-            image_bytes=channel_last_image_bytes[chan_id],
-            temperature=0.7
-        )
-        if response:
-            await message.reply(response)
-            return
+        # If user is asking for a NEW image, ignore last image context
+        visual_check = await decide_visual_type(content, chan_id)
+        if visual_check == "text":
+            response = await call_groq(
+                prompt=build_vision_followup_prompt(message),
+                image_bytes=channel_last_image_bytes[chan_id],
+                temperature=0.7
+            )
+            if response:
+                await message.reply(response)
+                return
 
     # ---------------- IMAGE GENERATION ----------------
     if message.id in processed_image_messages:
@@ -1078,7 +1043,7 @@ async def on_message(message: Message):
         try:
             # Generate image
             aspect = "16:9"
-            image_bytes = await generate_image(image_prompt, aspect_ratio=aspect, steps=4)
+            image_bytes = await generate_image(image_prompt, aspect_ratio=aspect, steps=15)
 
             # Resize if too large
             MAX_BYTES = 5_000_000
@@ -1101,8 +1066,8 @@ async def on_message(message: Message):
             await message.channel.send(file=file)
 
             # Update usage counts once
-            consume(message, "images")       # daily
-            consume_total(message, "images") # total
+            consume(chan_id, "images")       # daily
+            consume_total(chan_id, "images") # total
             save_usage()
 
         except Exception as e:
@@ -1111,6 +1076,7 @@ async def on_message(message: Message):
                 message.channel,
                 "🤔 Couldn't generate image right now. Please try again later."
             )
+            return
 
     # ---------------- CHESS MODE ----------------
     if channel_chess.get(chan_id):
@@ -1229,7 +1195,7 @@ async def on_message(message: Message):
         await deny_limit(message, "messages")
         return
 
-    consume(message, "messages")
+    consume(chan_id, "messages")
     asyncio.create_task(generate_and_reply(chan_id, message, content, mode))
 
     # ---------------- SAVE USER MESSAGE ----------------
