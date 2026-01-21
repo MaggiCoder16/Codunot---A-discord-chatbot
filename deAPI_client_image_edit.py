@@ -4,6 +4,7 @@ import os
 import aiohttp
 import asyncio
 import random
+import base64
 
 DEAPI_API_KEY = os.getenv("DEAPI_API_KEY_IMAGE_EDITING", "").strip()
 if not DEAPI_API_KEY:
@@ -15,7 +16,6 @@ MODEL_NAME = "QwenImageEdit_Plus_NF4"
 DEFAULT_STEPS = 15
 MAX_STEPS = 40
 
-
 async def edit_image(
     image_bytes: bytes,
     prompt: str,
@@ -26,7 +26,6 @@ async def edit_image(
     steps = min(int(steps), MAX_STEPS)
     seed = seed or random.randint(1, 2**32 - 1)
 
-    # ---------- SANITIZE PROMPT ----------
     safe_prompt = prompt.replace("\n", " ").replace("\r", " ").strip()
 
     headers = {
@@ -49,4 +48,21 @@ async def edit_image(
         async with session.post(IMG2IMG_URL, data=form, headers=headers) as resp:
             if resp.status != 200:
                 raise RuntimeError(await resp.text())
-            return await resp.read()
+
+            content_type = resp.headers.get("Content-Type", "")
+
+            if content_type.startswith("image/"):
+                return await resp.read()
+
+            if "application/json" in content_type:
+                data = await resp.json()
+
+                if "image" in data:
+                    return base64.b64decode(data["image"])
+
+                raise RuntimeError(f"JSON response missing image field: {data}")
+
+            body = await resp.text()
+            raise RuntimeError(
+                f"Unexpected response type {content_type}: {body}"
+            )
