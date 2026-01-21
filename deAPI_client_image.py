@@ -1,137 +1,120 @@
 import os
-import aiohttp
 import asyncio
+import aiohttp
+import re
 import random
-import io
-import base64
 
-DEAPI_API_KEY = os.getenv("DEAPI_API_KEY_IMAGE_EDITING", "").strip()
+# ============================================================
+# CONFIG
+# ============================================================
+
+DEAPI_API_KEY = os.getenv("DEAPI_API_KEY")
 if not DEAPI_API_KEY:
-    raise RuntimeError("DEAPI_API_KEY_IMAGE_EDITING not set")
+    raise RuntimeError("DEAPI_API_KEY not set")
 
-IMG2IMG_URL = "https://api.deapi.ai/api/v1/client/img2img"
-REQUEST_STATUS_URL = "https://api.deapi.ai/api/v1/client/request-status"
-MODEL_NAME = "QwenImageEdit_Plus_NF4"
-DEFAULT_STEPS = 18
-MAX_STEPS = 40
+MODEL_NAME = "ZImageTurbo_INT8"
 
+DEFAULT_STEPS = 15
+MAX_STEPS = 50
 
-async def download_image(session: aiohttp.ClientSession, url: str) -> bytes:
-    async with session.get(url) as resp:
-        if resp.status != 200:
-            raise RuntimeError(f"Failed to download image: {resp.status}")
-        return await resp.read()
+DEFAULT_WIDTH = 512
+DEFAULT_HEIGHT = 512
 
+TXT2IMG_URL = "https://api.deapi.ai/api/v1/client/txt2img"
+STATUS_URL = "https://api.deapi.ai/api/v1/client/request-status"
 
-async def edit_image(
-    image_bytes: bytes,
+MAX_POLL_SECONDS = 120
+
+# ============================================================
+# PROMPT HELPERS
+# ============================================================
+
+def clean_prompt(prompt: str) -> str:
+    if not prompt or not prompt.strip():
+        return "A clean, simple diagram"
+    return re.sub(r"[\r\n]+", " ", prompt.strip())[:900]
+
+# ============================================================
+# IMAGE GENERATION
+# ============================================================
+
+async def generate_image(
     prompt: str,
+    aspect_ratio: str = "1:1",
     steps: int = DEFAULT_STEPS,
-    seed: int | None = None,
-    strength: float = 0.5,
 ) -> bytes:
+    """
+    Generate image using deAPI (ZImageTurbo_INT8).
+    Returns raw PNG bytes.
+    """
+
+    prompt = clean_prompt(prompt)
     steps = min(int(steps), MAX_STEPS)
-    seed = seed or random.randint(1, 2**32 - 1)
-    safe_prompt = prompt.replace("\n", " ").replace("\r", " ").strip()
+
+    width = height = DEFAULT_WIDTH
+    if aspect_ratio == "16:9":
+        width, height = 768, 432
+    elif aspect_ratio == "9:16":
+        width, height = 432, 768
+    elif aspect_ratio == "1:2":
+        width, height = 384, 768
 
     headers = {
         "Authorization": f"Bearer {DEAPI_API_KEY}",
-        "Accept": "application/json",
+        "Content-Type": "application/json",
     }
 
-    form = aiohttp.FormData()
-    form.add_field(
-        "image",
-        io.BytesIO(image_bytes),
-        filename="input.png",
-        content_type="image/png",
-    )
-    form.add_field("prompt", safe_prompt)
-    form.add_field("model", MODEL_NAME)
-    form.add_field("steps", str(steps))
-    form.add_field("seed", str(seed))
-    form.add_field("strength", str(strength))
-    form.add_field("return_result_in_response", "true")
+    payload = {
+        "model": MODEL_NAME,
+        "prompt": prompt,
+        "width": width,
+        "height": height,
+        "steps": steps,
+        "negative_prompt": "",
+        "seed": random.randint(1, 2**32 - 1),
+    }
 
-    timeout = aiohttp.ClientTimeout(total=180)
-
-    async with aiohttp.ClientSession(timeout=timeout) as session:
-        async with session.post(IMG2IMG_URL, data=form, headers=headers) as resp:
-            content_type = resp.headers.get("Content-Type", "")
-            body = await resp.read()
-
-            # Direct image
-            if content_type.startswith("image/"):
-                return body
-
-            try:
-                data = await resp.json()
-            except Exception:
-                raise RuntimeError(
-                    f"Failed to parse JSON: {body.decode(errors='ignore')}"
-                )
-
-            # Immediate base64 image
-            image_b64 = data.get("image") or data.get("data", {}).get("image")
-            if image_b64:
-                return base64.b64decode(image_b64)
-
-            # Async job
-            request_id = data.get("data", {}).get("request_id")
-            if request_id:
-                return await poll_deapi_result(session, request_id)
-
-            raise RuntimeError(f"No image returned by DeAPI: {data}")
-
-
-async def poll_deapi_result(
-    session: aiohttp.ClientSession,
-    request_id: str,
-    timeout: int = 180,
-) -> bytes:
-    headers = {"Authorization": f"Bearer {DEAPI_API_KEY}"}
-
-    for attempt in range(timeout):
-        async with session.get(
-            f"{REQUEST_STATUS_URL}/{request_id}",
-            headers=headers,
-        ) as resp:
-
+    async with aiohttp.ClientSession() as session:
+        # ---------------------------
+        # SUBMIT JOB
+        # ---------------------------
+        async with session.post(TXT2IMG_URL, json=payload, headers=headers) as resp:
             if resp.status != 200:
-                await asyncio.sleep(1)
-                continue
+                raise RuntimeError(await resp.text())
+            data = await resp.json()
 
-            try:
-                data = await resp.json()
-            except Exception:
-                await asyncio.sleep(1)
-                continue
+        request_id = data["data"]["request_id"]
+        print(f"[deAPI] request_id = {request_id}", flush=True)
 
-            payload = data.get("data", {})
-            status = payload.get("status")
+        # ---------------------------
+        # POLL STATUS
+        # ---------------------------
+        waited = 0
+        while waited < MAX_POLL_SECONDS:
+            async with session.get(f"{STATUS_URL}/{request_id}", headers=headers) as r:
+                status_data = await r.json()
+                print("[deAPI STATUS]", status_data, flush=True)
 
-            print(f"[DEBUG] Poll attempt {attempt}, status: {status}")
+                data = status_data["data"]
+                status = data["status"]
 
-            if status == "done":
-                # Base64 result
-                image_b64 = payload.get("result") or payload.get("image")
-                if image_b64:
-                    return base64.b64decode(image_b64)
+                if status == "done":
+                    result_url = data.get("result_url")
+                    if not result_url:
+                        raise RuntimeError("Job done but no result_url returned")
 
-                # URL result (most common for merges)
-                result_url = payload.get("result_url")
-                if result_url:
-                    return await download_image(session, result_url)
+                    # ---------------------------
+                    # DOWNLOAD IMAGE
+                    # ---------------------------
+                    async with session.get(result_url) as img_resp:
+                        if img_resp.status != 200:
+                            raise RuntimeError("Failed to download image")
+                        return await img_resp.read()
 
-                raise RuntimeError(f"Done but no image data: {data}")
+                if status == "failed":
+                    raise RuntimeError(f"Generation failed: {status_data}")
 
-            if status in ("pending", "processing", "queued"):
-                await asyncio.sleep(1)
-                continue
+            await asyncio.sleep(1)
+            waited += 1
 
-            if status == "error":
-                raise RuntimeError(f"DeAPI img2img failed: {data}")
-
-        await asyncio.sleep(1)
-
-    raise RuntimeError("Timed out waiting for DeAPI image result")
+        raise RuntimeError("deAPI image generation timed out")
