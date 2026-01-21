@@ -11,10 +11,43 @@ if not DEAPI_API_KEY:
     raise RuntimeError("DEAPI_API_KEY_IMAGE_EDITING not set")
 
 IMG2IMG_URL = "https://api.deapi.ai/api/v1/client/img2img"
+IMG_RESULT_URL = "https://api.deapi.ai/api/v1/client/result"
 
 MODEL_NAME = "QwenImageEdit_Plus_NF4"
 DEFAULT_STEPS = 15
 MAX_STEPS = 40
+
+
+async def poll_deapi_result(session, request_id, timeout=30):
+    headers = {
+        "Authorization": f"Bearer {DEAPI_API_KEY}",
+    }
+
+    for _ in range(timeout):
+        async with session.get(
+            f"{IMG_RESULT_URL}/{request_id}",
+            headers=headers
+        ) as resp:
+            if resp.status != 200:
+                await asyncio.sleep(1)
+                continue
+
+            data = await resp.json()
+
+            # Image ready
+            if "image" in data:
+                return base64.b64decode(data["image"])
+
+            # Still processing
+            status = data.get("status") or data.get("data", {}).get("status")
+            if status in ("pending", "processing"):
+                await asyncio.sleep(1)
+                continue
+
+        await asyncio.sleep(1)
+
+    raise RuntimeError("Timed out waiting for DeAPI image result")
+
 
 async def edit_image(
     image_bytes: bytes,
@@ -57,10 +90,16 @@ async def edit_image(
             if "application/json" in content_type:
                 data = await resp.json()
 
+                # Immediate base64 image
                 if "image" in data:
                     return base64.b64decode(data["image"])
 
-                raise RuntimeError(f"JSON response missing image field: {data}")
+                # Async job returned
+                if "data" in data and "request_id" in data["data"]:
+                    request_id = data["data"]["request_id"]
+                    return await poll_deapi_result(session, request_id)
+
+                raise RuntimeError(f"Unexpected JSON response: {data}")
 
             body = await resp.text()
             raise RuntimeError(
