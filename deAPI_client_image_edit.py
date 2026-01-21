@@ -42,8 +42,6 @@ async def edit_image(
     form.add_field("model", MODEL_NAME)
     form.add_field("steps", str(steps))
     form.add_field("seed", str(seed))
-    form.add_field("strength", str(strength))
-    form.add_field("return_result_in_response", "true")  # ask for immediate result if possible
 
     timeout = aiohttp.ClientTimeout(total=120)
 
@@ -74,42 +72,37 @@ async def edit_image(
             raise RuntimeError(f"No image returned by DeAPI: {data}")
 
 
-async def poll_deapi_result(session: aiohttp.ClientSession, request_id: str, timeout: int = 60) -> bytes:
-    """
-    Poll DeAPI img2img result until ready. Only used if request_id exists.
-    """
+async def poll_deapi_result(session, request_id, timeout=120) -> bytes:
     headers = {"Authorization": f"Bearer {DEAPI_API_KEY}"}
 
     for attempt in range(timeout):
-        async with session.get(f"https://api.deapi.ai/api/v1/client/request-status/{request_id}", headers=headers) as resp:
+        async with session.get(
+            f"https://api.deapi.ai/api/v1/client/request-status/{request_id}",
+            headers=headers
+        ) as resp:
+
             if resp.status != 200:
-                print(f"[DEBUG] Poll attempt {attempt}, status code {resp.status}")
                 await asyncio.sleep(1)
                 continue
 
-            try:
-                data = await resp.json()
-            except Exception:
-                print(f"[DEBUG] Poll attempt {attempt}, failed to parse JSON")
-                await asyncio.sleep(1)
-                continue
+            data = await resp.json()
+            payload = data.get("data", {})
+            status = payload.get("status")
 
-            status = data.get("status")
             print(f"[DEBUG] Poll attempt {attempt}, status: {status}")
 
             if status == "done":
-                image_b64 = data.get("result") or data.get("data", {}).get("result")
-                if image_b64:
-                    return base64.b64decode(image_b64)
-                else:
-                    raise RuntimeError(f"DeAPI returned done status but no image: {data}")
+                image_b64 = payload.get("result")
+                if not image_b64:
+                    raise RuntimeError(f"Done but no image: {data}")
+                return base64.b64decode(image_b64)
 
             if status in ("pending", "processing", "queued"):
                 await asyncio.sleep(1)
                 continue
 
             if status == "error":
-                raise RuntimeError(f"DeAPI img2img failed: {data}")
+                raise RuntimeError(f"DeAPI failed: {data}")
 
         await asyncio.sleep(1)
 
