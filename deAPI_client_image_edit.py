@@ -18,9 +18,9 @@ MAX_STEPS = 20
 async def edit_image(
     image_bytes: bytes,
     prompt: str,
-    steps: int = 12,
+    steps: int = 15,
     seed: int | None = None,
-    strength: float = 0.8,
+    strength: float = 0.85,
 ) -> bytes:
 
     seed = seed or random.randint(1, 2**32 - 1)
