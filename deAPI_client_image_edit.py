@@ -12,8 +12,8 @@ if not DEAPI_API_KEY:
 IMG2IMG_URL = "https://api.deapi.ai/api/v1/client/img2img"
 MODEL_NAME = "QwenImageEdit_Plus_NF4"
 
-DEFAULT_STEPS = 8        # keep low for merges
-MAX_STEPS = 12           # hard cap to avoid long jobs
+DEFAULT_STEPS = 15
+MAX_STEPS = 20
 
 async def edit_image(
     image_bytes: bytes,
@@ -75,7 +75,7 @@ async def edit_image(
         # ---------------------------
         # WAIT 29 SECONDS
         # ---------------------------
-        await asyncio.sleep(29)
+        await asyncio.sleep(30)
 
         # ---------------------------
         # SINGLE STATUS CHECK
