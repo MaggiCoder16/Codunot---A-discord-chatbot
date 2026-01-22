@@ -79,7 +79,7 @@ async def generate_image(
         print(f"[deAPI] request_id = {request_id}", flush=True)
 
         # ----------------------------------------------------
-        # WAIT 10 SECONDS (NO POLLING)
+        # WAIT 10 SECONDS
         # ----------------------------------------------------
         await asyncio.sleep(10)
 
@@ -113,11 +113,3 @@ async def generate_image(
             if img_resp.status != 200:
                 raise RuntimeError("Failed to download image")
             return await img_resp.read()
-
-                if status == "failed":
-                    raise RuntimeError(f"Generation failed: {status_data}")
-
-            await asyncio.sleep(1)
-            waited += 1
-
-        raise RuntimeError("deAPI image generation timed out")
