@@ -33,7 +33,7 @@ def clean_prompt(prompt: str) -> str:
     return re.sub(r"[\r\n]+", " ", prompt.strip())[:900]
 
 # ============================================================
-# IMAGE GENERATION (SINGLE STATUS CHECK AFTER 10s)
+# IMAGE GENERATION (single 10s wait)
 # ============================================================
 
 async def generate_image(
@@ -41,6 +41,11 @@ async def generate_image(
     aspect_ratio: str = "1:1",
     steps: int = DEFAULT_STEPS,
 ) -> bytes:
+    """
+    Generate image using deAPI (ZImageTurbo_INT8).
+    Returns raw PNG bytes.
+    """
+
     prompt = clean_prompt(prompt)
     steps = min(int(steps), MAX_STEPS)
 
@@ -63,13 +68,14 @@ async def generate_image(
         "width": width,
         "height": height,
         "steps": steps,
+        "negative_prompt": "",
         "seed": random.randint(1, 2**32 - 1),
     }
 
     async with aiohttp.ClientSession() as session:
-        # ----------------------------------------------------
+        # ---------------------------
         # SUBMIT JOB
-        # ----------------------------------------------------
+        # ---------------------------
         async with session.post(TXT2IMG_URL, json=payload, headers=headers) as resp:
             if resp.status != 200:
                 raise RuntimeError(await resp.text())
@@ -78,38 +84,38 @@ async def generate_image(
         request_id = data["data"]["request_id"]
         print(f"[deAPI] request_id = {request_id}", flush=True)
 
-        # ----------------------------------------------------
+        # ---------------------------
         # WAIT 10 SECONDS
-        # ----------------------------------------------------
+        # ---------------------------
         await asyncio.sleep(10)
 
-        # ----------------------------------------------------
+        # ---------------------------
         # SINGLE STATUS CHECK
-        # ----------------------------------------------------
-        async with session.get(f"{STATUS_URL}/{request_id}", headers=headers) as resp:
-            if resp.status != 200:
-                raise RuntimeError("Status check failed")
+        # ---------------------------
+        async with session.get(f"{STATUS_URL}/{request_id}", headers=headers) as r:
+            status_data = await r.json()
+            print("[deAPI STATUS]", status_data, flush=True)
 
-            status_data = await resp.json()
-            payload = status_data.get("data", {})
-            status = payload.get("status")
+            data = status_data.get("data", {})
+            status = data.get("status")
+
+            if status == "done":
+                result_url = data.get("result_url")
+                if not result_url:
+                    raise RuntimeError("Job done but no result_url returned")
+
+                # ---------------------------
+                # DOWNLOAD IMAGE
+                # ---------------------------
+                async with session.get(result_url) as img_resp:
+                    if img_resp.status != 200:
+                        raise RuntimeError("Failed to download image")
+                    return await img_resp.read()
 
             if status == "failed":
                 raise RuntimeError(f"Generation failed: {status_data}")
 
-            if status != "done":
-                raise RuntimeError(
-                    f"Image still processing (status={status}). Try again shortly."
-                )
-
-            result_url = payload.get("result_url")
-            if not result_url:
-                raise RuntimeError("Done but no result_url returned")
-
-        # ----------------------------------------------------
-        # DOWNLOAD IMAGE
-        # ----------------------------------------------------
-        async with session.get(result_url) as img_resp:
-            if img_resp.status != 200:
-                raise RuntimeError("Failed to download image")
-            return await img_resp.read()
+            # Still pending after 10 seconds
+            raise RuntimeError(
+                f"Image still processing (status={status}). Try again shortly."
+            )
