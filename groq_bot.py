@@ -629,7 +629,7 @@ async def decide_visual_type(user_text: str, chan_id: str) -> str:
 
 # ---------------- EDIT OR TEXT DETECTION ----------------
 
-sync def decide_image_action(user_text: str, image_count: int) -> str:
+async def decide_image_action(user_text: str, image_count: int) -> str:
     """
     Returns one of: 'EDIT' or 'NO'
     """
