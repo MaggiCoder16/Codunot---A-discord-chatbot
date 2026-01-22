@@ -75,7 +75,7 @@ async def edit_image(
         # ---------------------------
         # WAIT 29 SECONDS
         # ---------------------------
-        await asyncio.sleep(30)
+        await asyncio.sleep(35)
 
         # ---------------------------
         # SINGLE STATUS CHECK
