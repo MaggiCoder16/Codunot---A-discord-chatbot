@@ -14,7 +14,6 @@ RESULT_ENDPOINT = f"{BASE_URL}/results"
 class Text2VidError(Exception):
     pass
 
-
 async def _submit_job(
     session: aiohttp.ClientSession,
     *,
@@ -32,6 +31,7 @@ async def _submit_job(
     form.add_field("width", "512")
     form.add_field("height", "512")
     form.add_field("steps", "1")
+    form.add_field("guidance", "0")
     form.add_field("frames", str(frames))
     form.add_field("fps", str(fps))
     form.add_field("seed", str(seed))
@@ -59,7 +59,6 @@ async def _submit_job(
         print(f"[VIDEO GEN] Submitted | request_id={request_id} | seed={seed}")
         return request_id, seed
 
-
 async def _poll_once(
     session: aiohttp.ClientSession,
     request_id: str,
@@ -76,7 +75,6 @@ async def _poll_once(
         raise Text2VidError(
             f"Unexpected polling status ({resp.status}): {await resp.text()}"
         )
-
 
 async def text_to_video_512(
     *,
