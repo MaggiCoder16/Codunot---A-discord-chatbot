@@ -620,6 +620,7 @@ async def decide_visual_type(user_text: str, chan_id: str) -> str:
         "- Game inputs or guesses are ALWAYS text.\n"
         "- The user must explicitly ask to generate, create, draw, or produce an image.\n\n"
 		"- MEMES ALWAYS GO IN TEXT."
+		"If the user asks for an image of something EXTREMELY SEXUALLY INAPPROPRIATE, like body without clothes on, return TEXT. Kissing and stuff goes in image."
         "Recent conversation context:\n"
         f"{recent_context}\n\n"
         "Current user message:\n"
