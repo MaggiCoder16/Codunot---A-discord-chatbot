@@ -19,7 +19,7 @@ async def text_to_video_512(
     fps: int = 30,
     model: str = "Ltxv_13B_0_9_8_Distilled_FP8",
     negative_prompt: str | None = None,
-    poll_delay: float = 30.0,  # wait 30s before fetching
+    poll_delay: float = 75.0,  # wait 75s before fetching
 ):
     if not prompt or not prompt.strip():
         raise Text2VidError("Prompt is required")
