@@ -605,20 +605,19 @@ async def handle_file_message(message, mode):
 async def decide_visual_type(user_text: str, chan_id: str) -> str:
     """
     Determines if the user is explicitly requesting:
+    - a static image ("fun")
     - a video/animation ("video")
     - or just text ("text")
-    Only video keywords trigger immediate classification.
+    Video keywords trigger immediate classification.
     """
 
-    # --- Pre-check for obvious video keywords ---
+    # --- Pre-check for video keywords ---
     video_keywords = [
-        "video", "vid", "clip", "animation", "animate", 
+        "video", "vid", "clip", "animation", "animate",
         "moving scene", "motion", "cinematic", "GIF", "looping clip", "film"
     ]
     
     text_lower = user_text.lower()
-
-    # Check video first
     if any(k in text_lower for k in video_keywords):
         return "video"
 
@@ -626,16 +625,22 @@ async def decide_visual_type(user_text: str, chan_id: str) -> str:
     recent_messages = channel_memory.get(chan_id, [])
     recent_context = "\n".join(list(recent_messages)[-4:]) if recent_messages else ""
 
-    # --- LLM Prompt ---
+    # --- LLM Prompt (keeps your old rules) ---
     prompt = (
-        "You are a VERY strict intent classifier. Determine if the user explicitly wants to GENERATE something.\n\n"
+        "You are a VERY strict intent classifier.\n\n"
+        "Determine if the user is explicitly asking to generate a visual output.\n\n"
         "Return ONE WORD ONLY:\n"
-        "- video → user clearly asks to generate a VIDEO, animation, GIF, or motion.\n"
-        "- text → everything else.\n\n"
-        "Rules:\n"
-        "1. User must explicitly ask to create, make, generate, or produce the content.\n"
-        "2. Simply mentioning videos, GIFs, or memes is NOT enough.\n"
-        "3. MEMES always count as text.\n\n"
+        "- fun → user clearly asks to generate a STATIC image, picture, or visual\n"
+        "- video → user clearly asks to generate a VIDEO, animation, or cinematic motion\n"
+        "- text → everything else\n\n"
+        "IMPORTANT RULES:\n"
+        "- The user must EXPLICITLY ask to generate or create the output.\n"
+        "- Simply mentioning images, pictures, or videos is NOT enough.\n"
+        "- Talking about existing images or videos is NOT a generation request.\n"
+        "- Game inputs, guesses, or commands are ALWAYS text.\n"
+        "- If the request can be satisfied with a static image, choose FUN, not VIDEO.\n"
+        "- Choose VIDEO ONLY if motion or animation is clearly requested.\n"
+        "- MEMES ALWAYS GO IN TEXT.\n\n"
         f"Recent conversation context:\n{recent_context}\n\n"
         f"Current user message:\n{user_text}\n\n"
         "Answer:"
@@ -650,6 +655,8 @@ async def decide_visual_type(user_text: str, chan_id: str) -> str:
         result = feedback.strip().lower()
         if result == "video":
             return "video"
+        if result == "fun":
+            return "fun"
     except Exception as e:
         print("[VISUAL TYPE ERROR]", e)
 
