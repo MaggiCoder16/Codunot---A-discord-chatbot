@@ -20,7 +20,7 @@ async def edit_image(
     prompt: str,
     steps: int = 15,
     seed: int | None = None,
-    strength: float = 0.85,
+    strength: float = 1.0,
 ) -> bytes:
 
     seed = seed or random.randint(1, 2**32 - 1)
