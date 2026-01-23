@@ -73,9 +73,9 @@ async def edit_image(
                 raise RuntimeError(f"No image or request_id returned: {data}")
 
         # ---------------------------
-        # WAIT 29 SECONDS
+        # WAIT 65 SECONDS
         # ---------------------------
-        await asyncio.sleep(50)
+        await asyncio.sleep(65)
 
         # ---------------------------
         # SINGLE STATUS CHECK
