@@ -758,9 +758,6 @@ async def boost_image_prompt(user_prompt: str) -> str:
 
         if boosted:
             boosted_clean = boosted.strip()
-            # Ensure clothing enforcement is reflected
-            if enforce_clothing and not any(word in boosted_clean.lower() for word in ["clothes", "shirt", "wearing"]):
-                boosted_clean += " Humans must be wearing clothes."
             print("[BOOSTED PROMPT]", boosted_clean)  # for debugging
             return boosted_clean
 
