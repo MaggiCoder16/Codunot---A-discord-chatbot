@@ -604,19 +604,30 @@ async def handle_file_message(message, mode):
 
 async def decide_visual_type(user_text: str, chan_id: str) -> str:
     """
-    Determines if the user is explicitly requesting an image, a video, or just text.
-    Includes last 4 messages for context.
+    Determines if the user is explicitly requesting:
+    - a static image ("fun")
+    - a video/animation ("video")
+    - or just text ("text")
+    Includes the last 4 messages for context.
     """
 
+    # --- Pre-check for obvious video keywords ---
+    video_keywords = ["video", "vid", "animation", "animate", "moving scene", "motion", "clip", "cinematic"]
+    text_lower = user_text.lower()
+    if any(k in text_lower for k in video_keywords):
+        return "video"
+
+    # --- Get recent context ---
     recent_messages = channel_memory.get(chan_id, [])
     recent_context = "\n".join(list(recent_messages)[-4:]) if recent_messages else ""
 
+    # --- LLM Prompt ---
     prompt = (
         "You are a VERY strict intent classifier.\n\n"
         "Determine if the user is explicitly asking to generate a visual output.\n\n"
         "Return ONE WORD ONLY:\n"
-        "- fun → if the user clearly asks to generate or create a STATIC image, picture, or visual\n"
-        "- video → if the user clearly asks to generate a VIDEO, animation, or cinematic motion\n"
+        "- fun → user clearly asks to generate a STATIC image, picture, or visual\n"
+        "- video → user clearly asks to generate a VIDEO, animation, or cinematic motion\n"
         "- text → everything else\n\n"
         "IMPORTANT RULES:\n"
         "- The user must EXPLICITLY ask to generate or create the output.\n"
@@ -628,25 +639,26 @@ async def decide_visual_type(user_text: str, chan_id: str) -> str:
         "- MEMES ALWAYS GO IN TEXT.\n"
         "- If the user asks for an image of something EXTREMELY sexually inappropriate "
         "(e.g. explicit nudity), return TEXT. Kissing and light romance go in FUN.\n\n"
-        "Recent conversation context:\n"
-        f"{recent_context}\n\n"
-        "Current user message:\n"
-        f"{user_text}\n\n"
+        f"Recent conversation context:\n{recent_context}\n\n"
+        f"Current user message:\n{user_text}\n\n"
         "Answer:"
     )
 
-    feedback = await call_groq_with_health(
-        prompt,
-        temperature=0,
-        mode="serious"
-    )
+    try:
+        feedback = await call_groq_with_health(
+            prompt,
+            temperature=0,
+            mode="serious"
+        )
+        result = feedback.strip().lower()
+        if result == "video":
+            return "video"
+        if result == "fun":
+            return "fun"
+    except Exception as e:
+        print("[VISUAL TYPE ERROR]", e)
 
-    result = feedback.strip().lower()
-
-    if result == "video":
-        return "video"
-    if result == "fun":
-        return "fun"
+    # --- Default fallback ---
     return "text"
 
 # ---------------- EDIT OR TEXT DETECTION ----------------
