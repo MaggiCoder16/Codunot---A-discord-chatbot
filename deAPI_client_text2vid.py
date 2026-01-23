@@ -10,15 +10,15 @@ BASE_URL = "https://api.deapi.ai/api/v1/client"
 TXT2VID_ENDPOINT = f"{BASE_URL}/txt2video"
 RESULT_ENDPOINT = f"{BASE_URL}/results"
 
+
 class Text2VidError(Exception):
     pass
+
 
 async def _submit_job(
     session: aiohttp.ClientSession,
     *,
     prompt: str,
-    guidance: float,
-    steps: int,
     frames: int,
     fps: int,
     model: str,
@@ -31,8 +31,7 @@ async def _submit_job(
     form.add_field("prompt", prompt)
     form.add_field("width", "512")
     form.add_field("height", "512")
-    form.add_field("guidance", str(guidance))
-    form.add_field("steps", str(steps))
+    form.add_field("steps", "1")
     form.add_field("frames", str(frames))
     form.add_field("fps", str(fps))
     form.add_field("seed", str(seed))
@@ -57,10 +56,11 @@ async def _submit_job(
         if not request_id:
             raise Text2VidError("No request_id returned from txt2video")
 
-        print(f"[VIDEO GEN] Submitted job | request_id={request_id} | seed={seed}")
+        print(f"[VIDEO GEN] Submitted | request_id={request_id} | seed={seed}")
         return request_id, seed
 
-async def _poll_result(
+
+async def _poll_once(
     session: aiohttp.ClientSession,
     request_id: str,
     wait_seconds: int,
@@ -74,19 +74,15 @@ async def _poll_result(
         if resp.status == 404:
             return None
         raise Text2VidError(
-            f"Unexpected status while polling ({resp.status}): {await resp.text()}"
+            f"Unexpected polling status ({resp.status}): {await resp.text()}"
         )
 
 
 async def text_to_video_512(
     *,
     prompt: str,
-    guidance: float = 0,
-    steps: int = 1,
-    frames: int = 120,
-    fps: int = 30,
-    model: str = "Ltxv_13B_0_9_8_Distilled_FP8",
     negative_prompt: Optional[str] = None,
+    model: str = "Ltxv_13B_0_9_8_Distilled_FP8",
 ) -> bytes:
 
     if not DEAPI_API_KEY:
@@ -104,27 +100,23 @@ async def text_to_video_512(
         for attempt in (1, 2):
             print(f"[VIDEO GEN] Attempt {attempt}/2")
 
-            request_id, seed = await _submit_job(
+            request_id, _ = await _submit_job(
                 session,
                 prompt=prompt,
-                guidance=guidance,
-                steps=steps,
-                frames=frames,
-                fps=fps,
+                frames=120,
+                fps=30,
                 model=model,
                 negative_prompt=negative_prompt,
             )
 
-            result = await _poll_result(
+            result = await _poll_once(
                 session,
                 request_id=request_id,
-                wait_seconds=180,
+                wait_seconds=180,  # 3 minutes
             )
 
             if result is None:
-                print(
-                    f"[VIDEO GEN] Result not found (404) | request_id={request_id}"
-                )
+                print(f"[VIDEO GEN] 404 after wait | retrying")
                 continue
 
             status = result.get("data", {}).get("status")
@@ -143,13 +135,13 @@ async def text_to_video_512(
                     if vresp.status != 200:
                         raise Text2VidError("Failed to download video")
 
-                    print(f"[VIDEO GEN] Success | request_id={request_id}")
+                    print(f"[VIDEO GEN] Success")
                     return await vresp.read()
 
             if status in ("failed", "error"):
-                raise Text2VidError(f"txt2video failed | payload={result}")
+                raise Text2VidError(f"Generation failed: {result}")
 
-            raise Text2VidError(f"Unexpected status '{status}'")
+            raise Text2VidError(f"Unexpected status: {status}")
 
         raise Text2VidError(
             "Video generation failed after 2 attempts (backend timeout)."
