@@ -724,43 +724,51 @@ async def is_codunot_self_image(user_text: str) -> bool:
 
 async def boost_image_prompt(user_prompt: str) -> str:
     """
-    Uses LLaMA to rewrite a user image idea into a strong image-generation prompt.
+    Rewrite a user image idea into a strong AI image prompt.
+    Enforces clothing on humans if nudity is implied.
+    Prints the boosted prompt for debugging.
     Falls back to original prompt if boosting fails.
     """
 
+    # Pre-check for nudity-related keywords
+    nudity_keywords = ["without shirt", "bare chest", "nude", "topless", "without clothes"]
+    enforce_clothing = any(k in user_prompt.lower() for k in nudity_keywords)
+
+    # Build instruction
     boost_instruction = (
         "You are a professional image prompt engineer.\n\n"
         "Rewrite the user's idea into a single, high-quality image generation prompt.\n\n"
         "STRICT RULES:\n"
-        "- Preserve the user's original idea exactly (no new subjects or story changes)\n"
-        "- If a named person, character, place, or object is mentioned, you MAY clarify it "
-        "with widely-known, neutral descriptors (e.g., role or visual identity)\n"
-		"If the user asks for a human's body part, boost the prompt so that the human is wearing clothes. Put it in the prompt that the human must be wearing clothes. Do not change anything else of the prompt. NOTHING ELSE SHOULD BE CHANGED."
-        "- Do NOT invent unknown facts or niche details\n"
-        "- Expand ONLY with visual details: appearance, clothing, setting, lighting, mood, composition\n"
-        "- Use concrete, vivid language suitable for AI image models\n"
-        "- Do NOT mention artist names, camera brands, or model names\n"
-        "- Do NOT include explanations or formatting\n"
-        "- Output ONE paragraph only, under 80 words\n\n"
-        "User idea:\n"
-        f"{user_prompt}"
+        "1. If the user mentions nudity or body parts, the humans MUST be wearing clothes. "
+        "Do NOT allow nudity. Nothing else should be changed.\n"
+        "2. Preserve the user's original idea exactly (no new subjects or story changes), except for adding clothes as above.\n"
+        "3. Expand ONLY with visual details: appearance, clothing, setting, lighting, mood, composition.\n"
+        "4. Use vivid, concrete language suitable for AI image generation.\n"
+        "5. Do NOT mention artist names, camera brands, or model names.\n"
+        "6. Output ONE paragraph only, under 80 words.\n\n"
+        f"User idea:\n{user_prompt}"
     )
 
     try:
         boosted = await call_groq(
             prompt=boost_instruction,
             model="llama-3.3-70b-versatile",
-            temperature=0.6
+            temperature=0.1  # very strict
         )
 
         if boosted:
-            return boosted.strip()
-            print("[BOOSTED PROMPT]", boosted)
+            boosted_clean = boosted.strip()
+            # Ensure clothing enforcement is reflected
+            if enforce_clothing and not any(word in boosted_clean.lower() for word in ["clothes", "shirt", "wearing"]):
+                boosted_clean += " Humans must be wearing clothes."
+            print("[BOOSTED PROMPT]", boosted_clean)  # for debugging
+            return boosted_clean
 
     except Exception as e:
         print("[PROMPT BOOST ERROR]", e)
 
-    # Fallback — NEVER break image generation
+    # Fallback — never break image generation
+    print("[BOOSTED PROMPT FALLBACK]", user_prompt)
     return user_prompt
 
 def build_vision_followup_prompt(message):
