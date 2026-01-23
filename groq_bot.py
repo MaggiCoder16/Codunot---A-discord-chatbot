@@ -733,6 +733,7 @@ async def boost_image_prompt(user_prompt: str) -> str:
         "- Preserve the user's original idea exactly (no new subjects or story changes)\n"
         "- If a named person, character, place, or object is mentioned, you MAY clarify it "
         "with widely-known, neutral descriptors (e.g., role or visual identity)\n"
+		"If the user asks for a human's body parts, they should ALWAYS be clothed, not naked. Especially that body part."
         "- Do NOT invent unknown facts or niche details\n"
         "- Expand ONLY with visual details: appearance, clothing, setting, lighting, mood, composition\n"
         "- Use concrete, vivid language suitable for AI image models\n"
