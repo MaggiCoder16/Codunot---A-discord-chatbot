@@ -10,10 +10,8 @@ BASE_URL = "https://api.deapi.ai/api/v1/client"
 TXT2VID_ENDPOINT = f"{BASE_URL}/txt2video"
 RESULT_ENDPOINT = f"{BASE_URL}/results"
 
-
 class Text2VidError(Exception):
     pass
-
 
 async def _submit_job(
     session: aiohttp.ClientSession,
@@ -62,7 +60,6 @@ async def _submit_job(
         print(f"[VIDEO GEN] Submitted job | request_id={request_id} | seed={seed}")
         return request_id, seed
 
-
 async def _poll_result(
     session: aiohttp.ClientSession,
     request_id: str,
@@ -84,8 +81,8 @@ async def _poll_result(
 async def text_to_video_512(
     *,
     prompt: str,
-    guidance: float = 7.5,
-    steps: int = 20,
+    guidance: float = 0,
+    steps: int = 1,
     frames: int = 120,
     fps: int = 30,
     model: str = "Ltxv_13B_0_9_8_Distilled_FP8",
