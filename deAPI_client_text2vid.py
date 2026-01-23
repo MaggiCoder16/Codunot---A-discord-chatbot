@@ -14,8 +14,8 @@ class Text2VidError(Exception):
 async def text_to_video_512(
     *,
     prompt: str,
-    guidance: float = 7.5,
-    steps: int = 20,
+    guidance: int = 0,
+    steps: int = 1,
     frames: int = 120,
     seed: int = 42,
     fps: int = 30,
