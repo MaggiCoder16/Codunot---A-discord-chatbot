@@ -2,7 +2,7 @@ import os
 import aiohttp
 import asyncio
 
-DEAPI_API_KEY = os.getenv("DEAPI_API_KEY_TEXT2VID")
+DEAPI_API_KEY = os.getenv("DEAPI_API_KEY_TEXT2VID", "").strip()
 BASE_URL = "https://api.deapi.ai/api/v1/client"
 
 TXT2VID_ENDPOINT = f"{BASE_URL}/txt2video"
