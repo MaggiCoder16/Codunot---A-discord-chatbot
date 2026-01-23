@@ -46,10 +46,7 @@ load_usage()
 # ---------------- CONFIG ----------------
 DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
 BOT_NAME = os.getenv("BOT_NAME", "Codunot")
-OWNER_IDS = [
-    1220934047794987048,
-    1405510052424716381
-]
+OWNER_IDS = {int(os.environ.get("OWNER_ID", 0))}
 MAX_MEMORY = 45
 RATE_LIMIT = 900
 MAX_IMAGE_BYTES = 2_000_000  # 2 MB
@@ -79,11 +76,16 @@ channel_recent_images = set()
 # ---------------- SHUT DOWN THE BOT (OWNER COMMAND) ----------------
 
 @bot.command()
-@commands.is_owner()
 async def shutdown(ctx):
-    await ctx.send("Shutting down... 🛑")
-    save_usage()
-    sys.exit(0)
+    chan_id = f"dm_{ctx.author.id}" if isinstance(ctx.channel, discord.DMChannel) else str(ctx.channel.id)
+
+    if ctx.author.id == OWNER_ID:
+        await ctx.send("Shutting down... 😴")
+        await bot.close()
+        return
+
+    mode = channel_modes.get(chan_id, "funny")
+    await generate_and_reply(chan_id, ctx, ctx.message.content, mode)
 	
 # ---------------- MODELS ----------------
 SCOUT_MODEL = "meta-llama/llama-4-scout-17b-16e-instruct"  # seriousmode
