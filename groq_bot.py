@@ -641,6 +641,7 @@ async def decide_visual_type(user_text: str, chan_id: str) -> str:
         "- If the request can be satisfied with a static image, choose FUN, not VIDEO.\n"
         "- Choose VIDEO ONLY if motion or animation is clearly requested.\n"
         "- MEMES ALWAYS GO IN TEXT.\n\n"
+		"If the user is asking about private parts (dick and bo*bs, return TEXT) Only if the user is asking about private parts. ONLY."
         f"Recent conversation context:\n{recent_context}\n\n"
         f"Current user message:\n{user_text}\n\n"
         "Answer:"
