@@ -52,6 +52,8 @@ jobs:
           HUGGINGFACE_API_KEY_IMAGE_GEN: ${{ secrets.HUGGINGFACE_API_KEY_IMAGE_GEN }}
           DEAPI_API_KEY: ${{ secrets.DEAPI_API_KEY }}
           DEAPI_API_KEY_IMAGE_EDITING: ${{ secrets.DEAPI_API_KEY_IMAGE_EDITING }}
+          DEAPI_API_KEY_TEXT2VID: ${{ secrets.DEAPI_API_KEY_TEXT2VID }}
+          
         run: |
           # Run bot for 3 hours, then exit so data can be committed
           timeout 3h python -u groq_bot.py || true
