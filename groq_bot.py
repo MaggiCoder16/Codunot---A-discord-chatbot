@@ -625,7 +625,7 @@ async def decide_visual_type(user_text: str, chan_id: str) -> str:
     recent_messages = channel_memory.get(chan_id, [])
     recent_context = "\n".join(list(recent_messages)[-4:]) if recent_messages else ""
 
-    # --- LLM Prompt (keeps your old rules) ---
+    # --- LLM Prompt ---
     prompt = (
         "You are a VERY strict intent classifier.\n\n"
         "Determine if the user is explicitly asking to generate a visual output.\n\n"
