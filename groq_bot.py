@@ -491,7 +491,30 @@ async def handle_image_message(message, mode):
 
     finally:
         IMAGE_PROCESSING_CHANNELS.discard(channel_id)
-        
+
+async def extract_tts_text(user_message: str) -> str:
+    """
+    Uses LLaMA to clean the user's prompt.
+    Returns only the content the user wants Kokoro to act on.
+    """
+    prompt = (
+        "You are a strict prompt cleaner.\n"
+        "Your job is to extract exactly what the user wants Kokoro to process.\n"
+        "- If the user says '@Codunot, say \"something\"', return ONLY the text the user wants Kokoro to speak.\n"
+        "- The user might say things like 'speak' or 'say', remove those and return the text user wants Kokoro to process.\n"
+        "- Remove all mentions like @Codunot or other handles.\n"
+        "- Return the cleaned message exactly as Kokoro should see it.\n\n"
+        f"User message:\n{user_message}\n\n"
+        "Return ONLY the cleaned text, nothing else:"
+    )
+
+    try:
+        result = await call_groq_with_health(prompt, temperature=0, mode="serious")
+        return result.strip()
+    except Exception as e:
+        print("[PROMPT CLEAN ERROR]", e)
+        return user_message  # fallback
+		
 # ---------------- FILE UPLOAD PROCESSING ----------------
 MAX_FILE_BYTES = 8_000_000  # 8 MB (Discord attachment limit)
 
