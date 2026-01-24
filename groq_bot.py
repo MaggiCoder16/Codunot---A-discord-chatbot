@@ -759,7 +759,7 @@ async def boost_image_prompt(user_prompt: str) -> str:
         "You are a professional image prompt engineer.\n\n"
         "Rewrite the user's idea into a single, high-quality image generation prompt.\n\n"
         "STRICT RULES:\n"
-        "1. If the user mentions nudity or body parts, the humans MUST be wearing clothes."
+        "1. If the user mentions nudity or body parts, the humans MUST be wearing clothes. Like, the clothes must be around that part, like skirt around a butt, or any other part. MENTION THIS in the prompt."
 		"2. If the user wants an image of a hot girl, let the prompt contain hot girl, don't change to beautiful. Same with other adjectives. If the user wants the girl to be wearing bikini, do not change the prompt to skirt, or anything. Same with boys."
         "Do NOT allow nudity. Nothing else should be changed.\n"
         "3. Preserve the user's original idea exactly (no new subjects or story changes), except for adding clothes as above.\n"
