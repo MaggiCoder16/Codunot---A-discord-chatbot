@@ -2,7 +2,7 @@ import os
 import aiohttp
 import asyncio
 
-DEAPI_API_KEY = os.getenv("DEAPI_API_KEY_TTS", "").strip()
+DEAPI_API_KEY = os.getenv("DEAPI_API_KEY_IMAGE_EDITING", "").strip()
 BASE_URL = "https://api.deapi.ai/api/v1/client"
 TTS_ENDPOINT = f"{BASE_URL}/txt2audio"
 
