@@ -15,7 +15,7 @@ async def text_to_speech(
     model: str = "Kokoro",
     voice: str = "Michael",  # male voice
     lang: str = "en-us",
-    speed: float = 2.0,        # 2x speed
+    speed: float = 1.0,        # Normal speed
     format: str = "mp3",
     sample_rate: int = 24000,
     poll_delay: float = 10.0,
