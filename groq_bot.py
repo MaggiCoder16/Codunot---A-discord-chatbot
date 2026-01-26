@@ -74,7 +74,54 @@ channel_memory = {}
 rate_buckets = {}
 channel_last_image_bytes = {}
 channel_recent_images = set()
-	
+
+# ---------------- !help COMMAND ----------------
+@bot.command(name="help")
+async def help_command(ctx: commands.Context):
+    """
+    Sends a help embed describing Codunot's modes and bonus powers.
+    """
+    embed = discord.Embed(
+        title="🤖 Codunot Help",
+        description="Here's what I can do and how to use me!",
+        color=0xFFA500  # orange color
+    )
+
+    embed.add_field(
+        name="🟢 Fun Mode",
+        value="`!funmode` — jokes, memes & chill vibes 😎",
+        inline=False
+    )
+    embed.add_field(
+        name="🔥 Roast Mode",
+        value="`!roastmode` — playful burns for anyone 😈",
+        inline=False
+    )
+    embed.add_field(
+        name="📘 Serious Mode",
+        value="`!seriousmode` — clean, fact-based help 📚",
+        inline=False
+    )
+    embed.add_field(
+        name="♟️ Chess Mode",
+        value="`!chessmode` — play chess with me ♟️",
+        inline=False
+    )
+    embed.add_field(
+        name="✨ Bonus Powers",
+        value=(
+            "📄 Read & summarize files\n"
+            "🖼️ See and understand images\n"
+            "🎨 Generate & edit images\n"
+            "🎬 Generate videos\n"
+            "🔊 Text-to-speech audio"
+        ),
+        inline=False
+    )
+    embed.set_footer(text="Tip: In servers, always remember to ping me using @Codunot 'your text'. This is not required in DMs.")
+
+    await ctx.send(embed=embed)
+
 # ---------------- MODELS ----------------
 SCOUT_MODEL = "meta-llama/llama-4-scout-17b-16e-instruct"  # seriousmode
 VERSATILE_MODEL = "meta-llama/llama-4-scout-17b-16e-instruct"  # fun/roast
