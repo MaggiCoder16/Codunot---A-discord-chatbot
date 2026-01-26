@@ -1,7 +1,7 @@
 import os
 import json
 import asyncio
-from datetime import date
+from datetime import date, datetime, timedelta
 
 # ======================================================
 # FILE PATHS
@@ -17,9 +17,8 @@ GOLD_FILE = "tiers_gold.txt"
 # IN-MEMORY STORES
 # ======================================================
 
-channel_usage = {}          # daily (resets each day)
-total_image_count = {}     # lifetime
-total_file_count = {}      # lifetime
+channel_usage = {}          # daily usage
+attachment_history = {}     # rolling timestamps (per channel/guild)
 
 # ======================================================
 # LIMIT CONFIGS
@@ -28,38 +27,28 @@ total_file_count = {}      # lifetime
 LIMITS = {
     "basic": {
         "messages": 50,
-        "images": 7,
-        "files": 5,
+        "attachments": 7,
     },
     "premium": {
         "messages": 100,
-        "images": 10,
-        "files": 10,
+        "attachments": 10,
     },
     "gold": {
         "messages": float("inf"),
-        "images": float("inf"),
-        "files": float("inf"),
+        "attachments": float("inf"),
     },
 }
 
 TOTAL_LIMITS = {
-    "basic": {
-        "images": 30,
-        "files": 20,
-    },
-    "premium": {
-        "images": 50,
-        "files": 35,
-    },
-    "gold": {
-        "images": float("inf"),
-        "files": float("inf"),
-    },
+    "basic": 30,     # per 2 months
+    "premium": 50,
+    "gold": 70,
 }
 
+ROLLING_WINDOW = timedelta(days=60)
+
 # ======================================================
-# TIER FILE LOADING (SUPPORTS COMMENTS)
+# TIER FILE LOADING
 # ======================================================
 
 def load_tier_file(path: str) -> set[str]:
@@ -72,13 +61,10 @@ def load_tier_file(path: str) -> set[str]:
             line = line.strip()
             if not line or line.startswith("#"):
                 continue
-
             if "#" in line:
                 line = line.split("#", 1)[0].strip()
-
             if line:
                 ids.add(line)
-
     return ids
 
 
@@ -86,7 +72,7 @@ PREMIUM_IDS = load_tier_file(PREMIUM_FILE)
 GOLD_IDS = load_tier_file(GOLD_FILE)
 
 # ======================================================
-# TIER RESOLUTION (SERVER / DM SAFE)
+# TIER RESOLUTION
 # ======================================================
 
 def get_tier_key(message) -> str:
@@ -97,7 +83,6 @@ def get_tier_key(message) -> str:
 
 def get_tier_from_message(message) -> str:
     key = get_tier_key(message)
-
     if key in GOLD_IDS:
         return "gold"
     if key in PREMIUM_IDS:
@@ -105,7 +90,7 @@ def get_tier_from_message(message) -> str:
     return "basic"
 
 # ======================================================
-# DAILY USAGE (AUTO RESET)
+# DAILY USAGE
 # ======================================================
 
 def get_usage(key: str) -> dict:
@@ -114,16 +99,14 @@ def get_usage(key: str) -> dict:
     usage = channel_usage.setdefault(key, {
         "day": today,
         "messages": 0,
-        "images": 0,
-        "files": 0,
+        "attachments": 0,
     })
 
     if usage["day"] != today:
         usage.update({
             "day": today,
             "messages": 0,
-            "images": 0,
-            "files": 0,
+            "attachments": 0,
         })
 
     return usage
@@ -143,25 +126,40 @@ def consume(message, kind: str):
     usage[kind] += 1
 
 # ======================================================
-# TOTAL (LIFETIME) LIMITS
+# ROLLING 2-MONTH TOTAL LIMITS
 # ======================================================
 
+def _prune(history: list[float]) -> list[float]:
+    now = datetime.utcnow().timestamp()
+    cutoff = now - ROLLING_WINDOW.total_seconds()
+    return [t for t in history if t >= cutoff]
+
+
 def check_total_limit(message, kind: str) -> bool:
+    if kind != "attachments":
+        return True
+
     key = get_tier_key(message)
     tier = get_tier_from_message(message)
-    limit = TOTAL_LIMITS[tier][kind]
+    limit = TOTAL_LIMITS[tier]
 
     if limit == float("inf"):
         return True
 
-    store = total_image_count if kind == "images" else total_file_count
-    return store.get(key, 0) < limit
+    history = attachment_history.get(key, [])
+    history = _prune(history)
+    attachment_history[key] = history
+
+    return len(history) < limit
 
 
 def consume_total(message, kind: str):
+    if kind != "attachments":
+        return
+
     key = get_tier_key(message)
-    store = total_image_count if kind == "images" else total_file_count
-    store[key] = store.get(key, 0) + 1
+    history = attachment_history.setdefault(key, [])
+    history.append(datetime.utcnow().timestamp())
 
 # ======================================================
 # DENY MESSAGE
@@ -188,15 +186,14 @@ def save_usage():
     try:
         with open(TOTAL_FILE, "w") as f:
             json.dump({
-                "images": total_image_count,
-                "files": total_file_count,
+                "attachments": attachment_history
             }, f)
     except Exception as e:
         print("[SAVE TOTAL ERROR]", e)
 
 
 def load_usage():
-    global channel_usage, total_image_count, total_file_count
+    global channel_usage, attachment_history
 
     if os.path.exists(USAGE_FILE):
         with open(USAGE_FILE) as f:
@@ -205,11 +202,10 @@ def load_usage():
     if os.path.exists(TOTAL_FILE):
         with open(TOTAL_FILE) as f:
             data = json.load(f)
-            total_image_count = data.get("images", {})
-            total_file_count = data.get("files", {})
+            attachment_history = data.get("attachments", {})
 
 # ======================================================
-# AUTOSAVE LOOP
+# AUTOSAVE
 # ======================================================
 
 async def autosave_usage():
