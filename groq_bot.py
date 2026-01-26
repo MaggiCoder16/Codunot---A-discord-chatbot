@@ -675,6 +675,12 @@ async def decide_visual_type(user_text: str, chan_id: str) -> str:
         "- Choose VIDEO ONLY if motion or animation is clearly requested.\n"
         "- MEMES ALWAYS GO IN TEXT.\n"
         "- If the user asks for content that contains ANY kind of sexual content, or nude, or ANY type of sexual content, or private body parts, return text. However, only kissing and images of hot/cute/beautiful girls/boys go in fun/video, based on the users prompt.\n"
+		"- Examples -
+		"1) @Codunot generate an image/video of a hot girl flexing her boobs (or muscles) - return TEXT"
+		"2) @Codunot generate an image/video of a hot girl kissing a hot boy - return fun/video"
+		"3) @Codunot generate an image/video of a hot girl showing her boobs - return TEXT"
+		"4) @Codunot generate an image/video of a hot girl with big boobs - return fun/video"
+		"5) @Codunot generate an image/video of a hot girl stuffing her boobs into a mans dick - return TEXT"
         "- If the user explicitly requests speech (using words like say, speak, or talk), return TEXT-TO-SPEECH.\n"
         "- Only return TEXT-TO-SPEECH if the user clearly wants the AI to speak aloud. Do not trigger for casual text.\n\n"
         f"Recent conversation context:\n{recent_context}\n\n"
