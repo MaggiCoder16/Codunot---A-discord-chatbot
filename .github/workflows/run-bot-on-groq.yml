@@ -2,8 +2,7 @@ name: Run Codunot Bot (on Groq)
 
 on:
   schedule:
-    # Every 1 hour
-    - cron: '0 */1 * * *'
+    - cron: '0 * * * *'   # every hour
   workflow_dispatch:
 
 concurrency:
@@ -55,25 +54,36 @@ jobs:
           HUGGINGFACE_API_KEY_IMAGE_GEN: ${{ secrets.HUGGINGFACE_API_KEY_IMAGE_GEN }}
           DEAPI_API_KEY: ${{ secrets.DEAPI_API_KEY }}
         run: |
-          # Run bot for 3 hours, then exit
           timeout 3h python -u groq_bot.py || true
 
-      - name: Persist usage data (usage-data branch ONLY)
+      - name: Persist usage data (JSON only)
         if: always()
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           git config user.name "github-actions"
           git config user.email "github-actions@github.com"
 
           mkdir -p /tmp/usage
-          cp daily_usage.json total_usage.json /tmp/usage/ || true
+          cp daily_usage.json total_usage.json /tmp/usage/ 2>/dev/null || true
 
           git fetch origin
-          git checkout -B usage-data origin/usage-data || git checkout -b usage-data
 
-          cp /tmp/usage/* . || true
+          if git show-ref --verify --quiet refs/remotes/origin/usage-data; then
+            git checkout usage-data
+            git reset --hard origin/usage-data
+          else
+            git checkout -b usage-data
+          fi
+
+          cp /tmp/usage/daily_usage.json . 2>/dev/null || true
+          cp /tmp/usage/total_usage.json . 2>/dev/null || true
 
           git add daily_usage.json total_usage.json
-          git commit -m "Update usage data" || echo "No changes to commit"
-          git push origin usage-data
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+          if ! git diff --cached --quiet; then
+            git commit -m "Update usage data"
+            git push origin usage-data
+          else
+            echo "No usage changes to commit"
+          fi
