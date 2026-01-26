@@ -1482,15 +1482,24 @@ async def on_message(message: Message):
 
     # ---------------- GENERAL CHAT ----------------
 
-    # Let discord.py handle commands first (prefix OR mention)
-    if message.content.startswith(bot.command_prefix) or bot.user.mentioned_in(message):
+    # Remove all occurrences of the bot mention in the message for command processing
+    cmd_content = re.sub(rf"<@!?\s*{bot_id}\s*>", "", message.content).strip()
+
+    # Let discord.py handle commands if the prefix is present
+    if cmd_content.startswith(bot.command_prefix):
+        # Temporarily set message.content for command processing
+        original_content = message.content
+        message.content = cmd_content
         await bot.process_commands(message)
+        message.content = original_content  # restore original
         return
 
+    # Check message limit
     if not check_limit(message, "messages"):
         await deny_limit(message, "messages")
         return
 
+    # Consume the message and generate a reply
     consume(message, "messages")
     asyncio.create_task(generate_and_reply(chan_id, message, content, mode))
 
