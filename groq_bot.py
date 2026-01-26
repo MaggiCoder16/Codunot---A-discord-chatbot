@@ -556,12 +556,12 @@ from pdf2image import convert_from_bytes
 async def handle_file_message(message, mode):
 
     # Check daily limit
-    if not check_limit(message, "files"):
-        await deny_limit(message, "files")
+    if not check_limit(message, "attachments"):
+        await deny_limit(message, "attachments")
         return None
 
     # Check total lifetime limit
-    if not check_total_limit(message, "files"):
+    if not check_total_limit(message, "attachments"):
         await message.reply(
             "🚫 You've hit your **total file upload limit**.\n"
             "Contact aarav_2022 for an upgrade."
@@ -631,8 +631,8 @@ async def handle_file_message(message, mode):
             await send_human_reply(message.channel, response.strip())
 
             # Update counts
-            consume(message, "files")        # daily
-            consume_total(message, "files")  # total
+            consume(message, "attachments")        # daily
+            consume_total(message, "attachments")  # total
             save_usage()  # save after consuming
 
             return response.strip()
@@ -1139,8 +1139,8 @@ async def on_message(message: Message):
                 )
 
                 # ---------- Consume limits like normal image generation ----------
-                consume(message, "images")
-                consume_total(message, "images")
+                consume(message, "attachments")
+                consume_total(message, "attachments")
                 save_usage()
                 print("[DEBUG] EDIT completed and limits consumed")
 
@@ -1228,6 +1228,10 @@ async def on_message(message: Message):
                     )
                 )
 
+                consume(message, "attachments")
+                consume_total(message, "attachments")
+                save_usage()
+
             except Exception as e:
                 print("[TTS ERROR]", e)
                 await send_human_reply(
@@ -1241,11 +1245,11 @@ async def on_message(message: Message):
     if visual_type == "fun":
         await send_human_reply(message.channel, "🖼️ Generating image... please wait.")
 
-        if not check_limit(message, "images"):
-            await deny_limit(message, "images")
+        if not check_limit(message, "attachments"):
+            await deny_limit(message, "attachments")
             return
 
-        if not check_total_limit(message, "images"):
+        if not check_total_limit(message, "attachments"):
             await message.reply(
                 "🚫 You've hit your **total image generation limit**.\n"
                 "Contact aarav_2022 for an upgrade."
@@ -1266,8 +1270,8 @@ async def on_message(message: Message):
                 file=discord.File(io.BytesIO(image_bytes), filename="image.png")
             )
 
-            consume(message, "images")
-            consume_total(message, "images")
+            consume(message, "attachments")
+            consume_total(message, "attachments")
             save_usage()
             return
 
@@ -1283,11 +1287,11 @@ async def on_message(message: Message):
     if visual_type == "video":
         await send_human_reply(message.channel, "🎬 Video queued (may take up to 5 minutes, please wait)")
 
-        if not check_limit(message, "images"):  # videos count against image limits
-            await deny_limit(message, "images")
+        if not check_limit(message, "attachments"):
+            await deny_limit(message, "attachments")
             return
 
-        if not check_total_limit(message, "images"):
+        if not check_total_limit(message, "attachments"):
             await message.reply(
                 "🚫 You've hit your **total image generation limit**.\n"
                 "Contact aarav_2022 for an upgrade."
@@ -1306,8 +1310,8 @@ async def on_message(message: Message):
                 file=discord.File(io.BytesIO(video_bytes), filename="video.mp4")
             )
 
-            consume(message, "images")        # same as image
-            consume_total(message, "images")  # same as image
+            consume(message, "attachments")
+            consume_total(message, "attachments")
             save_usage()
             return
 
