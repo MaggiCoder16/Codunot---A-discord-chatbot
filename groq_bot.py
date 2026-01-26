@@ -76,7 +76,7 @@ channel_last_image_bytes = {}
 channel_recent_images = set()
 
 # ---------------- !help COMMAND ----------------
-@bot.command(name="help")
+@bot.command(name="codunot_help")
 async def help_command(ctx: commands.Context):
     """
     Sends a help embed describing Codunot's modes and bonus powers.
