@@ -1491,6 +1491,8 @@ async def on_message(message: Message):
 
     # ---------------- SAVE USER MESSAGE ----------------
     channel_memory[chan_id].append(f"{message.author.display_name}: {content}")
+	# let discord.py process bot commands like !codunot_help
+    await bot.process_commands(message)
 
 # ---------------- EVENTS ----------------
 @bot.event
