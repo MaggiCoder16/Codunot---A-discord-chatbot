@@ -1482,8 +1482,8 @@ async def on_message(message: Message):
 
     # ---------------- GENERAL CHAT ----------------
 
-    # Let discord.py handle commands first (like !codunot_help)
-    if message.content.startswith(bot.command_prefix):
+    # Let discord.py handle commands first (prefix OR mention)
+    if message.content.startswith(bot.command_prefix) or bot.user.mentioned_in(message):
         await bot.process_commands(message)
         return
 
@@ -1496,7 +1496,7 @@ async def on_message(message: Message):
 
     # ---------------- SAVE USER MESSAGE ----------------
     channel_memory[chan_id].append(f"{message.author.display_name}: {content}")
-
+	
 # ---------------- EVENTS ----------------
 @bot.event
 async def on_ready():
