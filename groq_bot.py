@@ -75,7 +75,7 @@ rate_buckets = {}
 channel_last_image_bytes = {}
 channel_recent_images = set()
 
-# ---------------- !help COMMAND ----------------
+# ---------------- COMMANDS ----------------
 @bot.command(name="codunot_help")
 async def help_command(ctx: commands.Context):
     """
@@ -121,6 +121,65 @@ async def help_command(ctx: commands.Context):
     embed.set_footer(text="Tip: In servers, always remember to ping me using @Codunot 'your text'. This is not required in DMs.")
 
     await ctx.send(embed=embed)
+
+@bot.command(name="funmode")
+async def funmode(ctx: commands.Context):
+    chan_id = (
+        f"dm_{ctx.author.id}"
+        if isinstance(ctx.channel, discord.DMChannel)
+        else str(ctx.channel.id)
+    )
+
+    channel_modes[chan_id] = "funny"
+    memory.save_channel_mode(chan_id, "funny")
+    channel_chess[chan_id] = False
+
+    await ctx.send("😎 Fun mode activated!")
+
+
+@bot.command(name="seriousmode")
+async def seriousmode(ctx: commands.Context):
+    chan_id = (
+        f"dm_{ctx.author.id}"
+        if isinstance(ctx.channel, discord.DMChannel)
+        else str(ctx.channel.id)
+    )
+
+    channel_modes[chan_id] = "serious"
+    memory.save_channel_mode(chan_id, "serious")
+    channel_chess[chan_id] = False
+
+    await ctx.send("🤓 Serious mode ON")
+
+
+@bot.command(name="roastmode")
+async def roastmode(ctx: commands.Context):
+    chan_id = (
+        f"dm_{ctx.author.id}"
+        if isinstance(ctx.channel, discord.DMChannel)
+        else str(ctx.channel.id)
+    )
+
+    channel_modes[chan_id] = "roast"
+    memory.save_channel_mode(chan_id, "roast")
+    channel_chess[chan_id] = False
+
+    await ctx.send("🔥 ROAST MODE ACTIVATED")
+
+
+@bot.command(name="chessmode")
+async def chessmode(ctx: commands.Context):
+    chan_id = (
+        f"dm_{ctx.author.id}"
+        if isinstance(ctx.channel, discord.DMChannel)
+        else str(ctx.channel.id)
+    )
+
+    channel_chess[chan_id] = True
+    channel_modes[chan_id] = "funny"  # optional default during chess
+    chess_engine.new_board(chan_id)
+
+    await ctx.send("♟️ Chess mode ACTIVATED. You are white, start!")
 
 # ---------------- MODELS ----------------
 SCOUT_MODEL = "meta-llama/llama-4-scout-17b-16e-instruct"  # seriousmode
@@ -1136,35 +1195,7 @@ async def on_message(message: Message):
     if channel_mutes.get(chan_id) and now < channel_mutes[chan_id]:
         return
 
-    # ---------- MODE SWITCHING ----------
-    if content_lower.startswith("!funmode"):
-        channel_modes[chan_id] = "funny"
-        memory.save_channel_mode(chan_id, "funny")
-        channel_chess[chan_id] = False
-        await send_human_reply(message.channel, "😎 Fun mode activated!")
-        return
-
-    if content_lower.startswith("!seriousmode"):
-        channel_modes[chan_id] = "serious"
-        memory.save_channel_mode(chan_id, "serious")
-        channel_chess[chan_id] = False
-        await send_human_reply(message.channel, "🤓 Serious mode ON")
-        return
-
-    if content_lower.startswith("!roastmode"):
-        channel_modes[chan_id] = "roast"
-        memory.save_channel_mode(chan_id, "roast")
-        channel_chess[chan_id] = False
-        await send_human_reply(message.channel, "🔥 ROAST MODE ACTIVATED")
-        return
-
-    if content_lower.startswith("!chessmode"):
-        channel_chess[chan_id] = True
-        chess_engine.new_board(chan_id)
-        await send_human_reply(message.channel, "♟️ Chess mode ACTIVATED. You are white, start!")
-        return
-
-    # ---------- AI IMAGE EDIT (counts as image generation) ----------
+    # ---------- AI IMAGE EDIT ----------
     if image_bytes_list and content:
         # Decide what the user wants
         try:
