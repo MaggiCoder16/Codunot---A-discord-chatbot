@@ -70,6 +70,7 @@ jobs:
 
           git fetch origin
 
+          # Checkout or create usage-data branch
           if git show-ref --verify --quiet refs/remotes/origin/usage-data; then
             git checkout usage-data
             git reset --hard origin/usage-data
@@ -77,20 +78,21 @@ jobs:
             git checkout -b usage-data
           fi
 
-          # Only overwrite JSON if content actually changed
+          # Only overwrite JSON if content changed
           CHANGED=false
           for file in daily_usage.json total_usage.json; do
-            if ! cmp -s "/tmp/usage/$file" "$file"; then
-              cp "/tmp/usage/$file" "$file"
-              CHANGED=true
+            if [ -f "/tmp/usage/$file" ]; then
+              if ! cmp -s "/tmp/usage/$file" "$file"; then
+                cp "/tmp/usage/$file" "$file"
+                CHANGED=true
+              fi
             fi
           done
 
-          # Commit only if something changed
+          # Commit only if JSON files changed
           if [ "$CHANGED" = true ]; then
             git add daily_usage.json total_usage.json
             git commit -m "Update usage data"
             git push origin usage-data
           else
-            echo "No usage changes to commit"
-          fi
+            echo "No JSON changes to commit"
