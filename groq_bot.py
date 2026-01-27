@@ -899,23 +899,15 @@ async def boost_image_prompt(user_prompt: str) -> str:
     Falls back to original prompt if boosting fails.
     """
 
-    # Pre-check for nudity-related keywords
-    nudity_keywords = ["without shirt", "bare chest", "nude", "topless", "without clothes"]
-    enforce_clothing = any(k in user_prompt.lower() for k in nudity_keywords)
-
     # Build instruction
     boost_instruction = (
         "You are a professional image prompt engineer.\n\n"
         "Rewrite the user's idea into a single, high-quality image generation prompt.\n\n"
         "STRICT RULES:\n"
-        "1. If the user mentions nudity or body parts, the humans MUST be wearing clothes. Like, the clothes must be around that part, like skirt around a butt, or any other part. MENTION THIS in the prompt."
-		"2. If the user wants an image of a hot girl, let the prompt contain hot girl, don't change to beautiful. Same with other adjectives. If the user wants the girl to be wearing bikini, do not change the prompt to skirt, or anything. Same with boys."
-        "Do NOT allow nudity. Nothing else should be changed.\n"
-        "3. Preserve the user's original idea exactly (no new subjects or story changes), except for adding clothes as above.\n"
-        "4. Expand ONLY with visual details: appearance, clothing, setting, lighting, mood, composition.\n"
-        "5. Use vivid, concrete language suitable for AI image generation.\n"
-        "6. Do NOT mention artist names, camera brands, or model names.\n"
-        "7. Output ONE paragraph only, under 80 words.\n\n"
+        "1. Preserve the user's original idea exactly (no new subjects or story changes), except for adding clothes as above.\n"
+        "2. Use vivid, concrete language suitable for AI image generation.\n"
+        "3. Do NOT mention artist names, camera brands, or model names.\n"
+        "4. Output ONE paragraph only, under 80 words.\n\n"
         f"User idea:\n{user_prompt}"
     )
 
