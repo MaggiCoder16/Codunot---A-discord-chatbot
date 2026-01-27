@@ -780,6 +780,7 @@ async def decide_visual_type(user_text: str, chan_id: str) -> str:
         "IMPORTANT RULES:\n"
         "- The user must EXPLICITLY ask to generate or create the output.\n"
         "- Simply mentioning images, pictures, or videos is NOT enough.\n"
+		" - The user message must contain keywords like 'make an image/video', 'generate an image/video', 'create an image/video' etc. Normal chats must not trigger images"
         "- Talking about existing images or videos is NOT a generation request.\n"
         "- Game inputs, guesses, or commands are ALWAYS text.\n"
         "- If the request can be satisfied with a static image, choose FUN, not VIDEO.\n"
