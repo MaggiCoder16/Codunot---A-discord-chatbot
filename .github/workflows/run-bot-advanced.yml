@@ -2,7 +2,7 @@ name: Run Codunot Bot (advanced)
 
 on:
   schedule:
-    - cron: '0 * * * *'   # every hour
+    - cron: '0 * * * *'
   workflow_dispatch:
 
 concurrency:
@@ -64,16 +64,12 @@ jobs:
           git config user.name "github-actions"
           git config user.email "github-actions@github.com"
 
-          # Save JSON files temporarily
           mkdir -p /tmp/usage
           cp daily_usage.json total_usage.json /tmp/usage/ 2>/dev/null || true
 
           git fetch origin
-
-          # Reset working directory to avoid conflicts with other changes
           git reset --hard
 
-          # Checkout or create usage-data branch
           if git show-ref --verify --quiet refs/remotes/origin/usage-data; then
             git checkout usage-data
             git reset --hard origin/usage-data
@@ -81,10 +77,8 @@ jobs:
             git checkout -b usage-data
           fi
 
-          # Copy back JSON files
           cp /tmp/usage/daily_usage.json /tmp/usage/total_usage.json .
 
-          # Only commit JSON files if they changed
           CHANGED=false
           for file in daily_usage.json total_usage.json; do
             if ! git diff --quiet "$file"; then
@@ -98,4 +92,4 @@ jobs:
             git push origin usage-data
           else
             echo "No JSON changes to commit"
-
+          fi
