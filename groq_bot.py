@@ -2,6 +2,7 @@ import os
 import io
 import asyncio
 import atexit
+import aiohttp
 import random
 import re
 import numpy as np
@@ -29,6 +30,7 @@ import chess
 import aiohttp
 import base64
 from typing import Optional
+from topgg_utils import has_voted
 
 from usage_manager import (
     check_limit,
@@ -47,6 +49,7 @@ load_usage()
 # ---------------- CONFIG ----------------
 DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
 BOT_NAME = os.getenv("BOT_NAME", "Codunot")
+TOPGG_TOKEN = os.getenv("TOPGG_TOKEN")
 OWNER_IDS = {int(os.environ.get("OWNER_ID", 0))}
 MAX_MEMORY = 45
 RATE_LIMIT = 900
@@ -254,6 +257,18 @@ CODUNOT_SELF_IMAGE_PROMPT = (
 )
 
 # ---------------- HELPERS ----------------
+
+async def require_vote(message) -> bool:
+    if await has_voted(message.author.id):
+        return True
+
+    await message.channel.send(
+        "🚫 **This feature requires a Top.gg vote**\n\n"
+        "Vote to unlock **Image, Video, TTS & File tools** 💙\n"
+        "👉 https://top.gg/bot/1435987186502733878/vote\n\n"
+        "🗳️ You can vote **once every 12 hours**."
+    )
+    return False
 
 def log_source(message, action: str):
     if isinstance(message.channel, discord.DMChannel):
@@ -1222,6 +1237,8 @@ async def on_message(message: Message):
 
         # ---------- EDIT ----------
         if action == "EDIT":
+            if not await require_vote(message):
+                return
             log_source(message, "IMAGE_EDIT")
             ref_image = image_bytes_list[0]
             print("[DEBUG] User requested EDIT")
@@ -1302,6 +1319,8 @@ async def on_message(message: Message):
 
     # ---------- TEXT-TO-SPEECH ----------
     if visual_type == "text-to-speech":
+        if not await require_vote(message):
+            return
         log_source(message, "TEXT_TO_SPEECH")
         tts_text = await clean_user_prompt(content)
         if tts_text:
@@ -1346,6 +1365,8 @@ async def on_message(message: Message):
 
     # ---------- IMAGE ----------
     if visual_type == "fun":
+        if not await require_vote(message):
+            return
         log_source(message, "IMAGE_GENERATION")
         await send_human_reply(message.channel, "🖼️ Generating image... please wait.")
 
@@ -1389,6 +1410,8 @@ async def on_message(message: Message):
 
     # ---------- VIDEO ----------
     if visual_type == "video":
+        if not await require_vote(message):
+            return
         log_source(message, "VIDEO_GENERATION")
         await send_human_reply(message.channel, "🎬 Video queued (may take up to 5 minutes, please wait)")
 
