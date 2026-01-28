@@ -53,6 +53,7 @@ jobs:
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
           HUGGINGFACE_API_KEY_IMAGE_GEN: ${{ secrets.HUGGINGFACE_API_KEY_IMAGE_GEN }}
           DEAPI_API_KEY: ${{ secrets.DEAPI_API_KEY }}
+          TOPGG_TOKEN: ${{ secrets.TOPGG_TOKEN }}
         run: |
           timeout 3h python -u groq_bot.py || true
 
