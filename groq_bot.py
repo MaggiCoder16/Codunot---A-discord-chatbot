@@ -6,6 +6,7 @@ import aiohttp
 import random
 import re
 import numpy as np
+import time
 from datetime import datetime, timedelta, timezone, date
 from collections import deque
 import urllib.parse
@@ -27,10 +28,10 @@ from slang_normalizer import apply_slang_map
 from PIL import Image
 
 import chess
-import aiohttp
 import base64
 from typing import Optional
 from topgg_utils import has_voted
+import json
 
 from usage_manager import (
     check_limit,
@@ -51,10 +52,12 @@ DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
 BOT_NAME = os.getenv("BOT_NAME", "Codunot")
 TOPGG_TOKEN = os.getenv("TOPGG_TOKEN")
 OWNER_IDS = {int(os.environ.get("OWNER_ID", 0))}
+VOTE_DURATION = 12 * 60 * 60
 MAX_MEMORY = 45
-RATE_LIMIT = 900
+RATE_LIMIT = 30
 MAX_IMAGE_BYTES = 2_000_000  # 2 MB
 MAX_TTS_LENGTH = 150
+VOTE_FILE = "vote_unlocks.json"
 
 # ---------------- CLIENT ----------------
 intents = discord.Intents.all()
@@ -75,6 +78,8 @@ channel_chess = {}
 channel_images = {}
 channel_memory = {}
 rate_buckets = {}
+user_vote_unlocks = {
+}
 channel_last_image_bytes = {}
 channel_recent_images = set()
 
@@ -258,16 +263,63 @@ CODUNOT_SELF_IMAGE_PROMPT = (
 
 # ---------------- HELPERS ----------------
 
+def load_vote_unlocks():
+    global user_vote_unlocks
+    if not os.path.exists(VOTE_FILE):
+        user_vote_unlocks = {}
+        return
+
+    try:
+        with open(VOTE_FILE, "r") as f:
+            data = json.load(f)
+            # convert keys back to int
+            user_vote_unlocks = {int(k): v for k, v in data.items()}
+    except Exception as e:
+        print(f"[VOTE] Failed to load vote unlocks: {e}")
+        user_vote_unlocks = {}
+
+def save_vote_unlocks():
+    try:
+        with open(VOTE_FILE, "w") as f:
+            json.dump(user_vote_unlocks, f)
+    except Exception as e:
+        print(f"[VOTE] Failed to save vote unlocks: {e}")
+
+def cleanup_expired_votes():
+    now = time.time()
+    expired = [
+        uid for uid, ts in user_vote_unlocks.items()
+        if (now - ts) >= VOTE_DURATION
+    ]
+    for uid in expired:
+        del user_vote_unlocks[uid]
+
+    if expired:
+        save_vote_unlocks()
+
+load_vote_unlocks()
+cleanup_expired_votes()
+
 async def require_vote(message) -> bool:
-    if await has_voted(message.author.id):
+    user_id = message.author.id
+    now = time.time()
+
+    unlock_time = user_vote_unlocks.get(user_id)
+    if unlock_time and (now - unlock_time) < VOTE_DURATION:
+        return True
+
+    if await has_voted(user_id):
+        user_vote_unlocks[user_id] = now
+        save_vote_unlocks()
         return True
 
     await message.channel.send(
         "🚫 **This feature requires a Top.gg vote**\n\n"
-        "Vote to unlock **Image generations and editing, Video generations, Text-To-Speech & File tools** 💙\n"
+        "🗳️ Vote to unlock **Image generations & editing, Video generations, "
+        "Text-To-Speech & File tools** for **12 hours** 💙\n\n"
         "👉 https://top.gg/bot/1435987186502733878/vote\n\n"
-        "🗳️ Enable the 'every 12 hours' option and click on the 'remind me' button to unlock these features!**."
-		"**Once you have voted, please wait for 1-2 minutes before using these features!**"
+        "⏱️ After 12 hours, you’ll need to vote again to regain access. So, press on the 'every 12 hours' and 'remind me' buttons while you vote.\n"
+        "⏳ Once you vote, please wait **1–2 minutes** before retrying."
     )
     return False
 
@@ -351,6 +403,13 @@ PERSONAS = {
         "Text-based games only when user explicitly asks. "
         "Never prefix with your name. "
         "Never mention server/channel names unless asked. "
+        "If a user asks how to vote for you, how to unlock features, or mentions voting for Codunot: "
+        "Explain that premium features are unlocked by voting on Top.gg. "
+        "Tell them that one vote unlocks special features for 12 hours. "
+        "After 12 hours, they need to vote again to regain access. "
+        "Provide the vote link: https://top.gg/bot/1435987186502733878/vote "
+        "Mention that it may take 1–2 minutes after voting for the unlock to apply. "
+        "Keep the explanation short and friendly. "
         "When the user asks \"who made you?\" or \"who is your creator?\" "
         "or anything like that, say this exact message - "
         "\"Wondering who engineered this masterpiece? It’s @aarav_2022 (Discord ID: 1220934047794987048) 😎✨\" "
@@ -1587,4 +1646,5 @@ def run():
 
 if __name__ == "__main__":
     atexit.register(save_usage)
+    atexit.register(save_vote_unlocks)
     run()
