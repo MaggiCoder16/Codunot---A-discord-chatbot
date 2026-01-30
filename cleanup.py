@@ -32,7 +32,7 @@ async def on_ready():
                 except discord.Forbidden:
                     pass
 
-                if deleted >= 1:  # Stop after deleting 1 message
+                if deleted >= 20:  # Stop after deleting 20 messages
                     break
 
         print(f"Deleted {deleted} bot messages")
