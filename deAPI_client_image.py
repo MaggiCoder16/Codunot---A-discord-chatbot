@@ -33,7 +33,7 @@ def clean_prompt(prompt: str) -> str:
     return re.sub(r"[\r\n]+", " ", prompt.strip())[:900]
 
 # ============================================================
-# IMAGE GENERATION (single 10s wait)
+# IMAGE GENERATION (poll same request)
 # ============================================================
 
 async def generate_image(
@@ -43,6 +43,7 @@ async def generate_image(
 ) -> bytes:
     """
     Generate image using deAPI (ZImageTurbo_INT8).
+    Continues polling the SAME request if not ready yet.
     Returns raw PNG bytes.
     """
 
@@ -85,37 +86,47 @@ async def generate_image(
         print(f"[deAPI] request_id = {request_id}", flush=True)
 
         # ---------------------------
-        # WAIT 10 SECONDS
+        # INITIAL WAIT
         # ---------------------------
         await asyncio.sleep(35)
 
         # ---------------------------
-        # SINGLE STATUS CHECK
+        # POLLING LOOP
         # ---------------------------
-        async with session.get(f"{STATUS_URL}/{request_id}", headers=headers) as r:
-            status_data = await r.json()
-            print("[deAPI STATUS]", status_data, flush=True)
+        max_checks = 3          # total checks
+        poll_delay = 15         # seconds between checks
 
-            data = status_data.get("data", {})
-            status = data.get("status")
+        for attempt in range(1, max_checks + 1):
+            async with session.get(f"{STATUS_URL}/{request_id}", headers=headers) as r:
+                status_data = await r.json()
+                print("[deAPI STATUS]", status_data, flush=True)
 
-            if status == "done":
-                result_url = data.get("result_url")
-                if not result_url:
-                    raise RuntimeError("Job done but no result_url returned")
+                data = status_data.get("data", {})
+                status = data.get("status")
 
-                # ---------------------------
-                # DOWNLOAD IMAGE
-                # ---------------------------
-                async with session.get(result_url) as img_resp:
-                    if img_resp.status != 200:
-                        raise RuntimeError("Failed to download image")
-                    return await img_resp.read()
+                if status == "done":
+                    result_url = data.get("result_url")
+                    if not result_url:
+                        raise RuntimeError("Job done but no result_url returned")
 
-            if status == "failed":
-                raise RuntimeError(f"Generation failed: {status_data}")
+                    async with session.get(result_url) as img_resp:
+                        if img_resp.status != 200:
+                            raise RuntimeError("Failed to download image")
+                        return await img_resp.read()
 
-            # Still pending after 10 seconds
-            raise RuntimeError(
-                f"Image still processing (status={status}). Try again shortly."
-            )
+                if status == "failed":
+                    raise RuntimeError(f"Generation failed: {status_data}")
+
+            if attempt < max_checks:
+                print(
+                    f"[deAPI] still processing (attempt {attempt}/{max_checks}), waiting {poll_delay}s...",
+                    flush=True,
+                )
+                await asyncio.sleep(poll_delay)
+
+        # ---------------------------
+        # FINAL FAILURE
+        # ---------------------------
+        raise RuntimeError(
+            f"Image still processing after {max_checks} checks. Try again shortly."
+        )
