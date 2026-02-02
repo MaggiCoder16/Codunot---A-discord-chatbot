@@ -1317,7 +1317,6 @@ async def on_message(message: Message):
                     file=discord.File(io.BytesIO(result), filename="edited.png")
                 )
 
-                # ---------- Consume limits like normal image generation ----------
                 consume(message, "attachments")
                 consume_total(message, "attachments")
                 save_usage()
