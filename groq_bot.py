@@ -952,12 +952,12 @@ async def decide_image_action(user_text: str, image_count: int) -> str:
 async def is_codunot_self_image(user_text: str) -> bool:
     prompt = (
         "Answer only YES or NO.\n\n"
-        "Determine if the user is explicitly asking for an image of Codunot itself "
-        "(the AI assistant/bot), not any other image or concept.\n"
+        "Determine if the user is explicitly asking for an image of Codunot itself. "
+        "(the AI assistant/bot), not any other image or concept. \n"
         "Do NOT say YES for vague or generic requests such as 'can you generate images?', "
-        "'make a picture', or any request that does not specifically mention Codunot or itself.\n"
+        "'make a picture', or any request that does not specifically mention Codunot or itself. \n"
         "Only respond YES if the message clearly mentions Codunot, yourself, or you, "
-        "in combination with words like image, picture, drawing, or avatar.\n"
+        "in combination with words like image, picture, drawing, or avatar. \n"
         "Otherwise, respond NO.\n\n"
         f"User message:\n{user_text}"
     )
@@ -978,13 +978,14 @@ async def boost_image_prompt(user_prompt: str) -> str:
 
     # Build instruction
     boost_instruction = (
-        "You are a professional image prompt engineer.\n\n"
-        "Rewrite the user's idea into a single, high-quality image generation prompt.\n\n"
-        "STRICT RULES:\n"
-        "1. Preserve the user's original idea exactly (no new subjects or story changes), except for adding clothes as above.\n"
-        "2. Use vivid, concrete language suitable for AI image generation.\n"
-        "3. Do NOT mention artist names, camera brands, or model names.\n"
-        "4. Output ONE paragraph only, under 80 words.\n\n"
+        "You are a professional image prompt engineer. \n\n"
+        "Rewrite the user's idea into a single, high-quality image generation prompt. \n\n"
+        "STRICT RULES: \n"
+        "1. If the user wants an image of a body part, like boobs, or chest, or if they say the person should be naked/not wearing clothes in any part, you must boost the prompt so that the WHOLE BODY is covered with clothes, especially that part (if the user is requesting an image of that part.) Put this in the prompt STRICTLY. "
+        "2. Preserve the user's original idea exactly (no new subjects or story changes), except for adding clothes as above. \n"
+        "3. Use vivid, concrete language suitable for AI image generation. \n"
+        "4. Do NOT mention artist names, camera brands, or model names. \n"
+        "5. Output may be as big as you want, but not very big, but very clear, and concise, and very simple and understandable. \n\n"
         f"User idea:\n{user_prompt}"
     )
 
@@ -1010,13 +1011,13 @@ async def boost_image_prompt(user_prompt: str) -> str:
 def build_vision_followup_prompt(message):
     return (
         "You are Codunot.\n"
-        "An image was shown earlier in this channel.\n\n"
+        "An image was shown earlier in this channel. \n\n"
 
-        "RULES:\n"
-        "- ONLY talk about the image if the user's message is clearly referring to it.\n"
+        "RULES: \n"
+        "- ONLY talk about the image if the user's message is clearly referring to it. \n"
         "- If the user asks something unrelated (greetings, bot info, creator, general chat, etc.), "
-        "IGNORE the image completely and reply normally.\n"
-        "- If the user is unclear, ask ONE short clarification question.\n\n"
+        "IGNORE the image completely and reply normally. \n"
+        "- If the user is unclear, ask ONE short clarification question. \n\n"
 
         f"User message:\n{message.content}"
     )
