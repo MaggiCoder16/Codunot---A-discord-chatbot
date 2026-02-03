@@ -1443,7 +1443,11 @@ async def on_message(message: Message):
             return
 
         if await is_codunot_self_image(content):
-            image_prompt = CODUNOT_SELF_IMAGE_PROMPT
+            image_prompt = (
+                CODUNOT_SELF_IMAGE_PROMPT
+                + "\n\nAdditional user instructions:\n"
+                + content
+            )
         else:
             image_prompt = await boost_image_prompt(content)
 
