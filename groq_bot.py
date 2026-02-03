@@ -963,7 +963,7 @@ async def boost_image_prompt(user_prompt: str) -> str:
         "2. Preserve the user's original idea exactly (no new subjects or story changes).\n"
         "3. Use vivid, concrete language suitable for AI image generation.\n"
         "4. Do NOT mention artist names, camera brands, or model names.\n"
-        "5. Output can be as big as you want it to be, not too big though. Make it easily understandable, clear, and concise.\n\n"
+        "5. Output can be as big as you want it to be, there are no limits. Don't make it TOO big, though. 250-300 words are allowed.\n\n"
         "SPECIAL CODUNOT RULE:\n"
         "If the user is requesting an image of Codunot itself (keywords may include "
         "'codunot', 'yourself', 'urself', 'you', 'your image', 'ur image', 'codunot image'), "
