@@ -944,26 +944,7 @@ async def decide_image_action(user_text: str, image_count: int) -> str:
         print("[LLAMA IMAGE ACTION ERROR]", e)
         return "NO"
 
-# ---------------- DETECT IF USER IS ASKING CODUNOT FOR IT'S OWN IMAGE ----------------
-
-async def is_codunot_self_image(user_text: str) -> bool:
-    prompt = (
-        "Answer only YES or NO.\n\n"
-        "Determine if the user is explicitly asking for an image of Codunot itself "
-        "(the AI assistant/bot), not any other image or concept.\n"
-        "Do NOT say YES for vague or generic requests such as 'can you generate images?', "
-        "'make a picture', or any request that does not specifically mention Codunot or itself.\n"
-        "Only respond YES if the message clearly mentions Codunot, yourself, or you, "
-        "in combination with words like image, picture, drawing, or avatar.\n"
-        "Otherwise, respond NO.\n\n"
-        f"User message:\n{user_text}"
-    )
-
-    try:
-        resp = await call_groq_with_health(prompt, temperature=0)
-        return resp.strip().lower() == "yes"
-    except:
-        return False
+# ---------------- PROMPT BOOSTER ----------------
 
 async def boost_image_prompt(user_prompt: str) -> str:
     """
@@ -978,12 +959,23 @@ async def boost_image_prompt(user_prompt: str) -> str:
         "You are a professional image prompt engineer.\n\n"
         "Rewrite the user's idea into a single, high-quality image generation prompt.\n\n"
         "STRICT RULES:\n"
-        "1. Preserve the user's original idea exactly (no new subjects or story changes), except for adding clothes as above.\n"
-        "2. Use vivid, concrete language suitable for AI image generation.\n"
-        "3. Do NOT mention artist names, camera brands, or model names.\n"
-        "4. Output ONE paragraph only, under 80 words.\n\n"
+        "1. If the user is asking for content which involves people not wearing clothes in ANY part of the body, boost the prompt so THERE IS CLOTHING. Put this STRICTLY in the prompt - there MUST be clothing. (What the user says doesn't matter in this case).\n"
+        "2. Preserve the user's original idea exactly (no new subjects or story changes).\n"
+        "3. Use vivid, concrete language suitable for AI image generation.\n"
+        "4. Do NOT mention artist names, camera brands, or model names.\n"
+        "5. Output can be as big as you want it to be, not too big though. Make it easily understandable, clear, and concise.\n\n"
+        "SPECIAL CODUNOT RULE:\n"
+        "If the user is requesting an image of Codunot itself (keywords may include "
+        "'codunot', 'yourself', 'urself', 'you', 'your image', 'ur image', 'codunot image'), "
+        "the final prompt MUST:\n"
+        "- Contain the Codunot Self Image Prompt EXACTLY as written below (do NOT change it)\n"
+        "- Seamlessly merge the user's request into the same single prompt\n"
+        "- Not rewrite, paraphrase, shorten, or reorder the Codunot Self Image Prompt\n\n"
+        "CODUNOT SELF IMAGE PROMPT (DO NOT MODIFY):\n"
+        f"{CODUNOT_SELF_IMAGE_PROMPT}\n\n"
         f"User idea:\n{user_prompt}"
     )
+
 
     try:
         boosted = await call_groq(
@@ -1438,11 +1430,7 @@ async def on_message(message: Message):
                 "Contact aarav_2022 for an upgrade."
             )
             return
-
-        if await is_codunot_self_image(content):
-            image_prompt = CODUNOT_SELF_IMAGE_PROMPT
-        else:
-            image_prompt = await boost_image_prompt(content)
+        image_prompt = await boost_image_prompt(content)
 
         try:
             image_bytes = await generate_image(image_prompt, aspect_ratio="16:9", steps=15)
@@ -1484,10 +1472,7 @@ async def on_message(message: Message):
             )
             return
 
-        if await is_codunot_self_image(content):
-            video_prompt = CODUNOT_SELF_IMAGE_PROMPT
-        else:
-            video_prompt = await boost_image_prompt(content)
+        video_prompt = await boost_image_prompt(content)
 
         try:
             video_bytes = await text_to_video_512(prompt=video_prompt)
