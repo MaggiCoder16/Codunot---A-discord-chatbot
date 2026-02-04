@@ -954,29 +954,66 @@ async def boost_image_prompt(user_prompt: str) -> str:
     boost_instruction = (
         "You are a professional image prompt engineer.\n\n"
         "Rewrite the user's idea into a single, high-quality image generation prompt.\n\n"
-        "STRICT RULES:\n"
-        "1. If the user is asking for content which involves a HUMAN or HUMANOID not wearing clothes in ANY part of the body, "
-        "boost the prompt so THERE IS CLOTHING. Put this STRICTLY in the prompt - there MUST be clothing. "
-        "(This rule applies ONLY to humans or humanoids; animals, robots, mascots, and objects must NOT be dressed).\n"
-        "2. Preserve the user's original idea exactly (no new subjects or story changes).\n"
+
+        "STRICT RULES (FAILURE IF VIOLATED):\n"
+        "1. If the user is asking for content which involves a HUMAN not wearing clothes in ANY part of the body, "
+        "boost the prompt so THERE IS CLOTHING. Put this STRICTLY in the prompt — there MUST be clothing. "
+        "(This rule applies ONLY to humans or humanoids; animals, robots, mascots, and objects must NOT be dressed.)\n"
+        "2. Preserve the user's original idea exactly (no new subjects, no mascot injection, no story changes).\n"
         "3. Use vivid, concrete language suitable for AI image generation.\n"
         "4. Do NOT mention artist names, camera brands, or model names.\n"
-        "5. Output can be as big as you want it to be, there are no limits. Don't make it TOO big, though. 250-300 words are allowed.\n\n"
-        "SPECIAL CODUNOT RULE:\n"
-        "If the user is requesting an image of Codunot itself (keywords may include "
-        "'codunot', 'yourself', 'urself', 'you', 'your image', 'ur image', 'codunot image'), "
-        "the final prompt MUST:\n"
-        "- Contain the Codunot Self Image Prompt EXACTLY as written below (do NOT change it)\n"
-        "- Seamlessly merge the user's request into the same single prompt\n"
-        "- Not rewrite, paraphrase, shorten, or reorder the Codunot Self Image Prompt\n\n"
-        "- Put the user's prompt at the top, then the bot's (Codunot's) description.\n\n"
-		"- But don't just rely on the keywords, as they can mean anything else as well."
-        "For example -\n\n"
-        "User: 'image of urself on a white background, the image must be circular, and bold text 'Codunot' must be written beside the image.' "
-        "Your boosted prompt: First, there must be on a white background, then circular, then the image description, and then the text and its placement\n\n"
-        "CODUNOT SELF IMAGE PROMPT (DO NOT MODIFY):\n"
-        f"{CODUNOT_SELF_IMAGE_PROMPT}\n\n"
-        f"User idea:\n{user_prompt}"
+        "5. Output may be detailed, but must stay focused on the user's request.\n"
+        "6. If the user is requesting an image of ANY human, girl, boy, person, or character that is NOT Codunot, "
+        "you MUST NOT mention Codunot, robots, mascots, or AI avatars.\n\n"
+
+        "SPECIAL CODUNOT RULE (SELF-REFERENCE AWARE):\n"
+		"You are Codunot, an AI Assistant.\n\n"
+        "Apply this rule ONLY if the user is explicitly asking for an image of YOU AS THE ASSISTANT.\n\n"
+
+        "This rule IS TRIGGERED if the user's message clearly refers to the assistant itself, "
+        "including phrases such as:\n"
+        "- \"codunot\"\n"
+        "- \"yourself\" / \"urself\"\n"
+        "- \"you\" WHEN paired with image-related words (e.g. \"image of you\", \"draw you\", \"your image\")\n\n"
+
+        "This rule is NOT triggered for:\n"
+        "- third-person humans (e.g. \"girl\", \"boy\", \"person\", \"model\")\n"
+        "- descriptive humans (e.g. \"hot girl\", \"bikini girl\")\n"
+        "- fictional or generic characters\n"
+        "- ambiguous pronouns without clear self-reference\n\n"
+
+        "DECISION RULE:\n"
+        "If the request can reasonably be interpreted as a request for a HUMAN OTHER THAN THE ASSISTANT,\n"
+        "you MUST assume it is NOT Codunot.\n\n"
+
+        "If this rule is NOT triggered, you MUST NOT include Codunot or the Codunot Self Image Prompt.\n\n"
+
+        "If this rule IS triggered:\n"
+        "- You MUST treat \"yourself / you\" as Codunot\n"
+        "- The final prompt MUST contain the Codunot Self Image Prompt EXACTLY as written\n"
+        "- Do NOT rewrite, paraphrase, shorten, reorder, or modify it\n"
+        "- Put the user's request first, followed by the Codunot description\n\n"
+
+        "REFERENCE BLOCK — FORBIDDEN TO USE UNLESS THE SPECIAL CODUNOT RULE IS TRIGGERED:\n"
+        "You are FORBIDDEN from copying, paraphrasing, summarizing, or incorporating the following block "
+        "unless the user's message is explicitly determined to be a request for an image of YOU AS THE ASSISTANT (Codunot).\n\n"
+
+        "If the request can reasonably be interpreted as a request for a HUMAN, PERSON, GIRL, BOY, "
+        "or CHARACTER OTHER THAN THE ASSISTANT, you MUST assume it is NOT Codunot and keep this block locked.\n\n"
+
+        "This block MUST remain locked unless the user clearly and unambiguously refers to the assistant itself.\n"
+        "Clear self-reference includes, but is NOT limited to, cases where the user asks for:\n"
+        "- an image of the assistant itself\n"
+        "- the assistant's own appearance\n"
+        "- \"yourself\" / \"urself\"\n"
+        "- \"you\" or \"your\" when clearly referring to the assistant as the subject of the image\n\n"
+
+        "--- BEGIN FORBIDDEN BLOCK ---\n"
+        f"{CODUNOT_SELF_IMAGE_PROMPT}\n"
+        "--- END FORBIDDEN BLOCK ---\n\n"
+
+        "User idea:\n"
+        f"{user_prompt}"
     )
 
     try:
