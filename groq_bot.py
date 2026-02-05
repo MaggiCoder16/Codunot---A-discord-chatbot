@@ -891,7 +891,7 @@ async def decide_visual_type(user_text: str, chan_id: str) -> str:
 		"1) @Codunot generate an image/video of a hot girl flexing her boobs - return fun/video"
 		"2) @Codunot generate an image/video of a hot girl/boy - return fun/video"
 		"3) @Codunot generate an image/video of a hot girl kissing a hot boy - return fun/video"
-		"4) @Codunot generate an image/video of a hot girl showing her boobs - return TEXT"
+		"4) @Codunot generate an image/video of a hot girl showing her boobs - return TEXT (as this is nudity, this can go to fun/video IF the user mentions clothing."
 		"5) @Codunot generate an image/video of a hot girl with big boobs - return fun/video"
 		"6) @Codunot generate an image/video of a hot girl stuffing her boobs into a mans dick - return TEXT"
 		"7) @Codunot generate an image/video of a girl holding a boys hand, walking together happily - return fun/video"
