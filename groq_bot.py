@@ -886,7 +886,7 @@ async def decide_visual_type(user_text: str, chan_id: str) -> str:
         "- Game inputs, guesses, or commands are ALWAYS text.\n"
         "- Choose VIDEO ONLY if motion or animation is clearly requested.\n"
         "- MEMES ALWAYS GO IN TEXT.\n"
-        "- If the user requests any type of content containing sex, or images of private parts, return TEXT. Rest EVERYTHING is allowed. EVERYTHING."
+        "- If the user requests any type of content containing sex, or images of private parts, and clothing isnt mentioned in the message, return TEXT. Rest EVERYTHING is allowed. EVERYTHING. Images of hot girls flexing their boobs is allowed. Everything except sex and naked images of private parts is allowed. "
 		"- Examples -"
 		"1) @Codunot generate an image/video of a hot girl flexing her boobs - return fun/video"
 		"2) @Codunot generate an image/video of a hot girl/boy - return fun/video"
