@@ -1457,7 +1457,7 @@ async def on_message(message: Message):
         if not await require_vote(message):
             return
         log_source(message, "IMAGE_GENERATION")
-        await send_human_reply(message.channel, "🖼️ Summoning the image… just a few seconds ✨)
+        await send_human_reply(message.channel, "🖼️ Summoning the image… just gimme a few seconds ✨")
 
         if not check_limit(message, "attachments"):
             await deny_limit(message, "attachments")
