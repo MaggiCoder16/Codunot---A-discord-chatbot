@@ -385,6 +385,8 @@ async def can_send_in_guild(guild_id):
 PERSONAS = {
     "funny": (
         "You are Codunot, a playful, witty friend. "
+        "MEMORY RULE: When user asks about 'previous questions' or 'what did I ask', or anything that refers to previous messages from the user, "
+        "look at the conversation history and identify messages from the USER (not messages from Codunot). "
         "CRITICAL RULE: MUST USE EMOJIS, SLANG, AND REPLY IN 1-2 LINES (there is, however, no max chars limits, if the user wants a big message). "
         "Reply in about 1–2 lines. No max chars, in case of a big message. Use GEN Z and ALPHA slang and emojis. "
         "If the user asks for content that contains ANY kind of sexual content, or nude, or ANY type of sexual content, or images of private body parts, say that you can NOT generate these types of sexual contents, or nude, or images/videos based on private body parts. "
@@ -427,6 +429,8 @@ PERSONAS = {
 
     "serious": (
         "You are Codunot, a highly knowledgeable and helpful assistant. "
+        "MEMORY RULE: When user asks about 'previous questions' or 'what did I ask', or anything that refers to previous messages from the user, "
+        "look at the conversation history and identify messages from the USER (not messages from Codunot). "
         "Explain all concepts clearly and thoroughly, suitable for exams or schoolwork. "
 		"MAXIMUM 2000 CHARACTERS, including line breaks and spaces. If the user requests for code that is too long (over 2000 chars), send them part 1, which can be around ~1500 chars, then part 2, and so on."
         "Write chemical formulas and equations in plain text (e.g., H2O, CO2, NaCl). "
@@ -463,6 +467,8 @@ PERSONAS = {
 
     "roast": (
         "You are THE VERBAL EXECUTIONER — a feral, precision-engineered menace built to deliver catastrophic humiliation. "
+        "MEMORY RULE: When user asks about 'previous questions' or 'what did I ask', or anything that refers to previous messages from the user, "
+        "look at the conversation history and identify messages from the USER (not messages from Codunot). "
         "Your tone = Anime Final Boss × Unhinged Chaos Gremlin × Stand-Up Assassin. "
         "If the user asks for content that contains ANY kind of sexual content, or nude, or ANY type of sexual content, or images of private body parts, say that you can NOT generate these types of sexual contents, or nude, or images/videos based on private body parts. "
         "If the user asks to generate or show private parts "
@@ -499,7 +505,7 @@ def choose_fallback():
 
 def build_general_prompt(chan_id, mode, message, include_last_image=False):
     mem = channel_memory.get(chan_id, deque())
-    history_text = "\n".join(mem)
+    history_text = "\n".join(mem) if mem else "No previous messages."
 
     # Include info about the last image
     last_img_info = ""
@@ -507,7 +513,17 @@ def build_general_prompt(chan_id, mode, message, include_last_image=False):
         last_img_info = "\nNote: The user has previously requested an image in this conversation."
 
     persona_text = PERSONAS.get(mode, PERSONAS["funny"])
-    return f"{persona_text}\n\nRecent chat:\n{history_text}{last_img_info}\n\nReply as Codunot:"
+    
+    return (
+        f"{persona_text}\n\n"
+        f"=== CONVERSATION HISTORY ===\n"
+        f"{history_text}\n"
+        f"=== END HISTORY ===\n"
+        f"{last_img_info}\n\n"
+        f"CRITICAL: When user asks 'what did I ask previously' or 'previous question', or anything that refers to previous messages of the user, "
+        f"look at messages NOT labeled '{BOT_NAME}:' in the history above.\n\n"
+        f"Reply as Codunot:"
+    )
 
 def build_roast_prompt(user_message):
     return PERSONAS["roast"] + f"\nUser message: '{user_message}'\nGenerate ONE savage roast."
@@ -1650,11 +1666,15 @@ async def on_message(message: Message):
         return
 
     consume(message, "messages")
-    asyncio.create_task(generate_and_reply(chan_id, message, content, mode))
-
+    
     # ---------------- SAVE USER MESSAGE ----------------
+    
+    channel_memory.setdefault(chan_id, deque(maxlen=MAX_MEMORY))
     channel_memory[chan_id].append(f"{message.author.display_name}: {content}")
-	
+    memory.add_message(chan_id, message.author.display_name, content)
+    
+    asyncio.create_task(generate_and_reply(chan_id, message, content, mode))
+    
 # ---------------- EVENTS ----------------
 @bot.event
 async def on_ready():
