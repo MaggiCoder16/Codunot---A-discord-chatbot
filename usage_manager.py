@@ -159,12 +159,19 @@ def consume_total(message, kind: str):
     ts = datetime.utcnow().timestamp()
     history.append(ts)
 
+    daily = get_usage(key)["attachments"]
+    tier = get_tier_from_message(message)
+    daily_limit = LIMITS[tier]["attachments"]
+    total_limit = TOTAL_LIMITS[tier]
+
     print(
         "[ATTACHMENT LOGGED]",
         "key=", key,
-        "total_in_window=", len(_prune(history)),
+        f"daily={daily}/{daily_limit}",
+        f"rolling={len(_prune(history))}/{total_limit}",
         "time=", datetime.utcfromtimestamp(ts).isoformat()
     )
+
 
 # ======================================================
 # DENY MESSAGE
