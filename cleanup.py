@@ -6,7 +6,7 @@ import os
 TOKEN = os.environ["DISCORD_TOKEN"]
 
 # Hardcoded DM channel ID
-DM_CHANNEL_ID = 1439456449813151764
+DM_CHANNEL_ID = 1443519037282979943
 
 intents = discord.Intents.default()
 intents.message_content = True
@@ -32,7 +32,7 @@ async def on_ready():
                 except discord.Forbidden:
                     pass
 
-                if deleted >= 2:  # Stop after deleting 2 messages
+                if deleted >= 6:  # Stop after deleting 6 messages
                     break
 
         print(f"Deleted {deleted} bot messages")
