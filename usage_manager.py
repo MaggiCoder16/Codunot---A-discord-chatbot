@@ -123,7 +123,15 @@ def check_limit(message, kind: str) -> bool:
 
 def consume(message, kind: str):
     key = get_tier_key(message)
+    tier = get_tier_from_message(message)
     usage = get_usage(key)
+
+    limit = LIMITS[tier][kind]
+    if usage[kind] >= limit:
+        raise RuntimeError(
+            f"[USAGE BUG] consume() past daily limit | key={key} tier={tier} kind={kind}"
+        )
+
     usage[kind] += 1
 
 # ======================================================
