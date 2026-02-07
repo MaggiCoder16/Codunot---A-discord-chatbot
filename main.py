@@ -1,68 +1,108 @@
-from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse
 import os
-import uvicorn
+import asyncio
+import aiohttp
+import re
+import random
 
-app = FastAPI()
+# ============================================================
+# CONFIG
+# ============================================================
 
-# Store results in memory
-RESULTS = {}
+DEAPI_API_KEY = os.getenv("DEAPI_API_KEY")
+if not DEAPI_API_KEY:
+    raise RuntimeError("DEAPI_API_KEY not set")
 
-# -------------------------------
-# Webhook endpoint (POST only)
-# -------------------------------
-@app.post("/webhook")
-async def deapi_webhook(req: Request):
-    payload = await req.json()
-    data = payload.get("data", {})
+WEBHOOK_URL = os.getenv("DEAPI_WEBHOOK_URL")
+if not WEBHOOK_URL:
+    raise RuntimeError("DEAPI_WEBHOOK_URL not set")
 
-    request_id = data.get("job_request_id")
-    result_url = data.get("result_url")
+MODEL_NAME = "ZImageTurbo_INT8"
 
-    if request_id and result_url:
-        RESULTS[request_id] = result_url
-        print(f"[Webhook] Received result for request_id={request_id}")
-    else:
-        print("[Webhook] Invalid payload received:", payload)
+DEFAULT_STEPS = 15
+MAX_STEPS = 50
 
-    return JSONResponse(status_code=200, content={"status": "ok"})
+DEFAULT_WIDTH = 512
+DEFAULT_HEIGHT = 512
 
+TXT2IMG_URL = "https://api.deapi.ai/api/v1/client/txt2img"
 
-# -------------------------------
-# Result retrieval endpoint
-# -------------------------------
-@app.get("/result/{request_id}")
-async def get_result(request_id: str):
-    if request_id in RESULTS:
-        return {"status": "done", "result_url": RESULTS[request_id]}
-    return {"status": "pending"}
+# ============================================================
+# PROMPT HELPERS
+# ============================================================
 
+def clean_prompt(prompt: str) -> str:
+    if not prompt or not prompt.strip():
+        return "A clean, simple diagram"
+    return re.sub(r"[\r\n]+", " ", prompt.strip())[:900]
 
-# -------------------------------
-# Root endpoint to stop 404 spam
-# -------------------------------
-@app.get("/")
-async def root():
-    return {"status": "Webhook server is running!"}
+# ============================================================
+# IMAGE GENERATION (WEBHOOK)
+# ============================================================
 
+RESULTS = {}  # Store request_id -> result_url
 
-# -------------------------------
-# Optional: Handle GET on /webhook (405 friendly)
-# -------------------------------
-@app.get("/webhook")
-async def webhook_get():
-    return JSONResponse(
-        status_code=405,
-        content={"detail": "Use POST for this endpoint"}
-    )
+async def generate_image(
+    prompt: str,
+    aspect_ratio: str = "1:1",
+    steps: int = DEFAULT_STEPS,
+) -> str:
+    """
+    Generate image using deAPI (ZImageTurbo_INT8) via webhook.
+    Returns the request_id. The image URL will be sent to your webhook.
+    """
 
+    prompt = clean_prompt(prompt)
+    steps = min(int(steps), MAX_STEPS)
 
-# -------------------------------
-# Run server
-# -------------------------------
-if __name__ == "__main__":
-    uvicorn.run(
-        app,
-        host="0.0.0.0",
-        port=int(os.environ.get("PORT", 8000)),
-    )
+    width = height = DEFAULT_WIDTH
+    if aspect_ratio == "16:9":
+        width, height = 768, 432
+    elif aspect_ratio == "9:16":
+        width, height = 432, 768
+    elif aspect_ratio == "1:2":
+        width, height = 384, 768
+
+    headers = {
+        "Authorization": f"Bearer {DEAPI_API_KEY}",
+        "Content-Type": "application/json",
+    }
+
+    payload = {
+        "model": MODEL_NAME,
+        "prompt": prompt,
+        "width": width,
+        "height": height,
+        "steps": steps,
+        "negative_prompt": "",
+        "seed": random.randint(1, 2**32 - 1),
+        "webhook_url": WEBHOOK_URL,
+    }
+
+    async with aiohttp.ClientSession() as session:
+        async with session.post(TXT2IMG_URL, json=payload, headers=headers) as resp:
+            if resp.status != 200:
+                raise RuntimeError(await resp.text())
+            data = await resp.json()
+
+    request_id = data["data"]["request_id"]
+    print(f"[deAPI] request_id={request_id} sent. Waiting for webhook result...")
+    return request_id
+
+# ============================================================
+# FETCH IMAGE FROM RESULT URL
+# ============================================================
+
+async def get_image_bytes(request_id: str) -> bytes:
+    """
+    Fetch image bytes after the webhook has delivered the result.
+    Returns bytes if ready, else None.
+    """
+    result_url = RESULTS.get(request_id)
+    if not result_url:
+        return None
+
+    async with aiohttp.ClientSession() as session:
+        async with session.get(result_url) as resp:
+            if resp.status != 200:
+                raise RuntimeError("Failed to download image from webhook")
+            return await resp.read()
