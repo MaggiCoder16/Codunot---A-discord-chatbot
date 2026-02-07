@@ -137,6 +137,7 @@ def consume(message, kind: str):
         return
 
     usage[kind] += 1
+    save_usage()  # IMMEDIATE SAVE after consuming
 
 # ======================================================
 # ROLLING 2-MONTH TOTAL LIMITS
@@ -183,6 +184,8 @@ def consume_total(message, kind: str):
         f"rolling={len(_prune(history))}/{total_limit}",
         "time=", datetime.utcfromtimestamp(ts).isoformat()
     )
+    
+    save_usage()  # IMMEDIATE SAVE after consuming total
 
 
 # ======================================================
@@ -203,7 +206,8 @@ async def deny_limit(message, kind: str):
 def save_usage():
     try:
         with open(USAGE_FILE, "w", encoding="utf-8") as f:
-            json.dump(channel_usage, f)
+            json.dump(channel_usage, f, indent=2)
+        print(f"[SAVE] Saved daily usage to {USAGE_FILE}")
     except Exception as e:
         print("[SAVE DAILY ERROR]", e)
 
@@ -211,7 +215,8 @@ def save_usage():
         with open(TOTAL_FILE, "w", encoding="utf-8") as f:
             json.dump({
                 "attachments": attachment_history
-            }, f)
+            }, f, indent=2)
+        print(f"[SAVE] Saved total usage to {TOTAL_FILE}")
     except Exception as e:
         print("[SAVE TOTAL ERROR]", e)
 
@@ -219,13 +224,21 @@ def load_usage():
     global channel_usage, attachment_history
 
     if os.path.exists(USAGE_FILE):
-        with open(USAGE_FILE, encoding="utf-8") as f:
-            channel_usage = json.load(f)
+        try:
+            with open(USAGE_FILE, encoding="utf-8") as f:
+                channel_usage = json.load(f)
+            print(f"[LOAD] Loaded daily usage from {USAGE_FILE}")
+        except Exception as e:
+            print(f"[LOAD DAILY ERROR] {e}")
 
     if os.path.exists(TOTAL_FILE):
-        with open(TOTAL_FILE, encoding="utf-8") as f:
-            data = json.load(f)
-            attachment_history = data.get("attachments", {})
+        try:
+            with open(TOTAL_FILE, encoding="utf-8") as f:
+                data = json.load(f)
+                attachment_history = data.get("attachments", {})
+            print(f"[LOAD] Loaded total usage from {TOTAL_FILE}")
+        except Exception as e:
+            print(f"[LOAD TOTAL ERROR] {e}")
 
 # ======================================================
 # AUTOSAVE
@@ -233,5 +246,5 @@ def load_usage():
 
 async def autosave_usage():
     while True:
-        save_usage()
         await asyncio.sleep(60)
+        save_usage()
