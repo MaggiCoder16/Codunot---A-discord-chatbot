@@ -110,5 +110,5 @@ jobs:
               fi
             done
           else
-            echo "ℹ️  No changes to commit"
+            echo "No changes to commit"
           fi
