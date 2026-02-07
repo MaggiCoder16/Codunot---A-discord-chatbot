@@ -1,29 +1,37 @@
 import os
 import aiohttp
-import random
 import io
-import base64
+import random
 import asyncio
 
 DEAPI_API_KEY = os.getenv("DEAPI_API_KEY", "").strip()
+WEBHOOK_URL = os.getenv("DEAPI_WEBHOOK_URL", "").strip()
+
 if not DEAPI_API_KEY:
     raise RuntimeError("DEAPI_API_KEY not set")
+if not WEBHOOK_URL:
+    raise RuntimeError("DEAPI_WEBHOOK_URL not set")
 
 IMG2IMG_URL = "https://api.deapi.ai/api/v1/client/img2img"
-MODEL_NAME = "QwenImageEdit_Plus_NF4"
-
-DEFAULT_STEPS = 15
-MAX_STEPS = 20
+MODEL_NAME = "Flux_2_Klein_4B_BF16"
+DEFAULT_STEPS = 4
+MAX_STEPS = 50
 
 async def edit_image(
     image_bytes: bytes,
     prompt: str,
-    steps: int = 15,
+    steps: int = DEFAULT_STEPS,
     seed: int | None = None,
     strength: float = 1.0,
-) -> bytes:
+) -> str:
+    """
+    Submit an image edit job to deAPI using a webhook.
+    Returns the request_id for webhook tracking.
+    """
 
     seed = seed or random.randint(1, 2**32 - 1)
+    steps = min(steps, MAX_STEPS)
+    prompt = (prompt or "").strip()
 
     headers = {
         "Authorization": f"Bearer {DEAPI_API_KEY}",
@@ -37,64 +45,25 @@ async def edit_image(
         filename="input.png",
         content_type="image/png",
     )
-    form.add_field("prompt", prompt.strip())
+    form.add_field("prompt", prompt)
     form.add_field("model", MODEL_NAME)
     form.add_field("steps", str(steps))
     form.add_field("seed", str(seed))
     form.add_field("strength", str(strength))
-    form.add_field("return_result_in_response", "true")
+    form.add_field("webhook_url", WEBHOOK_URL)
 
     async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=120)) as session:
-        # ---------------------------
-        # SUBMIT JOB
-        # ---------------------------
         async with session.post(IMG2IMG_URL, data=form, headers=headers) as resp:
-            body = await resp.read()
-            ctype = resp.headers.get("Content-Type", "")
-
-            # If the image comes back immediately
-            if ctype.startswith("image/"):
-                return body
+            if resp.status != 200:
+                text = await resp.text()
+                raise RuntimeError(f"Image edit submission failed ({resp.status}): {text}")
 
             data = await resp.json()
-            payload = data.get("data", {})
-
-            if payload.get("image"):
-                return base64.b64decode(payload["image"])
-
-            if payload.get("result_url"):
-                async with session.get(payload["result_url"]) as img_resp:
-                    if img_resp.status == 200:
-                        return await img_resp.read()
-                    raise RuntimeError("Failed to download result_url image")
-
-            request_id = payload.get("request_id")
+            request_id = data.get("data", {}).get("request_id")
             if not request_id:
-                raise RuntimeError(f"No image or request_id returned: {data}")
+                raise RuntimeError(f"No request_id returned: {data}")
 
-        # ---------------------------
-        # WAIT 65 SECONDS
-        # ---------------------------
-        await asyncio.sleep(65)
+            print(f"[deAPI EDIT] Submitted | request_id={request_id} | seed={seed}")
+            print("The edited image will be delivered to your webhook when ready.")
 
-        # ---------------------------
-        # SINGLE STATUS CHECK
-        # ---------------------------
-        async with session.get(f"https://api.deapi.ai/api/v1/client/request-status/{request_id}", headers=headers) as status_resp:
-            status_data = await status_resp.json()
-            status_payload = status_data.get("data", {})
-            status = status_payload.get("status")
-
-            if status == "done":
-                result_url = status_payload.get("result_url")
-                if not result_url:
-                    raise RuntimeError("Edit done but no result_url returned")
-                async with session.get(result_url) as img_resp:
-                    if img_resp.status == 200:
-                        return await img_resp.read()
-                    raise RuntimeError("Failed to download edited image")
-
-            if status == "failed":
-                raise RuntimeError(f"Edit failed: {status_data}")
-
-            raise RuntimeError(f"Edit still processing (status={status}). Try again shortly.")
+            return request_id
