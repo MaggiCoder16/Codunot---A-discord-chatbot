@@ -218,7 +218,6 @@ async def call_groq_with_health(prompt, temperature=0.7, mode: str = ""):
             prompt=prompt,
             model=model,
             temperature=temperature,
-            max_retries=1  # Only retry once
         )
 
     except Exception as e:
@@ -245,21 +244,6 @@ async def call_groq_with_health(prompt, temperature=0.7, mode: str = ""):
                 raise fallback_error
 
         raise e
-
-# ---------------- MODEL PICKER ----------------
-def pick_model(mode: str = ""):
-    """
-    Returns the model to use based on mode:
-    - seriousmode -> Maverick (SCOUT_MODEL)
-    - funmode / roastmode -> Versatile (VERSATILE_MODEL)
-    """
-    mode = mode.lower()
-
-    if mode == "serious":
-        return SCOUT_MODEL
-
-    # funny / roast / default
-    return VERSATILE_MODEL
 
 # ---------------- CODUNOT SELF IMAGE PROMPT ----------------
 CODUNOT_SELF_IMAGE_PROMPT = (
