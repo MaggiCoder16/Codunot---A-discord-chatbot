@@ -2,7 +2,6 @@ import os
 import aiohttp
 import io
 import random
-import asyncio
 
 DEAPI_API_KEY = os.getenv("DEAPI_API_KEY", "").strip()
 WEBHOOK_URL = os.getenv("DEAPI_WEBHOOK_URL", "").strip()
@@ -15,21 +14,19 @@ if not WEBHOOK_URL:
 IMG2IMG_URL = "https://api.deapi.ai/api/v1/client/img2img"
 MODEL_NAME = "Flux_2_Klein_4B_BF16"
 DEFAULT_STEPS = 4
-MAX_STEPS = 50
+MAX_STEPS = 4
 
 async def edit_image(
     image_bytes: bytes,
     prompt: str,
     steps: int = DEFAULT_STEPS,
-    seed: int | None = None,
-    strength: float = 1.0,
 ) -> str:
     """
     Submit an image edit job to deAPI using a webhook.
     Returns the request_id for webhook tracking.
     """
 
-    seed = seed or random.randint(1, 2**32 - 1)
+    seed = random.randint(1, 2**32 - 1)
     steps = min(steps, MAX_STEPS)
     prompt = (prompt or "").strip()
 
@@ -49,7 +46,7 @@ async def edit_image(
     form.add_field("model", MODEL_NAME)
     form.add_field("steps", str(steps))
     form.add_field("seed", str(seed))
-    form.add_field("strength", str(strength))
+    form.add_field("strength", "1.0")
     form.add_field("webhook_url", WEBHOOK_URL)
 
     async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=120)) as session:
