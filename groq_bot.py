@@ -1361,7 +1361,7 @@ async def on_message(message: Message):
 					result = await edit_image(
 						image_bytes=ref_image,
 						prompt=safe_prompt,
-						steps=15
+						steps=4
 					)
 					print(f"[DEBUG] edit_image returned bytes length: {len(result)}")
 					
