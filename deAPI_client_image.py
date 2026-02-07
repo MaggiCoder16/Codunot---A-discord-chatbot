@@ -12,6 +12,10 @@ DEAPI_API_KEY = os.getenv("DEAPI_API_KEY")
 if not DEAPI_API_KEY:
     raise RuntimeError("DEAPI_API_KEY not set")
 
+WEBHOOK_URL = os.getenv("DEAPI_WEBHOOK_URL")
+if not WEBHOOK_URL:
+    raise RuntimeError("DEAPI_WEBHOOK_URL not set")
+
 MODEL_NAME = "ZImageTurbo_INT8"
 
 DEFAULT_STEPS = 15
@@ -21,7 +25,6 @@ DEFAULT_WIDTH = 512
 DEFAULT_HEIGHT = 512
 
 TXT2IMG_URL = "https://api.deapi.ai/api/v1/client/txt2img"
-STATUS_URL = "https://api.deapi.ai/api/v1/client/request-status"
 
 # ============================================================
 # PROMPT HELPERS
@@ -33,18 +36,17 @@ def clean_prompt(prompt: str) -> str:
     return re.sub(r"[\r\n]+", " ", prompt.strip())[:900]
 
 # ============================================================
-# IMAGE GENERATION (poll same request)
+# IMAGE GENERATION (WEBHOOK)
 # ============================================================
 
 async def generate_image(
     prompt: str,
     aspect_ratio: str = "1:1",
     steps: int = DEFAULT_STEPS,
-) -> bytes:
+) -> str:
     """
-    Generate image using deAPI (ZImageTurbo_INT8).
-    Continues polling the SAME request if not ready yet.
-    Returns raw PNG bytes.
+    Generate image using deAPI (ZImageTurbo_INT8) via webhook.
+    Returns the request_id. The image URL will be sent to your webhook.
     """
 
     prompt = clean_prompt(prompt)
@@ -71,6 +73,7 @@ async def generate_image(
         "steps": steps,
         "negative_prompt": "",
         "seed": random.randint(1, 2**32 - 1),
+        "webhook_url": WEBHOOK_URL,
     }
 
     async with aiohttp.ClientSession() as session:
@@ -83,50 +86,18 @@ async def generate_image(
             data = await resp.json()
 
         request_id = data["data"]["request_id"]
-        print(f"[deAPI] request_id = {request_id}", flush=True)
+        print(f"[deAPI] request_id = {request_id} sent. Check webhook for result.")
+        return request_id
 
-        # ---------------------------
-        # INITIAL WAIT
-        # ---------------------------
-        await asyncio.sleep(35)
 
-        # ---------------------------
-        # POLLING LOOP
-        # ---------------------------
-        max_checks = 3          # total checks
-        poll_delay = 15         # seconds between checks
+# ============================================================
+# EXAMPLE USAGE
+# ============================================================
 
-        for attempt in range(1, max_checks + 1):
-            async with session.get(f"{STATUS_URL}/{request_id}", headers=headers) as r:
-                status_data = await r.json()
-                print("[deAPI STATUS]", status_data, flush=True)
+if __name__ == "__main__":
+    async def main():
+        prompt = "A beautiful sunset over mountains"
+        request_id = await generate_image(prompt)
+        print(f"Waiting for result at your webhook... request_id={request_id}")
 
-                data = status_data.get("data", {})
-                status = data.get("status")
-
-                if status == "done":
-                    result_url = data.get("result_url")
-                    if not result_url:
-                        raise RuntimeError("Job done but no result_url returned")
-
-                    async with session.get(result_url) as img_resp:
-                        if img_resp.status != 200:
-                            raise RuntimeError("Failed to download image")
-                        return await img_resp.read()
-
-                if status == "failed":
-                    raise RuntimeError(f"Generation failed: {status_data}")
-
-            if attempt < max_checks:
-                print(
-                    f"[deAPI] still processing (attempt {attempt}/{max_checks}), waiting {poll_delay}s...",
-                    flush=True,
-                )
-                await asyncio.sleep(poll_delay)
-
-        # ---------------------------
-        # FINAL FAILURE
-        # ---------------------------
-        raise RuntimeError(
-            f"Image still processing after {max_checks} checks. Try again shortly."
-        )
+    asyncio.run(main())
