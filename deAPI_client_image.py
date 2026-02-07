@@ -1,5 +1,4 @@
 import os
-import asyncio
 import aiohttp
 import re
 import random
@@ -36,7 +35,7 @@ def clean_prompt(prompt: str) -> str:
     return re.sub(r"[\r\n]+", " ", prompt.strip())[:900]
 
 # ============================================================
-# IMAGE GENERATION (WEBHOOK)
+# IMAGE GENERATION (WEBHOOK EVENT-DRIVEN)
 # ============================================================
 
 async def generate_image(
@@ -46,7 +45,7 @@ async def generate_image(
 ) -> str:
     """
     Generate image using deAPI (ZImageTurbo_INT8) via webhook.
-    Returns the request_id. The image URL will be sent to your webhook.
+    Returns the request_id immediately. Image will be sent to your webhook when ready.
     """
 
     prompt = clean_prompt(prompt)
@@ -73,31 +72,15 @@ async def generate_image(
         "steps": steps,
         "negative_prompt": "",
         "seed": random.randint(1, 2**32 - 1),
-        "webhook_url": WEBHOOK_URL,
+        "webhook_url": WEBHOOK_URL,  # your webhook in secrets
     }
 
     async with aiohttp.ClientSession() as session:
-        # ---------------------------
-        # SUBMIT JOB
-        # ---------------------------
         async with session.post(TXT2IMG_URL, json=payload, headers=headers) as resp:
             if resp.status != 200:
                 raise RuntimeError(await resp.text())
             data = await resp.json()
 
-        request_id = data["data"]["request_id"]
-        print(f"[deAPI] request_id = {request_id} sent. Check webhook for result.")
-        return request_id
-
-
-# ============================================================
-# EXAMPLE USAGE
-# ============================================================
-
-if __name__ == "__main__":
-    async def main():
-        prompt = "A beautiful sunset over mountains"
-        request_id = await generate_image(prompt)
-        print(f"Waiting for result at your webhook... request_id={request_id}")
-
-    asyncio.run(main())
+    request_id = data["data"]["request_id"]
+    print(f"[deAPI] request_id={request_id} submitted. Image will be sent to your webhook.")
+    return request_id
