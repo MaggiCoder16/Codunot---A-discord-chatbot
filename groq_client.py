@@ -30,10 +30,11 @@ async def call_groq(
     model: str = "llama-3.3-70b-versatile",
     temperature: float = 1.0,
     image_bytes: bytes | None = None,
-    max_tokens: int = 500,
     retries: int = 2
 ) -> str | None:
-
+    """
+    Unified Groq client for both text and vision requests.
+    """
     if not GROQ_API_KEY:
         print("Missing GROQ API Key")
         return None
@@ -61,7 +62,7 @@ async def call_groq(
             }
         ],
         "temperature": temperature,
-        "max_tokens": max_tokens
+        "max_tokens": 8000
     }
 
     headers = {
