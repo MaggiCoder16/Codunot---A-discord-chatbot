@@ -4,21 +4,28 @@ import os
 
 # Bot token from GitHub Actions secret
 TOKEN = os.environ["DISCORD_TOKEN"]
-# Hardcoded DM channel ID
-DM_CHANNEL_ID = 1463926847820665016
+
+# Channel ID (works for both DM and server channels)
+CHANNEL_ID = 1463926847820665016
 
 intents = discord.Intents.default()
 intents.message_content = True
-intents.dm_messages = True
+intents.dm_messages = True      # ← For DMs
+intents.guilds = True           # ← For server channels
 
 client = discord.Client(intents=intents)
 
 @client.event
 async def on_ready():
     try:
-        channel = await client.fetch_channel(DM_CHANNEL_ID)
-        if not isinstance(channel, discord.DMChannel):
-            raise RuntimeError("Channel is not a DM")
+        print(f"Bot logged in as {client.user}")
+        
+        channel = await client.fetch_channel(CHANNEL_ID)
+        print(f"Found channel: {channel} (Type: {type(channel).__name__})")
+        
+        # Check if it's a valid channel type (DM or server text channel)
+        if not isinstance(channel, (discord.TextChannel, discord.DMChannel)):
+            raise RuntimeError(f"Channel is {type(channel).__name__}, not a TextChannel or DMChannel")
         
         deleted = 0
         async for message in channel.history(limit=100):
@@ -27,12 +34,22 @@ async def on_ready():
                 try:
                     await message.delete()
                     deleted += 1
+                    print(f"Deleted message {deleted}: {message.content[:50]}...")
+                    await asyncio.sleep(0.5)  # Avoid rate limits
                 except discord.Forbidden:
-                    pass
-                if deleted >= 6:  # Stop after deleting 6 messages
+                    print(f"No permission to delete message")
+                except Exception as e:
+                    print(f"Error deleting message: {e}")
+                
+                if deleted >= 14:  # Stop after deleting 6 messages
                     break
         
         print(f"Deleted {deleted} bot messages")
+    
+    except Exception as e:
+        print(f"Error: {e}")
+        import traceback
+        traceback.print_exc()
     
     finally:
         await client.close()
