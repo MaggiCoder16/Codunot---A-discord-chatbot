@@ -4,7 +4,6 @@ import os
 
 # Bot token from GitHub Actions secret
 TOKEN = os.environ["DISCORD_TOKEN"]
-
 # Hardcoded DM channel ID
 DM_CHANNEL_ID = 1463926847820665016
 
@@ -20,9 +19,8 @@ async def on_ready():
         channel = await client.fetch_channel(DM_CHANNEL_ID)
         if not isinstance(channel, discord.DMChannel):
             raise RuntimeError("Channel is not a DM")
-
+        
         deleted = 0
-
         async for message in channel.history(limit=100):
             # Only delete messages sent by your bot
             if message.author.id == client.user.id:
@@ -31,13 +29,17 @@ async def on_ready():
                     deleted += 1
                 except discord.Forbidden:
                     pass
-
                 if deleted >= 6:  # Stop after deleting 6 messages
                     break
-
+        
         print(f"Deleted {deleted} bot messages")
-
+    
     finally:
         await client.close()
 
-asyncio.run(client.start(TOKEN))
+async def main():
+    async with client:
+        await client.start(TOKEN)
+
+if __name__ == "__main__":
+    asyncio.run(main())
