@@ -192,44 +192,58 @@ async def chessmode(ctx: commands.Context):
     await ctx.send("♟️ Chess mode ACTIVATED. You are white, start!")
 
 # ---------------- MODELS ----------------
-SCOUT_MODEL = "meta-llama/llama-4-scout-17b-16e-instruct"  # seriousmode
-VERSATILE_MODEL = "meta-llama/llama-4-scout-17b-16e-instruct"  # fun/roast
+PRIMARY_MODEL = "meta-llama/llama-4-scout-17b-16e-instruct"  # Default for all modes
+FALLBACK_MODEL = "llama-3.3-70b-versatile"  # Used when PRIMARY is overloaded
 
-SCOUT_COOLDOWN_UNTIL = None
-SCOUT_COOLDOWN_DURATION = timedelta(hours=1)
+PRIMARY_COOLDOWN_UNTIL = None
+PRIMARY_COOLDOWN_DURATION = timedelta(minutes=10)
 
 # ---------------- MODEL HEALTH ----------------
 async def call_groq_with_health(prompt, temperature=0.7, mode: str = ""):
     """
-    Handles calling Groq with model selection and overload handling.
-    mode: 'serious', 'funny', 'roast' (or empty string)
+    Handles calling Groq with automatic fallback when primary model is overloaded.
+    Tries PRIMARY_MODEL first, falls back to FALLBACK_MODEL on 503 errors.
     """
-    model = pick_model(mode)
+    global PRIMARY_COOLDOWN_UNTIL
+    
+    # Check if Primary model is in cooldown - if yes, use fallback directly
+    if PRIMARY_COOLDOWN_UNTIL and datetime.utcnow() < PRIMARY_COOLDOWN_UNTIL:
+        print(f"[GROQ] Primary model in cooldown until {PRIMARY_COOLDOWN_UNTIL.isoformat()}, using fallback")
+        model = FALLBACK_MODEL
+    else:
+        model = PRIMARY_MODEL
 
     try:
         return await call_groq(
             prompt=prompt,
             model=model,
-            temperature=temperature
+            temperature=temperature,
+            max_retries=1  # Only retry once
         )
 
     except Exception as e:
         msg = str(e)
 
-        # Only handle Maverick overload (for seriousmode)
-        if model == SCOUT_MODEL and ("503" in msg or "over capacity" in msg):
-            global SCOUT_COOLDOWN_UNTIL
-            SCOUT_COOLDOWN_UNTIL = datetime.utcnow() + SCOUT_COOLDOWN_DURATION
+        # Handle Primary model overload - switch to fallback
+        if model == PRIMARY_MODEL and ("503" in msg or "over capacity" in msg):
+            PRIMARY_COOLDOWN_UNTIL = datetime.utcnow() + PRIMARY_COOLDOWN_DURATION
             print(
-                f"[GROQ] Maverick overloaded — "
-                f"cooling down until {SCOUT_COOLDOWN_UNTIL.isoformat()}"
+                f"[GROQ] Primary model overloaded — "
+                f"cooling down until {PRIMARY_COOLDOWN_UNTIL.isoformat()}, "
+                f"using fallback model"
             )
-            # Retry with Versatile for fallback
-            return await call_groq(
-                prompt=prompt,
-                model=VERSATILE_MODEL,
-                temperature=temperature
-            )
+            
+            # Retry with fallback model
+            try:
+                return await call_groq(
+                    prompt=prompt,
+                    model=FALLBACK_MODEL,
+                    temperature=temperature,
+                    max_retries=1  # Only retry once
+                )
+            except Exception as fallback_error:
+                print(f"[GROQ] Fallback model also failed: {fallback_error}")
+                raise fallback_error
 
         raise e
 
