@@ -46,22 +46,30 @@ async def edit_image(
     form.add_field("strength", "1.0")
 
     async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=120)) as session:
-        # submit the job
+        # ---------------------------
+        # SUBMIT JOB
+        # ---------------------------
         async with session.post(IMG2IMG_URL, data=form, headers=headers) as resp:
             print(
-                f"[deAPI EDIT] x‑ratelimit‑limit: {resp.headers.get('x-ratelimit-limit')}, "
-                f"x‑ratelimit‑remaining: {resp.headers.get('x-ratelimit-remaining')}"
+                "[deAPI EDIT] "
+                f"RPM limit: {resp.headers.get('x-ratelimit-limit')}, "
+                f"RPM remaining: {resp.headers.get('x-ratelimit-remaining')} | "
+                f"RPD limit: {resp.headers.get('x-ratelimit-daily-limit')}, "
+                f"RPD remaining: {resp.headers.get('x-ratelimit-daily-remaining')}"
             )
 
             if resp.status != 200:
                 text = await resp.text()
                 raise RuntimeError(f"Image edit submission failed ({resp.status}): {text}")
+
             data = await resp.json()
             request_id = data.get("data", {}).get("request_id")
             if not request_id:
                 raise RuntimeError(f"No request_id returned: {data}")
 
-        # poll the result
+        # ---------------------------
+        # POLLING LOOP
+        # ---------------------------
         poll_url = f"{RESULT_URL_BASE}/result/{request_id}"
         print(f"[deAPI EDIT] Polling at: {poll_url}")
 
@@ -73,6 +81,7 @@ async def edit_image(
                     if r.status != 200:
                         await asyncio.sleep(delay)
                         continue
+
                     status_data = await r.json()
                     status = status_data.get("status")
 
@@ -80,16 +89,21 @@ async def edit_image(
                         result_url = status_data.get("result_url")
                         if not result_url:
                             raise RuntimeError("Edit done but no result_url returned")
+
                         async with session.get(result_url) as img_resp:
                             if img_resp.status != 200:
-                                raise RuntimeError(f"Failed to download image (status {img_resp.status})")
+                                raise RuntimeError(
+                                    f"Failed to download image (status {img_resp.status})"
+                                )
                             return await img_resp.read()
+
                     elif status == "pending":
                         await asyncio.sleep(delay)
                     else:
                         raise RuntimeError(f"Unexpected status: {status_data}")
+
             except Exception as e:
-                print(f"[deAPI EDIT] Polling attempt {attempt+1} error: {e}")
+                print(f"[deAPI EDIT] Polling attempt {attempt + 1} error: {e}")
                 await asyncio.sleep(delay)
 
         raise RuntimeError(f"Image not ready after {max_attempts * delay} seconds")
