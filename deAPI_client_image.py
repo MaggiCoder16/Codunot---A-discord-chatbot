@@ -83,7 +83,13 @@ async def generate_image(
         # SUBMIT JOB
         # ---------------------------
         async with session.post(TXT2IMG_URL, json=payload, headers=headers) as resp:
-            print(f"[deAPI] x-ratelimit-limit: {resp.headers.get('x-ratelimit-limit')}, x-ratelimit-remaining: {resp.headers.get('x-ratelimit-remaining')}")
+            print(
+                "[deAPI] "
+                f"RPM limit: {resp.headers.get('x-ratelimit-limit')}, "
+                f"RPM remaining: {resp.headers.get('x-ratelimit-remaining')} | "
+                f"RPD limit: {resp.headers.get('x-ratelimit-daily-limit')}, "
+                f"RPD remaining: {resp.headers.get('x-ratelimit-daily-remaining')}"
+            )
 
             if resp.status != 200:
                 raise RuntimeError(await resp.text())
