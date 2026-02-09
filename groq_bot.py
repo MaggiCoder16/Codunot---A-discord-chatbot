@@ -297,6 +297,10 @@ load_vote_unlocks()
 cleanup_expired_votes()
 
 async def require_vote(message) -> None:
+    # Owner bypass
+    if message.author.id in OWNER_IDS:
+        return
+    
     user_id = message.author.id
     now = time.time()
 
