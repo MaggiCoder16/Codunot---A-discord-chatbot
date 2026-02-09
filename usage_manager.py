@@ -21,6 +21,16 @@ channel_usage = {}          # daily usage
 attachment_history = {}     # rolling timestamps (per channel/guild)
 
 # ======================================================
+# OWNER BYPASS
+# ======================================================
+
+OWNER_IDS = {int(os.environ.get("OWNER_ID", 0))}  # Load from env
+
+def is_owner(message) -> bool:
+    """Check if the message author is an owner."""
+    return message.author.id in OWNER_IDS
+
+# ======================================================
 # LIMIT CONFIGS
 # ======================================================
 
@@ -115,6 +125,9 @@ def get_usage(key: str) -> dict:
     return usage
 
 def check_limit(message, kind: str) -> bool:
+    if is_owner(message):
+        return True  # Owners bypass all limits
+    
     key = get_tier_key(message)
     tier = get_tier_from_message(message)
     usage = get_usage(key)
@@ -122,6 +135,9 @@ def check_limit(message, kind: str) -> bool:
     return usage[kind] < limit
 
 def consume(message, kind: str):
+    if is_owner(message):
+        return  # Don't consume for owners
+    
     key = get_tier_key(message)
     tier = get_tier_from_message(message)
     usage = get_usage(key)
@@ -150,6 +166,9 @@ def _prune(history: list[float]) -> list[float]:
     return [t for t in history if t >= cutoff]
 
 def check_total_limit(message, kind: str) -> bool:
+    if is_owner(message):
+        return True  # Owners bypass total limits
+    
     if kind != "attachments":
         return True
 
@@ -164,6 +183,9 @@ def check_total_limit(message, kind: str) -> bool:
     return len(history) < limit
 
 def consume_total(message, kind: str):
+    if is_owner(message):
+        return  # Don't consume for owners
+    
     if kind != "attachments":
         return
 
