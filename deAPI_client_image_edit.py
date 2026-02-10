@@ -9,7 +9,7 @@ import random
 
 DEAPI_API_KEY = "<YOUR_API_KEY>"
 MODEL_NAME = "flux-dev"
-IMG2IMG_URL = "https://api.deapi.ai/v1/images/edits"
+IMG2IMG_URL = "https://api.deapi.ai/api/v1/client/img2img"
 RESULT_URL_BASE = "https://api.deapi.ai/v1"
 
 DEFAULT_STEPS = 30
