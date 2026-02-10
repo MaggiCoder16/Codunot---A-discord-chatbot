@@ -1546,7 +1546,7 @@ async def on_message(message: Message):
 		
 			return  # Stop further processing after TTS
 		
-# ---------- IMAGE MERGE ----------
+        # ---------- IMAGE MERGE ----------
 		if image_action == "MERGE":
 			await require_vote(message)
 			log_source(message, "IMAGE_MERGE")
@@ -1582,8 +1582,8 @@ async def on_message(message: Message):
 				message.channel,
 				"🧩 Merging images… hang tight ✨"
 			)
-
-			merge_prompt = content 
+			
+			merge_prompt = content
 			
 			try:
 				image_bytes = await merge_images(
