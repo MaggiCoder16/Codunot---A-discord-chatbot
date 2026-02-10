@@ -789,18 +789,13 @@ from docx import Document
 from pdf2image import convert_from_bytes
 
 async def handle_file_message(message, mode):
-
+    for attachment in message.attachments:
+        if attachment.content_type and attachment.content_type.startswith("image/"):
+            return None
+    
     # Check daily limit
     if not check_limit(message, "attachments"):
         await deny_limit(message, "attachments")
-        return None
-
-    # Check total lifetime limit
-    if not check_total_limit(message, "attachments"):
-        await message.reply(
-            "🚫 You've hit your **total file upload limit**.\n"
-            "Contact aarav_2022 for an upgrade."
-        )
         return None
 
     # Extract file bytes
@@ -1549,6 +1544,7 @@ async def on_message(message: Message):
         # ---------- IMAGE MERGE ----------
 		if image_action == "MERGE":
 			await require_vote(message)
+			
 			log_source(message, "IMAGE_MERGE")
 			
 			if not check_limit(message, "attachments"):
@@ -1583,15 +1579,14 @@ async def on_message(message: Message):
 				"🧩 Merging images… hang tight ✨"
 			)
 			
-			merge_prompt = content
+			merge_prompt = content 
 			
 			try:
 				image_bytes = await merge_images(
 					images=images,
 					prompt=(
 						merge_prompt
-						or "Merge all provided images into one coherent scene. "
-						   "Preserve faces, style, and colors."
+						or "Merge all provided images into one coherent scene. Preserve faces, style, and colors."
 					),
 					steps=4,
 				)
