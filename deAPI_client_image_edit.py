@@ -7,14 +7,12 @@ import random
 # CONFIG
 # =====================
 
-DEAPI_API_KEY = "<YOUR_API_KEY>"
-MODEL_NAME = "flux-dev"
+DEAPI_API_KEY = os.getenv("DEAPI_API_KEY")
 IMG2IMG_URL = "https://api.deapi.ai/api/v1/client/img2img"
-RESULT_URL_BASE = "https://api.deapi.ai/v1"
+RESULT_URL_BASE = "https://api.deapi.ai/api/v1/client"
 
 DEFAULT_STEPS = 30
 MAX_STEPS = 50
-
 
 # =====================
 # PUBLIC API
@@ -32,10 +30,7 @@ async def edit_image(
     steps = min(steps, MAX_STEPS)
     prompt = (prompt or "").strip()
 
-    headers = {
-        "Authorization": f"Bearer {DEAPI_API_KEY}",
-        "Accept": "application/json",
-    }
+    headers = _auth_headers()
 
     form = aiohttp.FormData()
     form.add_field(
@@ -45,7 +40,7 @@ async def edit_image(
         content_type="image/png",
     )
     form.add_field("prompt", prompt)
-    form.add_field("model", MODEL_NAME)
+    form.add_field("model", "flux-dev")
     form.add_field("steps", str(steps))
     form.add_field("seed", str(seed))
 
@@ -67,23 +62,20 @@ async def merge_images(
     steps = min(steps, MAX_STEPS)
     prompt = (prompt or "").strip()
 
-    headers = {
-        "Authorization": f"Bearer {DEAPI_API_KEY}",
-        "Accept": "application/json",
-    }
+    headers = _auth_headers()
 
     form = aiohttp.FormData()
 
     for i, img in enumerate(images):
         form.add_field(
-            "image",
+            "images[]",
             io.BytesIO(img),
             filename=f"input_{i}.png",
             content_type="image/png",
         )
 
     form.add_field("prompt", prompt)
-    form.add_field("model", MODEL_NAME)
+    form.add_field("model", "flux-dev")
     form.add_field("steps", str(steps))
     form.add_field("seed", str(seed))
 
@@ -94,10 +86,20 @@ async def merge_images(
 # INTERNALS
 # =====================
 
+def _auth_headers() -> dict:
+    return {
+        "Authorization": f"Bearer {DEAPI_API_KEY}",
+        "Accept": "application/json",
+    }
+
+
 async def _submit_and_poll(
     form: aiohttp.FormData,
     headers: dict,
 ) -> bytes:
+    """
+    Submits the job and polls until the result is available.
+    """
     async with aiohttp.ClientSession(
         timeout=aiohttp.ClientTimeout(total=120)
     ) as session:
@@ -115,8 +117,10 @@ async def _submit_and_poll(
             )
 
             if resp.status != 200:
+                # show error JSON if available
+                text = await resp.text()
                 raise RuntimeError(
-                    f"Submission failed ({resp.status}): {await resp.text()}"
+                    f"Submission failed ({resp.status}): {text}"
                 )
 
             data = await resp.json()
@@ -125,7 +129,7 @@ async def _submit_and_poll(
                 raise RuntimeError(f"No request_id returned: {data}")
 
         # ---------------------------
-        # POLLING LOOP
+        # POLLING LOOP (with auth)
         # ---------------------------
         poll_url = f"{RESULT_URL_BASE}/result/{request_id}"
         print(f"[deAPI EDIT] Polling at: {poll_url}")
@@ -135,7 +139,8 @@ async def _submit_and_poll(
 
         for attempt in range(max_attempts):
             try:
-                async with session.get(poll_url) as r:
+                async with session.get(poll_url, headers=headers) as r:
+                    # if unauthenticated or not ready, wait
                     if r.status != 200:
                         await asyncio.sleep(delay)
                         continue
@@ -148,7 +153,10 @@ async def _submit_and_poll(
                         if not result_url:
                             raise RuntimeError("Done but no result_url returned")
 
-                        async with session.get(result_url) as img_resp:
+                        # -----------------------
+                        # DOWNLOAD IMAGE
+                        # -----------------------
+                        async with session.get(result_url, headers=headers) as img_resp:
                             if img_resp.status != 200:
                                 raise RuntimeError(
                                     f"Failed to download image ({img_resp.status})"
