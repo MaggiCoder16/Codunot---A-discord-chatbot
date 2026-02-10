@@ -1562,12 +1562,19 @@ async def on_message(message: Message):
 				)
 				return
 			
-			images = channel_last_images.get(chan_id, [])
+			images = []
+			
+			for attachment in message.attachments:
+				if attachment.content_type and attachment.content_type.startswith("image/"):
+					try:
+						images.append(await attachment.read())
+					except Exception as e:
+						print("[IMAGE MERGE] Failed to read attachment:", e)
 			
 			if len(images) < 2:
 				await send_human_reply(
 					message.channel,
-					"🖼️ Send **at least two images** first, then say `merge`."
+					"🖼️ Please attach **at least two images** to merge."
 				)
 				return
 			
@@ -1579,7 +1586,7 @@ async def on_message(message: Message):
 			merge_prompt = await boost_image_prompt(content)
 			
 			try:
-				image_bytes = await merge_images(
+				image_bytes = await edit_images(
 					images=images,
 					prompt=(
 						merge_prompt
@@ -1587,11 +1594,7 @@ async def on_message(message: Message):
 						   "Preserve faces, style, and colors."
 					),
 					steps=15,
-					strength=0.8,
 				)
-				
-				# Clear images after merge
-				channel_last_images[chan_id].clear()
 				
 				await message.channel.send(
 					file=discord.File(
