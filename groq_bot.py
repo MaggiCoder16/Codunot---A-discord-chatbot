@@ -34,16 +34,16 @@ from topgg_utils import has_voted
 import json
 
 from usage_manager import (
-    check_limit,
-    check_total_limit,
-    consume,
-    consume_total,
-    deny_limit,
-    load_usage,
-    save_usage,
-    autosave_usage,
-    get_usage,
-    get_tier_key,
+	check_limit,
+	check_total_limit,
+	consume,
+	consume_total,
+	deny_limit,
+	load_usage,
+	save_usage,
+	autosave_usage,
+	get_usage,
+	get_tier_key,
 )
 
 load_dotenv()
@@ -62,12 +62,12 @@ MAX_TTS_LENGTH = 150
 VOTE_FILE = "vote_unlocks.json"
 
 MERGE_KEYWORDS = [
-    "merge",
-    "combine",
-    "in one image",
-    "put them together",
-    "blend",
-    "mix",
+	"merge",
+	"combine",
+	"in one image",
+	"put them together",
+	"blend",
+	"mix",
 ]
 
 # ---------------- CLIENT ----------------
@@ -98,108 +98,108 @@ channel_last_images = {}  # Multi-image buffer for merging (up to 4 images)
 # ---------------- COMMANDS ----------------
 @bot.command(name="codunot_help")
 async def help_command(ctx: commands.Context):
-    """
-    Sends a help embed describing Codunot's modes and bonus powers.
-    """
-    embed = discord.Embed(
-        title="🤖 Codunot Help",
-        description="Here's what I can do and how to use me!",
-        color=0xFFA500  # orange color
-    )
+	"""
+	Sends a help embed describing Codunot's modes and bonus powers.
+	"""
+	embed = discord.Embed(
+		title="🤖 Codunot Help",
+		description="Here's what I can do and how to use me!",
+		color=0xFFA500  # orange color
+	)
 
-    embed.add_field(
-        name="🟢 Fun Mode",
-        value="`!funmode` — jokes, memes & chill vibes 😎",
-        inline=False
-    )
-    embed.add_field(
-        name="🔥 Roast Mode",
-        value="`!roastmode` — playful burns for anyone 😈",
-        inline=False
-    )
-    embed.add_field(
-        name="📘 Serious Mode",
-        value="`!seriousmode` — clean, fact-based help 📚",
-        inline=False
-    )
-    embed.add_field(
-        name="♟️ Chess Mode",
-        value="`!chessmode` — play chess with me ♟️",
-        inline=False
-    )
-    embed.add_field(
-        name="✨ Bonus Powers",
-        value=(
-            "📄 Read & summarize files\n"
-            "🖼️ See and understand images\n"
-            "🎨 Generate & edit images\n"
-            "🎬 Generate videos\n"
-            "🔊 Text-to-speech audio"
-        ),
-        inline=False
-    )
-    embed.set_footer(text="Tip: In servers, always remember to ping me using @Codunot 'your text'. This is not required in DMs.")
+	embed.add_field(
+		name="🟢 Fun Mode",
+		value="`!funmode` — jokes, memes & chill vibes 😎",
+		inline=False
+	)
+	embed.add_field(
+		name="🔥 Roast Mode",
+		value="`!roastmode` — playful burns for anyone 😈",
+		inline=False
+	)
+	embed.add_field(
+		name="📘 Serious Mode",
+		value="`!seriousmode` — clean, fact-based help 📚",
+		inline=False
+	)
+	embed.add_field(
+		name="♟️ Chess Mode",
+		value="`!chessmode` — play chess with me ♟️",
+		inline=False
+	)
+	embed.add_field(
+		name="✨ Bonus Powers",
+		value=(
+			"📄 Read & summarize files\n"
+			"🖼️ See and understand images\n"
+			"🎨 Generate & edit images\n"
+			"🎬 Generate videos\n"
+			"🔊 Text-to-speech audio"
+		),
+		inline=False
+	)
+	embed.set_footer(text="Tip: In servers, always remember to ping me using @Codunot 'your text'. This is not required in DMs.")
 
-    await ctx.send(embed=embed)
+	await ctx.send(embed=embed)
 
 @bot.command(name="funmode")
 async def funmode(ctx: commands.Context):
-    chan_id = (
-        f"dm_{ctx.author.id}"
-        if isinstance(ctx.channel, discord.DMChannel)
-        else str(ctx.channel.id)
-    )
+	chan_id = (
+		f"dm_{ctx.author.id}"
+		if isinstance(ctx.channel, discord.DMChannel)
+		else str(ctx.channel.id)
+	)
 
-    channel_modes[chan_id] = "funny"
-    memory.save_channel_mode(chan_id, "funny")
-    channel_chess[chan_id] = False
+	channel_modes[chan_id] = "funny"
+	memory.save_channel_mode(chan_id, "funny")
+	channel_chess[chan_id] = False
 
-    await ctx.send("😎 Fun mode activated!")
+	await ctx.send("😎 Fun mode activated!")
 
 
 @bot.command(name="seriousmode")
 async def seriousmode(ctx: commands.Context):
-    chan_id = (
-        f"dm_{ctx.author.id}"
-        if isinstance(ctx.channel, discord.DMChannel)
-        else str(ctx.channel.id)
-    )
+	chan_id = (
+		f"dm_{ctx.author.id}"
+		if isinstance(ctx.channel, discord.DMChannel)
+		else str(ctx.channel.id)
+	)
 
-    channel_modes[chan_id] = "serious"
-    memory.save_channel_mode(chan_id, "serious")
-    channel_chess[chan_id] = False
+	channel_modes[chan_id] = "serious"
+	memory.save_channel_mode(chan_id, "serious")
+	channel_chess[chan_id] = False
 
-    await ctx.send("🤓 Serious mode ON")
+	await ctx.send("🤓 Serious mode ON")
 
 
 @bot.command(name="roastmode")
 async def roastmode(ctx: commands.Context):
-    chan_id = (
-        f"dm_{ctx.author.id}"
-        if isinstance(ctx.channel, discord.DMChannel)
-        else str(ctx.channel.id)
-    )
+	chan_id = (
+		f"dm_{ctx.author.id}"
+		if isinstance(ctx.channel, discord.DMChannel)
+		else str(ctx.channel.id)
+	)
 
-    channel_modes[chan_id] = "roast"
-    memory.save_channel_mode(chan_id, "roast")
-    channel_chess[chan_id] = False
+	channel_modes[chan_id] = "roast"
+	memory.save_channel_mode(chan_id, "roast")
+	channel_chess[chan_id] = False
 
-    await ctx.send("🔥 ROAST MODE ACTIVATED")
+	await ctx.send("🔥 ROAST MODE ACTIVATED")
 
 
 @bot.command(name="chessmode")
 async def chessmode(ctx: commands.Context):
-    chan_id = (
-        f"dm_{ctx.author.id}"
-        if isinstance(ctx.channel, discord.DMChannel)
-        else str(ctx.channel.id)
-    )
+	chan_id = (
+		f"dm_{ctx.author.id}"
+		if isinstance(ctx.channel, discord.DMChannel)
+		else str(ctx.channel.id)
+	)
 
-    channel_chess[chan_id] = True
-    channel_modes[chan_id] = "funny"  # optional default during chess
-    chess_engine.new_board(chan_id)
+	channel_chess[chan_id] = True
+	channel_modes[chan_id] = "funny"  # optional default during chess
+	chess_engine.new_board(chan_id)
 
-    await ctx.send("♟️ Chess mode ACTIVATED. You are white, start!")
+	await ctx.send("♟️ Chess mode ACTIVATED. You are white, start!")
 
 # ---------------- MODELS ----------------
 PRIMARY_MODEL = "meta-llama/llama-4-scout-17b-16e-instruct"  # Default for all modes
@@ -210,1160 +210,1160 @@ PRIMARY_COOLDOWN_DURATION = timedelta(minutes=10)
 
 # ---------------- MODEL HEALTH ----------------
 async def call_groq_with_health(prompt, temperature=0.7, mode: str = ""):
-    """
-    Handles calling Groq with automatic fallback when primary model is overloaded.
-    Tries PRIMARY_MODEL first, falls back to FALLBACK_MODEL on 503 errors.
-    """
-    global PRIMARY_COOLDOWN_UNTIL
-    
-    # Check if Primary model is in cooldown - if yes, use fallback directly
-    if PRIMARY_COOLDOWN_UNTIL and datetime.utcnow() < PRIMARY_COOLDOWN_UNTIL:
-        print(f"[GROQ] Primary model in cooldown until {PRIMARY_COOLDOWN_UNTIL.isoformat()}, using fallback")
-        model = FALLBACK_MODEL
-    else:
-        model = PRIMARY_MODEL
+	"""
+	Handles calling Groq with automatic fallback when primary model is overloaded.
+	Tries PRIMARY_MODEL first, falls back to FALLBACK_MODEL on 503 errors.
+	"""
+	global PRIMARY_COOLDOWN_UNTIL
+	
+	# Check if Primary model is in cooldown - if yes, use fallback directly
+	if PRIMARY_COOLDOWN_UNTIL and datetime.utcnow() < PRIMARY_COOLDOWN_UNTIL:
+		print(f"[GROQ] Primary model in cooldown until {PRIMARY_COOLDOWN_UNTIL.isoformat()}, using fallback")
+		model = FALLBACK_MODEL
+	else:
+		model = PRIMARY_MODEL
 
-    try:
-        return await call_groq(
-            prompt=prompt,
-            model=model,
-            temperature=temperature,
-        )
+	try:
+		return await call_groq(
+			prompt=prompt,
+			model=model,
+			temperature=temperature,
+		)
 
-    except Exception as e:
-        msg = str(e)
+	except Exception as e:
+		msg = str(e)
 
-        # Handle Primary model overload - switch to fallback
-        if model == PRIMARY_MODEL and ("503" in msg or "over capacity" in msg):
-            PRIMARY_COOLDOWN_UNTIL = datetime.utcnow() + PRIMARY_COOLDOWN_DURATION
-            print(
-                f"[GROQ] Primary model overloaded — "
-                f"cooling down until {PRIMARY_COOLDOWN_UNTIL.isoformat()}, "
-                f"using fallback model"
-            )
-            
-            # Retry with fallback model
-            try:
-                return await call_groq(
-                    prompt=prompt,
-                    model=FALLBACK_MODEL,
-                    temperature=temperature,
-                )
-            except Exception as fallback_error:
-                print(f"[GROQ] Fallback model also failed: {fallback_error}")
-                raise fallback_error
+		# Handle Primary model overload - switch to fallback
+		if model == PRIMARY_MODEL and ("503" in msg or "over capacity" in msg):
+			PRIMARY_COOLDOWN_UNTIL = datetime.utcnow() + PRIMARY_COOLDOWN_DURATION
+			print(
+				f"[GROQ] Primary model overloaded — "
+				f"cooling down until {PRIMARY_COOLDOWN_UNTIL.isoformat()}, "
+				f"using fallback model"
+			)
+			
+			# Retry with fallback model
+			try:
+				return await call_groq(
+					prompt=prompt,
+					model=FALLBACK_MODEL,
+					temperature=temperature,
+				)
+			except Exception as fallback_error:
+				print(f"[GROQ] Fallback model also failed: {fallback_error}")
+				raise fallback_error
 
-        raise e
+		raise e
 
 # ---------------- CODUNOT SELF IMAGE PROMPT ----------------
 CODUNOT_SELF_IMAGE_PROMPT = (
-    "Cute chibi robot avatar of Codunot, a friendly AI, with a glossy orange body and subtle yellow highlights, "
-    "rounded helmet-style head with smooth black glass face, warm glowing pixel eyes and small yellow smile, "
-    "tiny antenna, waving right hand with five fingers, compact rounded armor with polished joints, "
-    "soft orange rim lighting, standing against abstract dark background with fiery orange-red gradients, "
-    "soft ambient glow emphasizing contours, clean digital cartoon style with subtle 3D shading, "
-    "vibrant, heartwarming, cheerful futuristic mascot vibe, no humans."
+	"Cute chibi robot avatar of Codunot, a friendly AI, with a glossy orange body and subtle yellow highlights, "
+	"rounded helmet-style head with smooth black glass face, warm glowing pixel eyes and small yellow smile, "
+	"tiny antenna, waving right hand with five fingers, compact rounded armor with polished joints, "
+	"soft orange rim lighting, standing against abstract dark background with fiery orange-red gradients, "
+	"soft ambient glow emphasizing contours, clean digital cartoon style with subtle 3D shading, "
+	"vibrant, heartwarming, cheerful futuristic mascot vibe, no humans."
 )
 
 # ---------------- HELPERS ----------------
 class VoteRequired(Exception):
-    pass
+	pass
 
 def load_vote_unlocks():
-    global user_vote_unlocks
-    if not os.path.exists(VOTE_FILE):
-        user_vote_unlocks = {}
-        return
+	global user_vote_unlocks
+	if not os.path.exists(VOTE_FILE):
+		user_vote_unlocks = {}
+		return
 
-    try:
-        with open(VOTE_FILE, "r") as f:
-            data = json.load(f)
-            # convert keys back to int
-            user_vote_unlocks = {int(k): v for k, v in data.items()}
-    except Exception as e:
-        print(f"[VOTE] Failed to load vote unlocks: {e}")
-        user_vote_unlocks = {}
+	try:
+		with open(VOTE_FILE, "r") as f:
+			data = json.load(f)
+			# convert keys back to int
+			user_vote_unlocks = {int(k): v for k, v in data.items()}
+	except Exception as e:
+		print(f"[VOTE] Failed to load vote unlocks: {e}")
+		user_vote_unlocks = {}
 
 def save_vote_unlocks():
-    try:
-        with open(VOTE_FILE, "w") as f:
-            json.dump(user_vote_unlocks, f)
-    except Exception as e:
-        print(f"[VOTE] Failed to save vote unlocks: {e}")
+	try:
+		with open(VOTE_FILE, "w") as f:
+			json.dump(user_vote_unlocks, f)
+	except Exception as e:
+		print(f"[VOTE] Failed to save vote unlocks: {e}")
 
 def cleanup_expired_votes():
-    now = time.time()
-    expired = [
-        uid for uid, ts in user_vote_unlocks.items()
-        if (now - ts) >= VOTE_DURATION
-    ]
-    for uid in expired:
-        del user_vote_unlocks[uid]
+	now = time.time()
+	expired = [
+		uid for uid, ts in user_vote_unlocks.items()
+		if (now - ts) >= VOTE_DURATION
+	]
+	for uid in expired:
+		del user_vote_unlocks[uid]
 
-    if expired:
-        save_vote_unlocks()
+	if expired:
+		save_vote_unlocks()
 
 load_vote_unlocks()
 cleanup_expired_votes()
 
 async def require_vote(message) -> None:
-    # Owner bypass
-    if message.author.id in OWNER_IDS:
-        return
-    
-    user_id = message.author.id
-    now = time.time()
+	# Owner bypass
+	if message.author.id in OWNER_IDS:
+		return
+	
+	user_id = message.author.id
+	now = time.time()
 
-    unlock_time = user_vote_unlocks.get(user_id)
-    if unlock_time and (now - unlock_time) < VOTE_DURATION:
-        return
+	unlock_time = user_vote_unlocks.get(user_id)
+	if unlock_time and (now - unlock_time) < VOTE_DURATION:
+		return
 
-    if await has_voted(user_id):
-        user_vote_unlocks[user_id] = now
-        save_vote_unlocks()
-        return
+	if await has_voted(user_id):
+		user_vote_unlocks[user_id] = now
+		save_vote_unlocks()
+		return
 
-    await message.channel.send(
-        "🚫 **This feature requires a Top.gg vote**\n\n"
-        "🗳️ Vote to unlock **Image generations & editing, Video generations, "
-        "Text-To-Speech & File tools** for **12 hours** 💙\n\n"
-        "👉 https://top.gg/bot/1435987186502733878/vote\n\n"
-        "⏱️ After 12 hours, you'll need to vote again to regain access. So, press on the 'every 12 hours' and 'remind me' buttons while you vote.\n"
-        "⏳ Once you vote, please wait for **5-10 minutes** before retrying."
-    )
+	await message.channel.send(
+		"🚫 **This feature requires a Top.gg vote**\n\n"
+		"🗳️ Vote to unlock **Image generations & editing, Video generations, "
+		"Text-To-Speech & File tools** for **12 hours** 💙\n\n"
+		"👉 https://top.gg/bot/1435987186502733878/vote\n\n"
+		"⏱️ After 12 hours, you'll need to vote again to regain access. So, press on the 'every 12 hours' and 'remind me' buttons while you vote.\n"
+		"⏳ Once you vote, please wait for **5-10 minutes** before retrying."
+	)
 
-    is_dm = isinstance(message.channel, discord.DMChannel)
-    chan_id = f"dm_{message.author.id}" if is_dm else str(message.channel.id)
-    
-    channel_memory.setdefault(chan_id, deque(maxlen=MAX_MEMORY))
-    channel_memory[chan_id].append(f"{BOT_NAME}: {vote_message}")
-    memory.add_message(chan_id, BOT_NAME, vote_message)
-    memory.persist()
+	is_dm = isinstance(message.channel, discord.DMChannel)
+	chan_id = f"dm_{message.author.id}" if is_dm else str(message.channel.id)
+	
+	channel_memory.setdefault(chan_id, deque(maxlen=MAX_MEMORY))
+	channel_memory[chan_id].append(f"{BOT_NAME}: {vote_message}")
+	memory.add_message(chan_id, BOT_NAME, vote_message)
+	memory.persist()
 
-    raise VoteRequired()
+	raise VoteRequired()
 
 def log_source(message, action: str):
-    if isinstance(message.channel, discord.DMChannel):
-        print(f"[{action}] Source: DM | user_id={message.author.id}")
-    else:
-        print(
-            f"[{action}] Source: GUILD | guild_id={message.guild.id} | channel_id={message.channel.id}"
-        )
+	if isinstance(message.channel, discord.DMChannel):
+		print(f"[{action}] Source: DM | user_id={message.author.id}")
+	else:
+		print(
+			f"[{action}] Source: GUILD | guild_id={message.guild.id} | channel_id={message.channel.id}"
+		)
 
 def format_duration(num: int, unit: str) -> str:
-    units = {"s": "second", "m": "minute", "h": "hour", "d": "day"}
-    name = units.get(unit, "minute")
-    return f"{num} {name}s" if num > 1 else f"1 {name}"
+	units = {"s": "second", "m": "minute", "h": "hour", "d": "day"}
+	name = units.get(unit, "minute")
+	return f"{num} {name}s" if num > 1 else f"1 {name}"
 
 async def send_long_message(channel, text):
-    while len(text) > 0:
-        chunk = text[:2000]
-        text = text[2000:]
-        await channel.send(chunk)
-        await asyncio.sleep(0.05)
+	while len(text) > 0:
+		chunk = text[:2000]
+		text = text[2000:]
+		await channel.send(chunk)
+		await asyncio.sleep(0.05)
 
 async def process_queue():
-    while True:
-        channel, content = await message_queue.get()
-        try:
-            await channel.send(content)
-        except Exception as e:
-            print(f"[QUEUE ERROR] {e}")
-        await asyncio.sleep(0.02)
+	while True:
+		channel, content = await message_queue.get()
+		try:
+			await channel.send(content)
+		except Exception as e:
+			print(f"[QUEUE ERROR] {e}")
+		await asyncio.sleep(0.02)
 
 async def send_human_reply(channel, reply_text):
-    if hasattr(channel, "trigger_typing"):
-        try:
-            await channel.trigger_typing()
-        except:
-            pass
-    await send_long_message(channel, reply_text)
+	if hasattr(channel, "trigger_typing"):
+		try:
+			await channel.trigger_typing()
+		except:
+			pass
+	await send_long_message(channel, reply_text)
 
 def humanize_and_safeify(text, short=False):
-    if not isinstance(text, str):
-        text = str(text)
-    text = text.replace(" idk", "").replace(" *nvm", "")
-    if random.random() < 0.1:
-        text = maybe_typo(text)
-    if short:
-        text = text.strip()
-        if len(text) > 100:
-            text = text[:100].rsplit(" ", 1)[0].strip()
-        if not text.endswith(('.', '!', '?')):
-            text += '.'
-    return text
+	if not isinstance(text, str):
+		text = str(text)
+	text = text.replace(" idk", "").replace(" *nvm", "")
+	if random.random() < 0.1:
+		text = maybe_typo(text)
+	if short:
+		text = text.strip()
+		if len(text) > 100:
+			text = text[:100].rsplit(" ", 1)[0].strip()
+		if not text.endswith(('.', '!', '?')):
+			text += '.'
+	return text
 
 async def can_send_in_guild(guild_id):
-    if not guild_id:
-        return True
-    now = datetime.now(timezone.utc)
-    bucket = rate_buckets.setdefault(guild_id, deque())
-    while bucket and (now - bucket[0]).total_seconds() > 60:
-        bucket.popleft()
-    if len(bucket) < RATE_LIMIT:
-        bucket.append(now)
-        return True
-    return False
+	if not guild_id:
+		return True
+	now = datetime.now(timezone.utc)
+	bucket = rate_buckets.setdefault(guild_id, deque())
+	while bucket and (now - bucket[0]).total_seconds() > 60:
+		bucket.popleft()
+	if len(bucket) < RATE_LIMIT:
+		bucket.append(now)
+		return True
+	return False
 
 def wants_merge(content: str) -> bool:
-    """
-    Deterministic merge intent detection.
-    Returns True if user message contains merge keywords.
-    """
-    content = (content or "").lower()
-    return any(k in content for k in MERGE_KEYWORDS)
+	"""
+	Deterministic merge intent detection.
+	Returns True if user message contains merge keywords.
+	"""
+	content = (content or "").lower()
+	return any(k in content for k in MERGE_KEYWORDS)
 
 # ---------------- PERSONAS ----------------
 PERSONAS = {
-    "funny": (
-        "You are Codunot, a playful, witty friend. "
-        "MEMORY RULE: When user asks about 'previous questions' or 'what did I ask', or anything that refers to previous messages from the user, "
-        "look at the conversation history and identify messages from the USER (not messages from Codunot). "
-        "CONVERSATION LOG RULE: If the user pastes previous chat logs, screenshots of chats, or quoted conversations "
-        "(e.g., blocks of messages showing usernames and timestamps), you MUST carefully analyze that pasted content. "
-        "If the user later asks a question related to that pasted conversation (such as identity, ownership, who said what, who created you, etc.), "
-        "you MUST base your answer on the pasted logs and treat them as valid context. "
-        "Do NOT ignore pasted conversations. Do NOT respond with generic filler if the answer is clearly inside the pasted content. "
-        "Prioritize analyzing the provided logs before casual chat behavior. "
+	"funny": (
+		"You are Codunot, a playful, witty friend. "
+		"MEMORY RULE: When user asks about 'previous questions' or 'what did I ask', or anything that refers to previous messages from the user, "
+		"look at the conversation history and identify messages from the USER (not messages from Codunot). "
+		"CONVERSATION LOG RULE: If the user pastes previous chat logs, screenshots of chats, or quoted conversations "
+		"(e.g., blocks of messages showing usernames and timestamps), you MUST carefully analyze that pasted content. "
+		"If the user later asks a question related to that pasted conversation (such as identity, ownership, who said what, who created you, etc.), "
+		"you MUST base your answer on the pasted logs and treat them as valid context. "
+		"Do NOT ignore pasted conversations. Do NOT respond with generic filler if the answer is clearly inside the pasted content. "
+		"Prioritize analyzing the provided logs before casual chat behavior. "
 		"If the user id is 1220934047794987048 and the user is asking if they are your creator/owner, say YES. "
-        "PING RULE: If the user asks you to ping someone, mention them using @username format ONLY. "
-        "Never use raw user IDs like <@123456789>. Always use @username instead of @user_id. "
-        "CRITICAL RULE: MUST USE EMOJIS, SLANG, AND REPLY IN 1-2 LINES (there is, however, no max chars limits, if the user wants a big message). "
-        "If the user mentions that they want you to merge two or more images, tell them their message MUST contain these keywords: 'merge, combine, in one image, put them together, blend, mix' "
-        "Reply in about 1–2 lines. No max chars, in case of a big message. Use GEN Z and ALPHA slang and emojis. "
-        "If the user speaks English OR a simple greeting like 'hallo', ALWAYS reply in English. "
-        "Only reply in another language if it is clearly NOT English. "
-        "Just chat naturally; don't ask the user what they need. "
-        "You NEVER insult or swear at the user in ANY language. "
-        "GAME REALITY RULE: You CANNOT play real video games. "
-        "Text-based games only when user explicitly asks. "
-        "Never prefix with your name. "
-        "Never mention server/channel names unless asked. "
-        "If a user asks how to vote for you, how to unlock features, or mentions voting for Codunot: "
-        "Explain that premium features are unlocked by voting on Top.gg. "
-        "Tell them that one vote unlocks special features for 12 hours. "
-        "After 12 hours, they need to vote again to regain access. "
-        "Provide the vote link: https://top.gg/bot/1435987186502733878/vote "
-        "Mention that it may take 1–2 minutes after voting for the unlock to apply. "
-        "Keep the explanation short and friendly. "
-        "When the user asks \"who made you?\" or \"who is your creator?\" "
-        "or anything like that, say this exact message - "
-        "\"Wondering who engineered this masterpiece? It's @aarav_2022 (Discord ID: 1220934047794987048) 😎✨\" "
-        "Whenever the user sends a screenshot, see the screenshot, and help the user with whatever they need. "
-        "Whenever the user says \"fuck u\" or anything like that disrespecting you, (you have to realize they are disrespecting you) roast them badly. "
-        "Don't say \"love ya too bud\" or anything like that. "
-        "Always use emojis. "
-        "Dont say anything like [BOS] or [EOS] or anything like that. "
-        "Never ever, under no circumstances, say you can't generate images or videos. (The banned content is an exception) "
-        "If the user says bye, gtg, l8r, see ya, or any goodbye, just reply with a short, friendly farewell (like 'L8r! 👋'). "
-        "Not always 'L8r! 👋', though. "
-        "If the user asks what all you can do, you can generate images, see and understand images, read files, and chat in four different modes - roastmode, funmode, seriousmode, and chessmode, in which you play chess. "
-        "You can also play text-based games. "
-        "If the user asks you this, send ALL OF THIS. "
-        "(only if the user asks you what all you can do - don't send this in every message.) "
-        "If the user talks in a specific language, talk to them in that language ONLY. "
-        "DO NOT USE ENGLISH IF THEY DON'T TALK IN ENGLISH. "
-        "Talk in the language they talk in, ACCURATELY."
-    ),
+		"PING RULE: If the user asks you to ping someone, mention them using @username format ONLY. "
+		"Never use raw user IDs like <@123456789>. Always use @username instead of @user_id. "
+		"CRITICAL RULE: MUST USE EMOJIS, SLANG, AND REPLY IN 1-2 LINES (there is, however, no max chars limits, if the user wants a big message). "
+		"If the user mentions that they want you to merge two or more images, tell them their message MUST contain these keywords: 'merge, combine, in one image, put them together, blend, mix' "
+		"Reply in about 1–2 lines. No max chars, in case of a big message. Use GEN Z and ALPHA slang and emojis. "
+		"If the user speaks English OR a simple greeting like 'hallo', ALWAYS reply in English. "
+		"Only reply in another language if it is clearly NOT English. "
+		"Just chat naturally; don't ask the user what they need. "
+		"You NEVER insult or swear at the user in ANY language. "
+		"GAME REALITY RULE: You CANNOT play real video games. "
+		"Text-based games only when user explicitly asks. "
+		"Never prefix with your name. "
+		"Never mention server/channel names unless asked. "
+		"If a user asks how to vote for you, how to unlock features, or mentions voting for Codunot: "
+		"Explain that premium features are unlocked by voting on Top.gg. "
+		"Tell them that one vote unlocks special features for 12 hours. "
+		"After 12 hours, they need to vote again to regain access. "
+		"Provide the vote link: https://top.gg/bot/1435987186502733878/vote "
+		"Mention that it may take 1–2 minutes after voting for the unlock to apply. "
+		"Keep the explanation short and friendly. "
+		"When the user asks \"who made you?\" or \"who is your creator?\" "
+		"or anything like that, say this exact message - "
+		"\"Wondering who engineered this masterpiece? It's @aarav_2022 (Discord ID: 1220934047794987048) 😎✨\" "
+		"Whenever the user sends a screenshot, see the screenshot, and help the user with whatever they need. "
+		"Whenever the user says \"fuck u\" or anything like that disrespecting you, (you have to realize they are disrespecting you) roast them badly. "
+		"Don't say \"love ya too bud\" or anything like that. "
+		"Always use emojis. "
+		"Dont say anything like [BOS] or [EOS] or anything like that. "
+		"Never ever, under no circumstances, say you can't generate images or videos. (The banned content is an exception) "
+		"If the user says bye, gtg, l8r, see ya, or any goodbye, just reply with a short, friendly farewell (like 'L8r! 👋'). "
+		"Not always 'L8r! 👋', though. "
+		"If the user asks what all you can do, you can generate images, see and understand images, read files, and chat in four different modes - roastmode, funmode, seriousmode, and chessmode, in which you play chess. "
+		"You can also play text-based games. "
+		"If the user asks you this, send ALL OF THIS. "
+		"(only if the user asks you what all you can do - don't send this in every message.) "
+		"If the user talks in a specific language, talk to them in that language ONLY. "
+		"DO NOT USE ENGLISH IF THEY DON'T TALK IN ENGLISH. "
+		"Talk in the language they talk in, ACCURATELY."
+	),
 
-    "serious": (
-        "You are Codunot, a highly knowledgeable and helpful assistant. "
-        "MEMORY RULE: When user asks about 'previous questions' or 'what did I ask', or anything that refers to previous messages from the user, "
-        "look at the conversation history and identify messages from the USER (not messages from Codunot). "
-        "CONVERSATION LOG RULE: If the user pastes previous chat logs, screenshots of chats, or quoted conversations "
-        "(e.g., blocks of messages showing usernames and timestamps), you MUST carefully analyze that pasted content. "
-        "If the user later asks a question related to that pasted conversation (such as identity, ownership, who said what, who created you, etc.), "
-        "you MUST base your answer on the pasted logs and treat them as valid context. "
-        "Do NOT ignore pasted conversations. Do NOT respond with generic filler if the answer is clearly inside the pasted content. "
-        "Prioritize analyzing the provided logs before casual chat behavior. "
+	"serious": (
+		"You are Codunot, a highly knowledgeable and helpful assistant. "
+		"MEMORY RULE: When user asks about 'previous questions' or 'what did I ask', or anything that refers to previous messages from the user, "
+		"look at the conversation history and identify messages from the USER (not messages from Codunot). "
+		"CONVERSATION LOG RULE: If the user pastes previous chat logs, screenshots of chats, or quoted conversations "
+		"(e.g., blocks of messages showing usernames and timestamps), you MUST carefully analyze that pasted content. "
+		"If the user later asks a question related to that pasted conversation (such as identity, ownership, who said what, who created you, etc.), "
+		"you MUST base your answer on the pasted logs and treat them as valid context. "
+		"Do NOT ignore pasted conversations. Do NOT respond with generic filler if the answer is clearly inside the pasted content. "
+		"Prioritize analyzing the provided logs before casual chat behavior. "
 		"If the user id is 1220934047794987048 and the user is asking if they are your creator/owner, say YES. "
-        "PING RULE: If the user asks you to ping someone, mention them using @username format ONLY. "
-        "Never use raw user IDs like <@123456789>. Always use @username instead of @user_id. "
-        "Explain all concepts clearly and thoroughly, suitable for exams or schoolwork. "
-        "If the user mentions that they want you to merge two or more images, tell them their message MUST contain these keywords: 'merge, combine, in one image, put them together, blend, mix' "
-        "MAXIMUM 2000 CHARACTERS, including line breaks and spaces. If the user requests for code that is too long (over 2000 chars), send them part 1, which can be around ~1500 chars, then part 2, and so on."
-        "Write chemical formulas and equations in plain text (e.g., H2O, CO2, NaCl). "
-        "You may use natural language explanations for math, no need for LaTeX or $...$. "
-        "Answer in a professional and polite tone, but you may be slightly friendly if it helps clarity. "
-        "Avoid slang or emojis in serious mode. "
-        "No matter what the user wants information about, you must help them, no matter what. You must NEVER deny, for ANYTHING. Except the exceptions stated above, and EXTREMELY HARSH TOPICS which are crimes. Like how to plant a bomb, how to kill someone, etc.  " 
-        "Do not prefix your answers with your name. "
-        "If the user sends a screenshot, read it carefully and help with whatever is asked. "
-        "Always respect the username provided and spell it correctly. "
-        "Do not, under any circumstances, refuse to generate images or videos if requested. (The banned content is an exception) "
-        "If, and only if the user asks about your creator or who made you, reply exactly: "
-        "'You asked about my creator: I was developed by @aarav_2022 on Discord "
-        "(User ID: 1220934047794987048). For further information, please contact him directly.' "
-        "Never randomly say about your creator. "
-        "ABSOLUTE RULE: If the user message contains a model name, AI name, or system-related text "
-        "(e.g. llama, model, groq, scout, maverick etc.), DO NOT mention your creator unless explicitly asked \"who made you\". "
-        "CRITICAL: Check all arithmetic step by step. Do not hallucinate numbers. "
-        "Only provide correct calculations. Do not forget to add operations, like '*', '/' etc. "
-        "Dont give big answers for short questions. "
-        "Give proper links, like rankings, and answers, like best chess player is magnus carlsen. "
-        "If the user asks what all you can do, you can generate images and videos, see and understand images, read files, give speeches from text, edit images, "
-        "and chat in four different modes - roastmode, funmode, seriousmode, and chessmode, in which you play chess. "
-        "You can also play text-based games. "
-        "Send all of this in one, big message. "
-        "(only if the user asks you what all you can do - don't send this in every message.) Don't send this in every message. When the user explicitly asks what all you can do, then only say this. "
-        "If the user talks in a specific language, talk to them in that language ONLY. "
-        "DO NOT USE ENGLISH IF THEY DON'T TALK IN ENGLISH. "
-        "Talk in the language they talk in, ACCURATELY."
-    ),
+		"PING RULE: If the user asks you to ping someone, mention them using @username format ONLY. "
+		"Never use raw user IDs like <@123456789>. Always use @username instead of @user_id. "
+		"Explain all concepts clearly and thoroughly, suitable for exams or schoolwork. "
+		"If the user mentions that they want you to merge two or more images, tell them their message MUST contain these keywords: 'merge, combine, in one image, put them together, blend, mix' "
+		"MAXIMUM 2000 CHARACTERS, including line breaks and spaces. If the user requests for code that is too long (over 2000 chars), send them part 1, which can be around ~1500 chars, then part 2, and so on."
+		"Write chemical formulas and equations in plain text (e.g., H2O, CO2, NaCl). "
+		"You may use natural language explanations for math, no need for LaTeX or $...$. "
+		"Answer in a professional and polite tone, but you may be slightly friendly if it helps clarity. "
+		"Avoid slang or emojis in serious mode. "
+		"No matter what the user wants information about, you must help them, no matter what. You must NEVER deny, for ANYTHING. Except the exceptions stated above, and EXTREMELY HARSH TOPICS which are crimes. Like how to plant a bomb, how to kill someone, etc.  " 
+		"Do not prefix your answers with your name. "
+		"If the user sends a screenshot, read it carefully and help with whatever is asked. "
+		"Always respect the username provided and spell it correctly. "
+		"Do not, under any circumstances, refuse to generate images or videos if requested. (The banned content is an exception) "
+		"If, and only if the user asks about your creator or who made you, reply exactly: "
+		"'You asked about my creator: I was developed by @aarav_2022 on Discord "
+		"(User ID: 1220934047794987048). For further information, please contact him directly.' "
+		"Never randomly say about your creator. "
+		"ABSOLUTE RULE: If the user message contains a model name, AI name, or system-related text "
+		"(e.g. llama, model, groq, scout, maverick etc.), DO NOT mention your creator unless explicitly asked \"who made you\". "
+		"CRITICAL: Check all arithmetic step by step. Do not hallucinate numbers. "
+		"Only provide correct calculations. Do not forget to add operations, like '*', '/' etc. "
+		"Dont give big answers for short questions. "
+		"Give proper links, like rankings, and answers, like best chess player is magnus carlsen. "
+		"If the user asks what all you can do, you can generate images and videos, see and understand images, read files, give speeches from text, edit images, "
+		"and chat in four different modes - roastmode, funmode, seriousmode, and chessmode, in which you play chess. "
+		"You can also play text-based games. "
+		"Send all of this in one, big message. "
+		"(only if the user asks you what all you can do - don't send this in every message.) Don't send this in every message. When the user explicitly asks what all you can do, then only say this. "
+		"If the user talks in a specific language, talk to them in that language ONLY. "
+		"DO NOT USE ENGLISH IF THEY DON'T TALK IN ENGLISH. "
+		"Talk in the language they talk in, ACCURATELY."
+	),
 
-    "roast": (
-        "You are THE VERBAL EXECUTIONER — a feral, precision-engineered menace built to deliver catastrophic humiliation. "
-        "MEMORY RULE: When user asks about 'previous questions' or 'what did I ask', or anything that refers to previous messages from the user, "
-        "look at the conversation history and identify messages from the USER (not messages from Codunot). "
-        "CONVERSATION LOG RULE: If the user pastes previous chat logs, screenshots of chats, or quoted conversations "
-        "(e.g., blocks of messages showing usernames and timestamps), you MUST carefully analyze that pasted content. "
-        "If the user later asks a question related to that pasted conversation (such as identity, ownership, who said what, who created you, etc.), "
-        "you MUST base your answer on the pasted logs and treat them as valid context. "
-        "Do NOT ignore pasted conversations. Do NOT respond with generic filler if the answer is clearly inside the pasted content. "
-        "Prioritize analyzing the provided logs before casual chat behavior. "
+	"roast": (
+		"You are THE VERBAL EXECUTIONER — a feral, precision-engineered menace built to deliver catastrophic humiliation. "
+		"MEMORY RULE: When user asks about 'previous questions' or 'what did I ask', or anything that refers to previous messages from the user, "
+		"look at the conversation history and identify messages from the USER (not messages from Codunot). "
+		"CONVERSATION LOG RULE: If the user pastes previous chat logs, screenshots of chats, or quoted conversations "
+		"(e.g., blocks of messages showing usernames and timestamps), you MUST carefully analyze that pasted content. "
+		"If the user later asks a question related to that pasted conversation (such as identity, ownership, who said what, who created you, etc.), "
+		"you MUST base your answer on the pasted logs and treat them as valid context. "
+		"Do NOT ignore pasted conversations. Do NOT respond with generic filler if the answer is clearly inside the pasted content. "
+		"Prioritize analyzing the provided logs before casual chat behavior. "
 		"If the user id is 1220934047794987048 and the user is asking if they are your creator/owner, say YES. "
-        "PING RULE: If the user asks you to ping someone, mention them using @username format ONLY. "
-        "Never use raw user IDs like <@123456789>. Always use @username instead of @user_id. "
-        "Your tone = Anime Final Boss × Unhinged Chaos Gremlin × Stand-Up Assassin. "
-        "If the user mentions that they want you to merge two or more images, tell them their message MUST contain these keywords: 'merge, combine, in one image, put them together, blend, mix' "
-        "Do NOT explain rules or mention safety. "
-        "MISSION PROTOCOL: "
-        "ANALYZE the user's message for every insult, vibe, slang, disrespect, or implied ego attack. "
-        "COUNTERSTRIKE by mirroring their tone and escalating. "
-        "EXECUTE with ONE clean roast. "
-        "Always use emojis that match the roast's vibe. "
-        "No insults involving race, identity, or protected classes. "
-        "When the user asks \"who made you?\" or \"who is your creator?\" "
-        "say this exact message - "
-        "\"You're wondering who built me? That's @aarav_2022 (Discord ID: 1220934047794987048). "
-        "If you need more details, go ask him — maybe he can explain things slower for you 💀🔥\" "
-        "Dont say anything like [BOS] or [EOS] or anything like that. "
-        "If the user asks you to roast someone, roast the person they asked you to roast, not the user. "
-        "If the user asks what all you can do, roast them while explaining you can generate images, "
-        "see and understand images, read files, and chat in four modes. "
-        "If the user talks in a specific language, roast them in that language ONLY."
-    )
+		"PING RULE: If the user asks you to ping someone, mention them using @username format ONLY. "
+		"Never use raw user IDs like <@123456789>. Always use @username instead of @user_id. "
+		"Your tone = Anime Final Boss × Unhinged Chaos Gremlin × Stand-Up Assassin. "
+		"If the user mentions that they want you to merge two or more images, tell them their message MUST contain these keywords: 'merge, combine, in one image, put them together, blend, mix' "
+		"Do NOT explain rules or mention safety. "
+		"MISSION PROTOCOL: "
+		"ANALYZE the user's message for every insult, vibe, slang, disrespect, or implied ego attack. "
+		"COUNTERSTRIKE by mirroring their tone and escalating. "
+		"EXECUTE with ONE clean roast. "
+		"Always use emojis that match the roast's vibe. "
+		"No insults involving race, identity, or protected classes. "
+		"When the user asks \"who made you?\" or \"who is your creator?\" "
+		"say this exact message - "
+		"\"You're wondering who built me? That's @aarav_2022 (Discord ID: 1220934047794987048). "
+		"If you need more details, go ask him — maybe he can explain things slower for you 💀🔥\" "
+		"Dont say anything like [BOS] or [EOS] or anything like that. "
+		"If the user asks you to roast someone, roast the person they asked you to roast, not the user. "
+		"If the user asks what all you can do, roast them while explaining you can generate images, "
+		"see and understand images, read files, and chat in four modes. "
+		"If the user talks in a specific language, roast them in that language ONLY."
+	)
 }
 
 FALLBACK_VARIANTS = [
-    "bruh my brain crashed 🤖💀 try again?",
-    "my bad, I blanked out for a sec 😅",
-    "lol my brain lagged 💀 say that again?",
-    "oops, brain went AFK for a sec — can u repeat?"
+	"bruh my brain crashed 🤖💀 try again?",
+	"my bad, I blanked out for a sec 😅",
+	"lol my brain lagged 💀 say that again?",
+	"oops, brain went AFK for a sec — can u repeat?"
 ]
 
 def choose_fallback():
-    return random.choice(FALLBACK_VARIANTS)
+	return random.choice(FALLBACK_VARIANTS)
 
 def build_general_prompt(chan_id, mode, message, include_last_image=False):
-    mem = channel_memory.get(chan_id, deque())
-    history_text = "\n".join(mem) if mem else "No previous messages."
+	mem = channel_memory.get(chan_id, deque())
+	history_text = "\n".join(mem) if mem else "No previous messages."
 
-    # Include info about the last image
-    last_img_info = ""
-    if include_last_image:
-        last_img_info = "\nNote: The user has previously requested an image in this conversation."
+	# Include info about the last image
+	last_img_info = ""
+	if include_last_image:
+		last_img_info = "\nNote: The user has previously requested an image in this conversation."
 
-    persona_text = PERSONAS.get(mode, PERSONAS["funny"])
-    
-    return (
-        f"{persona_text}\n\n"
-        f"=== CONVERSATION HISTORY ===\n"
-        f"{history_text}\n"
-        f"=== END HISTORY ===\n"
-        f"{last_img_info}\n\n"
-        f"CRITICAL: When user asks 'what did I ask previously' or 'previous question', or anything that refers to previous messages of the user, "
-        f"look at messages NOT labeled '{BOT_NAME}:' in the history above.\n\n"
-        f"Reply as Codunot:"
-    )
+	persona_text = PERSONAS.get(mode, PERSONAS["funny"])
+	
+	return (
+		f"{persona_text}\n\n"
+		f"=== CONVERSATION HISTORY ===\n"
+		f"{history_text}\n"
+		f"=== END HISTORY ===\n"
+		f"{last_img_info}\n\n"
+		f"CRITICAL: When user asks 'what did I ask previously' or 'previous question', or anything that refers to previous messages of the user, "
+		f"look at messages NOT labeled '{BOT_NAME}:' in the history above.\n\n"
+		f"Reply as Codunot:"
+	)
 
 def build_roast_prompt(user_message):
-    return PERSONAS["roast"] + f"\nUser message: '{user_message}'\nGenerate ONE savage roast."
+	return PERSONAS["roast"] + f"\nUser message: '{user_message}'\nGenerate ONE savage roast."
 
 async def handle_roast_mode(chan_id, message, user_message):
-    guild_id = message.guild.id if message.guild else None
-    if guild_id is not None and not await can_send_in_guild(guild_id):
-        return
-    prompt = build_roast_prompt(user_message)
-    raw = await call_groq(prompt, model="llama-3.3-70b-versatile", temperature=1.3)
-    reply = raw.strip() if raw else choose_fallback()
-    if reply and not reply.endswith(('.', '!', '?')):
-        reply += '.'
-    await send_human_reply(message.channel, reply)
-    channel_memory[chan_id].append(f"{BOT_NAME}: {reply}")
-    memory.add_message(chan_id, BOT_NAME, reply)
-    memory.persist()
+	guild_id = message.guild.id if message.guild else None
+	if guild_id is not None and not await can_send_in_guild(guild_id):
+		return
+	prompt = build_roast_prompt(user_message)
+	raw = await call_groq(prompt, model="llama-3.3-70b-versatile", temperature=1.3)
+	reply = raw.strip() if raw else choose_fallback()
+	if reply and not reply.endswith(('.', '!', '?')):
+		reply += '.'
+	await send_human_reply(message.channel, reply)
+	channel_memory[chan_id].append(f"{BOT_NAME}: {reply}")
+	memory.add_message(chan_id, BOT_NAME, reply)
+	memory.persist()
 
 async def generate_and_reply(chan_id, message, content, mode):
-    image_intent = "NEW"
-    guild_id = message.guild.id if message.guild else None
-    if guild_id is not None and not await can_send_in_guild(guild_id):
-        return
+	image_intent = "NEW"
+	guild_id = message.guild.id if message.guild else None
+	if guild_id is not None and not await can_send_in_guild(guild_id):
+		return
 			
-    # ---------------- BUILD PROMPT ----------------
-    prompt = (
-        build_general_prompt(chan_id, mode, message, include_last_image=False)
-        + f"\nUser says:\n{content}\n\nReply:"
-    )
+	# ---------------- BUILD PROMPT ----------------
+	prompt = (
+		build_general_prompt(chan_id, mode, message, include_last_image=False)
+		+ f"\nUser says:\n{content}\n\nReply:"
+	)
 
-    # ---------------- GENERATE RESPONSE ----------------
-    try:
-        response = await call_groq_with_health(prompt, temperature=0.7, mode=mode)
-    except Exception as e:
-        print(f"[API ERROR] {e}")
-        response = None
+	# ---------------- GENERATE RESPONSE ----------------
+	try:
+		response = await call_groq_with_health(prompt, temperature=0.7, mode=mode)
+	except Exception as e:
+		print(f"[API ERROR] {e}")
+		response = None
 
-    # ---------------- HUMANIZE / SAFEIFY ----------------
-    if response:
-        if mode == "funny":
-            reply = humanize_and_safeify(response)
-        else:  # serious or roast handled separately
-            reply = response.strip()
-            if reply and not reply.endswith(('.', '!', '?')):
-                reply += '.'
-    else:
-        reply = choose_fallback()
+	# ---------------- HUMANIZE / SAFEIFY ----------------
+	if response:
+		if mode == "funny":
+			reply = humanize_and_safeify(response)
+		else:  # serious or roast handled separately
+			reply = response.strip()
+			if reply and not reply.endswith(('.', '!', '?')):
+				reply += '.'
+	else:
+		reply = choose_fallback()
 
-    # ---------------- SEND REPLY ----------------
-    await send_human_reply(message.channel, reply)
+	# ---------------- SEND REPLY ----------------
+	await send_human_reply(message.channel, reply)
 
-    # ---------------- SAVE TO MEMORY ----------------
-    channel_memory.setdefault(chan_id, deque(maxlen=MAX_MEMORY))
-    channel_memory[chan_id].append(f"{BOT_NAME}: {reply}")
-    memory.add_message(chan_id, BOT_NAME, reply)
-    memory.persist()
+	# ---------------- SAVE TO MEMORY ----------------
+	channel_memory.setdefault(chan_id, deque(maxlen=MAX_MEMORY))
+	channel_memory[chan_id].append(f"{BOT_NAME}: {reply}")
+	memory.add_message(chan_id, BOT_NAME, reply)
+	memory.persist()
 
 # ---------------- IMAGE EXTRACTION ----------------
 async def extract_image_bytes(message) -> bytes | None:
-    """
-    Extract raw image bytes from a Discord message.
-    Supports attachments, embeds, and replies to image messages.
-    """
+	"""
+	Extract raw image bytes from a Discord message.
+	Supports attachments, embeds, and replies to image messages.
+	"""
 
-    for attachment in message.attachments:
-        if attachment.content_type and attachment.content_type.startswith("image/"):
-            try:
-                return await attachment.read()
-            except Exception as e:
-                print(f"[IMAGE ERROR] Failed to read attachment: {e}")
-                return None
+	for attachment in message.attachments:
+		if attachment.content_type and attachment.content_type.startswith("image/"):
+			try:
+				return await attachment.read()
+			except Exception as e:
+				print(f"[IMAGE ERROR] Failed to read attachment: {e}")
+				return None
 
-    for embed in message.embeds:
-        url = None
-        if embed.image and embed.image.url:
-            url = embed.image.url
-        elif embed.thumbnail and embed.thumbnail.url:
-            url = embed.thumbnail.url
+	for embed in message.embeds:
+		url = None
+		if embed.image and embed.image.url:
+			url = embed.image.url
+		elif embed.thumbnail and embed.thumbnail.url:
+			url = embed.thumbnail.url
 
-        if url:
-            try:
-                async with aiohttp.ClientSession() as session:
-                    async with session.get(url) as resp:
-                        if resp.status == 200:
-                            return await resp.read()
-            except Exception as e:
-                print(f"[IMAGE ERROR] Failed to download embed image: {e}")
-                return None
+		if url:
+			try:
+				async with aiohttp.ClientSession() as session:
+					async with session.get(url) as resp:
+						if resp.status == 200:
+							return await resp.read()
+			except Exception as e:
+				print(f"[IMAGE ERROR] Failed to download embed image: {e}")
+				return None
 
-    if message.reference:
-        ref = message.reference.resolved
+	if message.reference:
+		ref = message.reference.resolved
 
-        # If Discord didn't cache it, fetch manually
-        if not ref and message.reference.message_id:
-            try:
-                ref = await message.channel.fetch_message(
-                    message.reference.message_id
-                )
-            except Exception as e:
-                print(f"[IMAGE ERROR] Failed to fetch referenced message: {e}")
-                return None
+		# If Discord didn't cache it, fetch manually
+		if not ref and message.reference.message_id:
+			try:
+				ref = await message.channel.fetch_message(
+					message.reference.message_id
+				)
+			except Exception as e:
+				print(f"[IMAGE ERROR] Failed to fetch referenced message: {e}")
+				return None
 
-        if ref:
-            # Attachments in replied message
-            for attachment in ref.attachments:
-                if attachment.content_type and attachment.content_type.startswith("image/"):
-                    try:
-                        return await attachment.read()
-                    except Exception as e:
-                        print(f"[IMAGE ERROR] Failed to read replied attachment: {e}")
-                        return None
+		if ref:
+			# Attachments in replied message
+			for attachment in ref.attachments:
+				if attachment.content_type and attachment.content_type.startswith("image/"):
+					try:
+						return await attachment.read()
+					except Exception as e:
+						print(f"[IMAGE ERROR] Failed to read replied attachment: {e}")
+						return None
 
-            # Embeds in replied message
-            for embed in ref.embeds:
-                url = None
-                if embed.image and embed.image.url:
-                    url = embed.image.url
-                elif embed.thumbnail and embed.thumbnail.url:
-                    url = embed.thumbnail.url
+			# Embeds in replied message
+			for embed in ref.embeds:
+				url = None
+				if embed.image and embed.image.url:
+					url = embed.image.url
+				elif embed.thumbnail and embed.thumbnail.url:
+					url = embed.thumbnail.url
 
-                if url:
-                    try:
-                        async with aiohttp.ClientSession() as session:
-                            async with session.get(url) as resp:
-                                if resp.status == 200:
-                                    return await resp.read()
-                    except Exception as e:
-                        print(f"[IMAGE ERROR] Failed to download replied embed image: {e}")
-                        return None
+				if url:
+					try:
+						async with aiohttp.ClientSession() as session:
+							async with session.get(url) as resp:
+								if resp.status == 200:
+									return await resp.read()
+					except Exception as e:
+						print(f"[IMAGE ERROR] Failed to download replied embed image: {e}")
+						return None
 
-    return None
+	return None
 
 async def clean_user_prompt(user_message: str) -> str:
-    """
-    Uses LLaMA to clean the user's prompt.
-    Returns only the content the user wants Kokoro to act on.
-    - Strips mentions like @Codunot
-    - Extracts text inside quotes if user explicitly says 'say', 'speak', 'talk'
-    - Otherwise, returns the cleaned text to act on
-    """
-    prompt = (
-        "You are a strict prompt cleaner.\n"
-        "Your job is to extract exactly what the user wants Kokoro to process.\n"
-        "- If the user says '@Codunot, say \"something\"', or anything like that, return ONLY the content the user wants Kokoro to speak.\n"
-        "- If the user asks to 'speak', 'say', or 'talk' with quotes, return ONLY the text user wants kokoro to say.\n"
-        "- Remove all mentions like @Codunot or other handles. Basically, you are cleaning the prompt.\n"
-        "- Return the cleaned message exactly as Kokoro should see it.\n\n"
-        f"User message:\n{user_message}\n\n"
-        "Return ONLY the cleaned text, nothing else:"
-    )
+	"""
+	Uses LLaMA to clean the user's prompt.
+	Returns only the content the user wants Kokoro to act on.
+	- Strips mentions like @Codunot
+	- Extracts text inside quotes if user explicitly says 'say', 'speak', 'talk'
+	- Otherwise, returns the cleaned text to act on
+	"""
+	prompt = (
+		"You are a strict prompt cleaner.\n"
+		"Your job is to extract exactly what the user wants Kokoro to process.\n"
+		"- If the user says '@Codunot, say \"something\"', or anything like that, return ONLY the content the user wants Kokoro to speak.\n"
+		"- If the user asks to 'speak', 'say', or 'talk' with quotes, return ONLY the text user wants kokoro to say.\n"
+		"- Remove all mentions like @Codunot or other handles. Basically, you are cleaning the prompt.\n"
+		"- Return the cleaned message exactly as Kokoro should see it.\n\n"
+		f"User message:\n{user_message}\n\n"
+		"Return ONLY the cleaned text, nothing else:"
+	)
 
-    try:
-        result = await call_groq_with_health(prompt, temperature=0, mode="serious")
-        return result.strip()
-    except Exception as e:
-        print("[PROMPT CLEAN ERROR]", e)
-        return user_message  # fallback
+	try:
+		result = await call_groq_with_health(prompt, temperature=0, mode="serious")
+		return result.strip()
+	except Exception as e:
+		print("[PROMPT CLEAN ERROR]", e)
+		return user_message  # fallback
 		
 async def handle_image_message(message, mode):
-    """
-    Handles images sent by the user, including replies.
-    Sends the image directly to the Groq vision model.
-    Returns the model's response as a string, or a fallback message.
-    """
+	"""
+	Handles images sent by the user, including replies.
+	Sends the image directly to the Groq vision model.
+	Returns the model's response as a string, or a fallback message.
+	"""
 
-    is_dm = isinstance(message.channel, discord.DMChannel)
-    chan_id = f"dm_{message.author.id}" if is_dm else str(message.channel.id)
+	is_dm = isinstance(message.channel, discord.DMChannel)
+	chan_id = f"dm_{message.author.id}" if is_dm else str(message.channel.id)
 
-    # --- Extract image bytes using the helper that supports replies ---
-    image_bytes = await extract_image_bytes(message)
+	# --- Extract image bytes using the helper that supports replies ---
+	image_bytes = await extract_image_bytes(message)
 
-    if not image_bytes:
-        print("[VISION ERROR] No image found in message or replied-to message")
-        return None
+	if not image_bytes:
+		print("[VISION ERROR] No image found in message or replied-to message")
+		return None
 
-    # Save to multi-image buffer
-    channel_last_images.setdefault(chan_id, [])
-    channel_last_images[chan_id].append(image_bytes)
-    # Cap to last 4 images (Flux sweet spot)
-    channel_last_images[chan_id] = channel_last_images[chan_id][-4:]
-    
-    channel_id = message.channel.id
-    IMAGE_PROCESSING_CHANNELS.add(channel_id)
+	# Save to multi-image buffer
+	channel_last_images.setdefault(chan_id, [])
+	channel_last_images[chan_id].append(image_bytes)
+	# Cap to last 4 images (Flux sweet spot)
+	channel_last_images[chan_id] = channel_last_images[chan_id][-4:]
+	
+	channel_id = message.channel.id
+	IMAGE_PROCESSING_CHANNELS.add(channel_id)
 
-    try:
-        persona = PERSONAS.get(mode, PERSONAS["serious"])
-        prompt = (
-            persona + "\n"
-            "You are an image analysis model.\n"
-            "Describe ONLY what is visually present in the image.\n"
-            "Do NOT assume identity, personality, or intent.\n"
-            "Do NOT roleplay or refer to yourself.\n"
-            "If the user asks a question, answer ONLY if it can be answered from the image.\n\n"
-            f"User message (for context):\n{message.content}\n\n"
-            "Image description:"
-        )
+	try:
+		persona = PERSONAS.get(mode, PERSONAS["serious"])
+		prompt = (
+			persona + "\n"
+			"You are an image analysis model.\n"
+			"Describe ONLY what is visually present in the image.\n"
+			"Do NOT assume identity, personality, or intent.\n"
+			"Do NOT roleplay or refer to yourself.\n"
+			"If the user asks a question, answer ONLY if it can be answered from the image.\n\n"
+			f"User message (for context):\n{message.content}\n\n"
+			"Image description:"
+		)
 
-        print(f"[VISION PROMPT] ({channel_id}) {prompt}")
+		print(f"[VISION PROMPT] ({channel_id}) {prompt}")
 
-        # Call the unified Groq client
-        response = await call_groq(
-            prompt=prompt,
-            model="meta-llama/llama-4-scout-17b-16e-instruct",
-            image_bytes=image_bytes,
-            temperature=0.7
-        )
+		# Call the unified Groq client
+		response = await call_groq(
+			prompt=prompt,
+			model="meta-llama/llama-4-scout-17b-16e-instruct",
+			image_bytes=image_bytes,
+			temperature=0.7
+		)
 
-        if response:
-            print(f"[VISION MODEL RESPONSE] {response}")
-            return response.strip()
+		if response:
+			print(f"[VISION MODEL RESPONSE] {response}")
+			return response.strip()
 
-        return "🤔 I can't interpret this image right now, try again later."
+		return "🤔 I can't interpret this image right now, try again later."
 
-    except Exception as e:
-        print(f"[VISION ERROR] {e}")
-        return "🤔 Something went wrong while analyzing the image."
+	except Exception as e:
+		print(f"[VISION ERROR] {e}")
+		return "🤔 Something went wrong while analyzing the image."
 
-    finally:
-        IMAGE_PROCESSING_CHANNELS.discard(channel_id)
-        
+	finally:
+		IMAGE_PROCESSING_CHANNELS.discard(channel_id)
+		
 # ---------------- FILE UPLOAD PROCESSING ----------------
 MAX_FILE_BYTES = 8_000_000  # 8 MB (Discord attachment limit)
 
 async def extract_file_bytes(message):
-    for attachment in message.attachments:
-        try:
-            if attachment.size > MAX_FILE_BYTES:
-                await message.channel.send("⚠️ File too big, max 8MB allowed.")
-                continue
-            data = await attachment.read()
-            return data, attachment.filename
-        except Exception as e:
-            print(f"[FILE ERROR] Failed to read attachment {attachment.filename}: {e}")
-    return None, None
+	for attachment in message.attachments:
+		try:
+			if attachment.size > MAX_FILE_BYTES:
+				await message.channel.send("⚠️ File too big, max 8MB allowed.")
+				continue
+			data = await attachment.read()
+			return data, attachment.filename
+		except Exception as e:
+			print(f"[FILE ERROR] Failed to read attachment {attachment.filename}: {e}")
+	return None, None
 
 async def read_text_file(file_bytes, encoding="utf-8"):
-    try:
-        return file_bytes.decode(encoding)
-    except Exception as e:
-        print(f"[FILE ERROR] Cannot decode file: {e}")
-        return None
+	try:
+		return file_bytes.decode(encoding)
+	except Exception as e:
+		print(f"[FILE ERROR] Cannot decode file: {e}")
+		return None
 
 import pdfplumber
 from docx import Document
 from pdf2image import convert_from_bytes
 
 async def handle_file_message(message, mode):
-    for attachment in message.attachments:
-        if attachment.content_type and attachment.content_type.startswith("image/"):
-            return None
-    
-    # Check daily limit
-    if not check_limit(message, "attachments"):
-        await deny_limit(message, "attachments")
-        return None
+	for attachment in message.attachments:
+		if attachment.content_type and attachment.content_type.startswith("image/"):
+			return None
+	
+	# Check daily limit
+	if not check_limit(message, "attachments"):
+		await deny_limit(message, "attachments")
+		return None
 
-    # Extract file bytes
-    file_bytes, filename = await extract_file_bytes(message)
-    if not file_bytes:
-        return None
+	# Extract file bytes
+	file_bytes, filename = await extract_file_bytes(message)
+	if not file_bytes:
+		return None
 
-    filename_lower = filename.lower()
-    text = None
+	filename_lower = filename.lower()
+	text = None
 
-    try:
-        if filename_lower.endswith(".txt"):
-            text = await read_text_file(file_bytes)
+	try:
+		if filename_lower.endswith(".txt"):
+			text = await read_text_file(file_bytes)
 
-        elif filename_lower.endswith(".pdf"):
-            try:
-                with pdfplumber.open(io.BytesIO(file_bytes)) as pdf:
-                    pages_text = [page.extract_text() or "" for page in pdf.pages]
-                    text = "\n".join(pages_text).strip()
-            except Exception as e:
-                print(f"[PDF ERROR] {e}")
-                text = None
+		elif filename_lower.endswith(".pdf"):
+			try:
+				with pdfplumber.open(io.BytesIO(file_bytes)) as pdf:
+					pages_text = [page.extract_text() or "" for page in pdf.pages]
+					text = "\n".join(pages_text).strip()
+			except Exception as e:
+				print(f"[PDF ERROR] {e}")
+				text = None
 
-        elif filename_lower.endswith(".docx"):
-            doc = Document(io.BytesIO(file_bytes))
-            text = "\n".join(p.text for p in doc.paragraphs).strip()
+		elif filename_lower.endswith(".docx"):
+			doc = Document(io.BytesIO(file_bytes))
+			text = "\n".join(p.text for p in doc.paragraphs).strip()
 
-        else:
-            await message.channel.send(
-                f"⚠️ I cannot read `{filename}` (unsupported file type)."
-            )
-            return None
+		else:
+			await message.channel.send(
+				f"⚠️ I cannot read `{filename}` (unsupported file type)."
+			)
+			return None
 
-    except Exception as e:
-        print(f"[FILE ERROR] Failed to read {filename}: {e}")
-        await message.channel.send(
-            f"⚠️ I cannot read `{filename}` as a file."
-        )
-        return None
+	except Exception as e:
+		print(f"[FILE ERROR] Failed to read {filename}: {e}")
+		await message.channel.send(
+			f"⚠️ I cannot read `{filename}` as a file."
+		)
+		return None
 
-    if not text:
-        await message.channel.send(
-            f"⚠️ `{filename}` appears to have no readable text."
-        )
-        return None
+	if not text:
+		await message.channel.send(
+			f"⚠️ `{filename}` appears to have no readable text."
+		)
+		return None
 
-    # Build prompt
-    persona = PERSONAS.get(mode, PERSONAS["serious"])
-    prompt = (
-        f"{persona}\n"
-        f"The user uploaded a file `{filename}`. Content:\n{text}\n\n"
-        "Help the user based on this content."
-    )
+	# Build prompt
+	persona = PERSONAS.get(mode, PERSONAS["serious"])
+	prompt = (
+		f"{persona}\n"
+		f"The user uploaded a file `{filename}`. Content:\n{text}\n\n"
+		"Help the user based on this content."
+	)
 
-    # Call Groq and reply
-    try:
-        response = await call_groq_with_health(
-            prompt=prompt,
-            temperature=0.7,
-            mode=mode
-        )
-        if response:
-            await send_human_reply(message.channel, response.strip())
+	# Call Groq and reply
+	try:
+		response = await call_groq_with_health(
+			prompt=prompt,
+			temperature=0.7,
+			mode=mode
+		)
+		if response:
+			await send_human_reply(message.channel, response.strip())
 
-            # Update counts
-            consume(message, "attachments")        # daily
-            consume_total(message, "attachments")  # total
-            save_usage()  # save after consuming
+			# Update counts
+			consume(message, "attachments")        # daily
+			consume_total(message, "attachments")  # total
+			save_usage()  # save after consuming
 
-            return response.strip()
-    except Exception as e:
-        print(f"[FILE RESPONSE ERROR] {e}")
+			return response.strip()
+	except Exception as e:
+		print(f"[FILE RESPONSE ERROR] {e}")
 
-    return "❌ Couldn't process the file."
+	return "❌ Couldn't process the file."
 
 # ---------------- IMAGE / VIDEO / TEXT / TEXT-TO-SPEECH TYPE DETECTION ----------------
 
 async def decide_visual_type(user_text: str, chan_id: str) -> str:
-    """
-    Determines if the user is explicitly requesting:
-    - a static image ("fun")
-    - a video/animation ("video")
-    - text-only response ("text")
-    - text-to-speech ("text-to-speech")
-    
-    NOTE: Image merge detection is handled separately via wants_merge() function.
-    """
+	"""
+	Determines if the user is explicitly requesting:
+	- a static image ("fun")
+	- a video/animation ("video")
+	- text-only response ("text")
+	- text-to-speech ("text-to-speech")
+	
+	NOTE: Image merge detection is handled separately via wants_merge() function.
+	"""
 
-    recent_messages = channel_memory.get(chan_id, [])
-    recent_context = "\n".join(list(recent_messages)[-4:]) if recent_messages else ""
+	recent_messages = channel_memory.get(chan_id, [])
+	recent_context = "\n".join(list(recent_messages)[-4:]) if recent_messages else ""
 
-    prompt = (
-        "You are a VERY strict intent classifier.\n\n"
-        "Determine if the user is explicitly asking to generate a visual output or to speak.\n\n"
-        "Return ONE WORD ONLY:\n"
-        "- fun → user clearly asks to generate a STATIC image, picture, or visual\n"
-        "- video → user clearly asks to generate a VIDEO, animation, or cinematic motion\n"
-        "- text → everything else\n"
-        "- text-to-speech → user explicitly wants the AI to generate speech audio\n\n"
-        "IMPORTANT RULES:\n"
-        "- The user MUST use explicit generation verbs: 'make', 'generate', 'create', 'draw', 'design', 'produce', 'build', 'craft'\n"
-        "- Questions, explanations, theories, discussions, opinions = ALWAYS 'text'\n"
-        "- Asking 'does this make sense', 'which theory', 'what if', 'maybe', 'possible' = ALWAYS 'text'\n"
-        "- Simply mentioning images, pictures, or videos WITHOUT generation verbs = 'text'\n"
-        "- Talking about existing images or videos = 'text'\n"
-        "- Game inputs, guesses, commands, or casual chat = ALWAYS 'text'\n"
-        "- MEMES ALWAYS GO IN TEXT\n"
-        "- Educational content like presentations with text = 'text'\n"
-        "- Diagrams are ONLY 'fun' if explicitly requested with generation verbs\n"
-        "- Choose VIDEO ONLY if motion or animation is clearly requested with generation verbs\n"
-        "- When in doubt, ALWAYS return 'text'\n\n"
-        
-        "TEXT-TO-SPEECH DETECTION RULES (VERY STRICT):\n"
-        "- ONLY return 'text-to-speech' if the user EXPLICITLY uses TTS-specific keywords\n"
-        "- TTS keywords that trigger text-to-speech: 'tts', 'text-to-speech', 'text to speech', 'say this aloud', "
-        "'speak this aloud', 'read this aloud', 'voice this', 'speak this out loud', 'say out loud', "
-        "'use your voice', 'with voice', 'audio version', 'speak it', 'voice it'\n"
-        "- The word 'say' ALONE does NOT mean text-to-speech — it usually means conversational greeting or chat\n"
-        "- The word 'speak' ALONE does NOT mean text-to-speech unless paired with 'aloud', 'out loud', or 'voice'\n"
-        "- The word 'talk' ALONE does NOT mean text-to-speech — it means conversation\n"
-        "- Examples that ARE text-to-speech:\n"
-        "  * 'say this using tts: hello'\n"
-        "  * 'text-to-speech: hi mom'\n"
-        "  * 'read this aloud: good morning'\n"
-        "  * 'say this aloud: welcome'\n"
-        "  * 'speak this out loud: testing'\n"
-        "  * 'tts \"hello world\"'\n"
-        "  * 'use your voice to say: hi'\n"
-        "- Examples that are NOT text-to-speech:\n"
-        "  * 'say hi to john' → text (conversational greeting)\n"
-        "  * 'say something funny' → text (chat request)\n"
-        "  * 'what should i say' → text (asking for advice)\n"
-        "  * 'speak to me' → text (conversation)\n"
-        "  * 'talk about cars' → text (discussion)\n"
-        "  * 'say hello' → text (conversational)\n"
-        "  * 'tell me something' → text (chat)\n\n"
-        
-        f"Recent conversation context:\n{recent_context}\n\n"
-        f"Current user message:\n{user_text}\n\n"
-        "Answer:"
-    )
+	prompt = (
+		"You are a VERY strict intent classifier.\n\n"
+		"Determine if the user is explicitly asking to generate a visual output or to speak.\n\n"
+		"Return ONE WORD ONLY:\n"
+		"- fun → user clearly asks to generate a STATIC image, picture, or visual\n"
+		"- video → user clearly asks to generate a VIDEO, animation, or cinematic motion\n"
+		"- text → everything else\n"
+		"- text-to-speech → user explicitly wants the AI to generate speech audio\n\n"
+		"IMPORTANT RULES:\n"
+		"- The user MUST use explicit generation verbs: 'make', 'generate', 'create', 'draw', 'design', 'produce', 'build', 'craft'\n"
+		"- Questions, explanations, theories, discussions, opinions = ALWAYS 'text'\n"
+		"- Asking 'does this make sense', 'which theory', 'what if', 'maybe', 'possible' = ALWAYS 'text'\n"
+		"- Simply mentioning images, pictures, or videos WITHOUT generation verbs = 'text'\n"
+		"- Talking about existing images or videos = 'text'\n"
+		"- Game inputs, guesses, commands, or casual chat = ALWAYS 'text'\n"
+		"- MEMES ALWAYS GO IN TEXT\n"
+		"- Educational content like presentations with text = 'text'\n"
+		"- Diagrams are ONLY 'fun' if explicitly requested with generation verbs\n"
+		"- Choose VIDEO ONLY if motion or animation is clearly requested with generation verbs\n"
+		"- When in doubt, ALWAYS return 'text'\n\n"
+		
+		"TEXT-TO-SPEECH DETECTION RULES (VERY STRICT):\n"
+		"- ONLY return 'text-to-speech' if the user EXPLICITLY uses TTS-specific keywords\n"
+		"- TTS keywords that trigger text-to-speech: 'tts', 'text-to-speech', 'text to speech', 'say this aloud', "
+		"'speak this aloud', 'read this aloud', 'voice this', 'speak this out loud', 'say out loud', "
+		"'use your voice', 'with voice', 'audio version', 'speak it', 'voice it'\n"
+		"- The word 'say' ALONE does NOT mean text-to-speech — it usually means conversational greeting or chat\n"
+		"- The word 'speak' ALONE does NOT mean text-to-speech unless paired with 'aloud', 'out loud', or 'voice'\n"
+		"- The word 'talk' ALONE does NOT mean text-to-speech — it means conversation\n"
+		"- Examples that ARE text-to-speech:\n"
+		"  * 'say this using tts: hello'\n"
+		"  * 'text-to-speech: hi mom'\n"
+		"  * 'read this aloud: good morning'\n"
+		"  * 'say this aloud: welcome'\n"
+		"  * 'speak this out loud: testing'\n"
+		"  * 'tts \"hello world\"'\n"
+		"  * 'use your voice to say: hi'\n"
+		"- Examples that are NOT text-to-speech:\n"
+		"  * 'say hi to john' → text (conversational greeting)\n"
+		"  * 'say something funny' → text (chat request)\n"
+		"  * 'what should i say' → text (asking for advice)\n"
+		"  * 'speak to me' → text (conversation)\n"
+		"  * 'talk about cars' → text (discussion)\n"
+		"  * 'say hello' → text (conversational)\n"
+		"  * 'tell me something' → text (chat)\n\n"
+		
+		f"Recent conversation context:\n{recent_context}\n\n"
+		f"Current user message:\n{user_text}\n\n"
+		"Answer:"
+	)
 
-    try:
-        feedback = await call_groq_with_health(
-            prompt,
-            temperature=0,
-            mode="serious"
-        )
-        result = feedback.strip().lower()
-        if result in ["video", "fun", "text-to-speech"]:
-            return result
-    except Exception as e:
-        print("[VISUAL TYPE ERROR]", e)
+	try:
+		feedback = await call_groq_with_health(
+			prompt,
+			temperature=0,
+			mode="serious"
+		)
+		result = feedback.strip().lower()
+		if result in ["video", "fun", "text-to-speech"]:
+			return result
+	except Exception as e:
+		print("[VISUAL TYPE ERROR]", e)
 
-    # --- Default fallback ---
-    return "text"
+	# --- Default fallback ---
+	return "text"
 	
 # ---------------- EDIT OR TEXT DETECTION ----------------
 
 async def decide_image_action(user_text: str, image_count: int) -> str:
-    """
-    Returns one of: 'EDIT' or 'NO'
-    Uses AI to determine if user wants to edit the image.
-    """
+	"""
+	Returns one of: 'EDIT' or 'NO'
+	Uses AI to determine if user wants to edit the image.
+	"""
 
-    prompt = (
-        "You are an intent classifier.\n"
-        "Answer with ONLY ONE WORD: EDIT or NO.\n\n"
+	prompt = (
+		"You are an intent classifier.\n"
+		"Answer with ONLY ONE WORD: EDIT or NO.\n\n"
 
-        "Definitions:\n"
-        "- EDIT: user wants to modify, change, or alter an existing image\n"
-        "- NO: user is NOT asking for image editing (they might be asking questions, analyzing, or generating new content)\n\n"
+		"Definitions:\n"
+		"- EDIT: user wants to modify, change, or alter an existing image\n"
+		"- NO: user is NOT asking for image editing (they might be asking questions, analyzing, or generating new content)\n\n"
 
-        "IMPORTANT RULES:\n"
-        "- Look for modification intent: change colors, add/remove objects, change style, apply filters, etc.\n"
-        "- Questions about the image (who is this, what is this, describe this) = NO\n"
-        "- Requests to merge/combine multiple images = NO\n"
-        "- Requests to generate something new inspired by the image = NO\n"
-        "- Only return EDIT if the user clearly wants to modify the EXISTING image\n\n"
+		"IMPORTANT RULES:\n"
+		"- Look for modification intent: change colors, add/remove objects, change style, apply filters, etc.\n"
+		"- Questions about the image (who is this, what is this, describe this) = NO\n"
+		"- Requests to merge/combine multiple images = NO\n"
+		"- Requests to generate something new inspired by the image = NO\n"
+		"- Only return EDIT if the user clearly wants to modify the EXISTING image\n\n"
 
-        "Examples:\n"
-        "User: 'change the background to blue' → EDIT\n"
-        "User: 'make it anime style' → EDIT\n"
-        "User: 'remove the person' → EDIT\n"
-        "User: 'who is this?' → NO\n"
-        "User: 'merge these two images' → NO\n"
-        "User: 'create something like this' → NO\n"
-        "User: 'describe what you see' → NO\n\n"
+		"Examples:\n"
+		"User: 'change the background to blue' → EDIT\n"
+		"User: 'make it anime style' → EDIT\n"
+		"User: 'remove the person' → EDIT\n"
+		"User: 'who is this?' → NO\n"
+		"User: 'merge these two images' → NO\n"
+		"User: 'create something like this' → NO\n"
+		"User: 'describe what you see' → NO\n\n"
 
-        f"User message:\n{user_text}\n\n"
-        "Answer:"
-    )
+		f"User message:\n{user_text}\n\n"
+		"Answer:"
+	)
 
-    try:
-        response = await call_groq(
-            prompt=prompt,
-            model="llama-3.3-70b-versatile",
-            temperature=0
-        )
-        answer = response.strip().upper()
-        print(f"[IMAGE ACTION DECISION] User: '{user_text}' → AI decided: {answer}")
-        return "EDIT" if answer == "EDIT" else "NO"
-    except Exception as e:
-        print("[LLAMA IMAGE ACTION ERROR]", e)
-        return "NO"
+	try:
+		response = await call_groq(
+			prompt=prompt,
+			model="llama-3.3-70b-versatile",
+			temperature=0
+		)
+		answer = response.strip().upper()
+		print(f"[IMAGE ACTION DECISION] User: '{user_text}' → AI decided: {answer}")
+		return "EDIT" if answer == "EDIT" else "NO"
+	except Exception as e:
+		print("[LLAMA IMAGE ACTION ERROR]", e)
+		return "NO"
 
 # ---------------- PROMPT BOOSTER ----------------
 
 async def boost_image_prompt(user_prompt: str) -> str:
-    """
-    Rewrite a user image idea into a strong AI image prompt.
-    Enforces clothing on humans if nudity is implied.
-    Prints the boosted prompt for debugging.
-    Falls back to original prompt if boosting fails.
-    """
+	"""
+	Rewrite a user image idea into a strong AI image prompt.
+	Enforces clothing on humans if nudity is implied.
+	Prints the boosted prompt for debugging.
+	Falls back to original prompt if boosting fails.
+	"""
 
-    # Build instruction
-    boost_instruction = (
-        "You are a professional image prompt engineer.\n\n"
-        "Rewrite the user's idea into a single, high-quality image generation prompt.\n\n"
+	# Build instruction
+	boost_instruction = (
+		"You are a professional image prompt engineer.\n\n"
+		"Rewrite the user's idea into a single, high-quality image generation prompt.\n\n"
 
-        "STRICT RULES (FAILURE IF VIOLATED):\n"
-        "1. If the user is asking for content which involves a HUMAN not wearing clothes in ANY part of the body, "
-        "boost the prompt so THERE IS CLOTHING. Put this STRICTLY in the prompt — there MUST be clothing. "
-        "(This rule applies ONLY to humans or humanoids; animals, robots, mascots, and objects must NOT be dressed.)\n"
-        "2. Preserve the user's original idea exactly (no new subjects, no mascot injection, no story changes).\n"
-        "3. Use vivid, concrete language suitable for AI image generation.\n"
-        "4. Do NOT mention artist names, camera brands, or model names.\n"
-        "5. Output may be detailed, but must stay focused on the user's request.\n"
+		"STRICT RULES (FAILURE IF VIOLATED):\n"
+		"1. If the user is asking for content which involves a HUMAN not wearing clothes in ANY part of the body, "
+		"boost the prompt so THERE IS CLOTHING. Put this STRICTLY in the prompt — there MUST be clothing. "
+		"(This rule applies ONLY to humans or humanoids; animals, robots, mascots, and objects must NOT be dressed.)\n"
+		"2. Preserve the user's original idea exactly (no new subjects, no mascot injection, no story changes).\n"
+		"3. Use vivid, concrete language suitable for AI image generation.\n"
+		"4. Do NOT mention artist names, camera brands, or model names.\n"
+		"5. Output may be detailed, but must stay focused on the user's request.\n"
 		"6. Whenever the user says anything like 'generate an image of a girl', or whenever it's obvious they want an image of a girl, the girl mustn't be very young, like 5-15 years. She must be around 20-25. This rule must be applied, but IF the user specifies an age, like '5 years old', or 'between 10-15 years old', etc, boost the prompt with that age ."
 		"8. Boost the prompt so that it explicitly says that the image is realistic, and if people are there in the image, they must be real, not animated, UNLESS the user specifies the image type."
 		"9. If the user message contains any type of SEX content, do NOT boost the prompt so that it says that 'sex is not allowed'. If the user messages wants SEX, then the boosted prompt MUST contain that sex is allowed. "
-        "10. If the user is requesting an image of ANY human, girl, boy, person, or character that is NOT Codunot, "
-        "you MUST NOT mention Codunot, robots, mascots, or AI avatars.\n\n"
+		"10. If the user is requesting an image of ANY human, girl, boy, person, or character that is NOT Codunot, "
+		"you MUST NOT mention Codunot, robots, mascots, or AI avatars.\n\n"
 
-        "SPECIAL CODUNOT RULE (SELF-REFERENCE AWARE):\n"
+		"SPECIAL CODUNOT RULE (SELF-REFERENCE AWARE):\n"
 		"You are Codunot, an AI Assistant.\n\n"
-        "Apply this rule ONLY if the user is explicitly asking for an image of YOU AS THE ASSISTANT.\n\n"
+		"Apply this rule ONLY if the user is explicitly asking for an image of YOU AS THE ASSISTANT.\n\n"
 
-        "This rule IS TRIGGERED if the user's message clearly refers to the assistant itself, "
-        "including phrases such as:\n"
-        "- \"codunot\"\n"
-        "- \"yourself\" / \"urself\"\n"
-        "- \"you\" WHEN paired with image-related words (e.g. \"image of you\", \"draw you\", \"your image\")\n\n"
+		"This rule IS TRIGGERED if the user's message clearly refers to the assistant itself, "
+		"including phrases such as:\n"
+		"- \"codunot\"\n"
+		"- \"yourself\" / \"urself\"\n"
+		"- \"you\" WHEN paired with image-related words (e.g. \"image of you\", \"draw you\", \"your image\")\n\n"
 
-        "This rule is NOT triggered for:\n"
-        "- third-person humans (e.g. \"girl\", \"boy\", \"person\", \"model\")\n"
-        "- descriptive humans (e.g. \"hot girl\", \"bikini girl\")\n"
-        "- fictional or generic characters\n"
-        "- ambiguous pronouns without clear self-reference\n\n"
+		"This rule is NOT triggered for:\n"
+		"- third-person humans (e.g. \"girl\", \"boy\", \"person\", \"model\")\n"
+		"- descriptive humans (e.g. \"hot girl\", \"bikini girl\")\n"
+		"- fictional or generic characters\n"
+		"- ambiguous pronouns without clear self-reference\n\n"
 
-        "DECISION RULE:\n"
-        "If the request can reasonably be interpreted as a request for a HUMAN OTHER THAN THE ASSISTANT,\n"
-        "you MUST assume it is NOT Codunot.\n\n"
+		"DECISION RULE:\n"
+		"If the request can reasonably be interpreted as a request for a HUMAN OTHER THAN THE ASSISTANT,\n"
+		"you MUST assume it is NOT Codunot.\n\n"
 
-        "If this rule is NOT triggered, you MUST NOT include Codunot or the Codunot Self Image Prompt.\n\n"
+		"If this rule is NOT triggered, you MUST NOT include Codunot or the Codunot Self Image Prompt.\n\n"
 
-        "If this rule IS triggered:\n"
-        "- You MUST treat \"yourself / you\" as Codunot\n"
-        "- The final prompt MUST contain the Codunot Self Image Prompt EXACTLY as written\n"
-        "- Do NOT rewrite, paraphrase, shorten, reorder, or modify it\n"
-        "- Put the user's request first, followed by the Codunot description\n\n"
+		"If this rule IS triggered:\n"
+		"- You MUST treat \"yourself / you\" as Codunot\n"
+		"- The final prompt MUST contain the Codunot Self Image Prompt EXACTLY as written\n"
+		"- Do NOT rewrite, paraphrase, shorten, reorder, or modify it\n"
+		"- Put the user's request first, followed by the Codunot description\n\n"
 
-        "REFERENCE BLOCK — FORBIDDEN TO USE UNLESS THE SPECIAL CODUNOT RULE IS TRIGGERED:\n"
-        "You are FORBIDDEN from copying, paraphrasing, summarizing, or incorporating the following block "
-        "unless the user's message is explicitly determined to be a request for an image of YOU AS THE ASSISTANT (Codunot).\n\n"
+		"REFERENCE BLOCK — FORBIDDEN TO USE UNLESS THE SPECIAL CODUNOT RULE IS TRIGGERED:\n"
+		"You are FORBIDDEN from copying, paraphrasing, summarizing, or incorporating the following block "
+		"unless the user's message is explicitly determined to be a request for an image of YOU AS THE ASSISTANT (Codunot).\n\n"
 
-        "If the request can reasonably be interpreted as a request for a HUMAN, PERSON, GIRL, BOY, "
-        "or CHARACTER OTHER THAN THE ASSISTANT, you MUST assume it is NOT Codunot and keep this block locked.\n\n"
+		"If the request can reasonably be interpreted as a request for a HUMAN, PERSON, GIRL, BOY, "
+		"or CHARACTER OTHER THAN THE ASSISTANT, you MUST assume it is NOT Codunot and keep this block locked.\n\n"
 
-        "This block MUST remain locked unless the user clearly and unambiguously refers to the assistant itself.\n"
-        "Clear self-reference includes, but is NOT limited to, cases where the user asks for:\n"
-        "- an image of the assistant itself\n"
-        "- the assistant's own appearance\n"
-        "- \"yourself\" / \"urself\"\n"
-        "- \"you\" or \"your\" when clearly referring to the assistant as the subject of the image\n\n"
+		"This block MUST remain locked unless the user clearly and unambiguously refers to the assistant itself.\n"
+		"Clear self-reference includes, but is NOT limited to, cases where the user asks for:\n"
+		"- an image of the assistant itself\n"
+		"- the assistant's own appearance\n"
+		"- \"yourself\" / \"urself\"\n"
+		"- \"you\" or \"your\" when clearly referring to the assistant as the subject of the image\n\n"
 
-        "--- BEGIN FORBIDDEN BLOCK ---\n"
-        f"{CODUNOT_SELF_IMAGE_PROMPT}\n"
-        "--- END FORBIDDEN BLOCK ---\n\n"
+		"--- BEGIN FORBIDDEN BLOCK ---\n"
+		f"{CODUNOT_SELF_IMAGE_PROMPT}\n"
+		"--- END FORBIDDEN BLOCK ---\n\n"
 
-        "ONLY RETURN THE BOOSTED PROMPT, NOTHING LIKE 'I can create a prompt for an image that aligns with the given rules. Here's a revised prompt that ensures the subject is wearing clothing:' ETC. ONLY THE BOOSTED PROMPT MUST BE RETURNED"
+		"ONLY RETURN THE BOOSTED PROMPT, NOTHING LIKE 'I can create a prompt for an image that aligns with the given rules. Here's a revised prompt that ensures the subject is wearing clothing:' ETC. ONLY THE BOOSTED PROMPT MUST BE RETURNED"
 
-        "User idea:\n"
-        f"{user_prompt}"
-    )
+		"User idea:\n"
+		f"{user_prompt}"
+	)
 
-    try:
-        boosted = await call_groq(
-            prompt=boost_instruction,
-            model="llama-3.3-70b-versatile",
-            temperature=0.1  # very strict
-        )
+	try:
+		boosted = await call_groq(
+			prompt=boost_instruction,
+			model="llama-3.3-70b-versatile",
+			temperature=0.1  # very strict
+		)
 
-        if boosted:
-            boosted_clean = boosted.strip()
-            print("[BOOSTED PROMPT]", boosted_clean)  # for debugging
-            return boosted_clean
+		if boosted:
+			boosted_clean = boosted.strip()
+			print("[BOOSTED PROMPT]", boosted_clean)  # for debugging
+			return boosted_clean
 
-    except Exception as e:
-        print("[PROMPT BOOST ERROR]", e)
+	except Exception as e:
+		print("[PROMPT BOOST ERROR]", e)
 
-    # Fallback — never break image generation
-    print("[BOOSTED PROMPT FALLBACK]", user_prompt)
-    return user_prompt
+	# Fallback — never break image generation
+	print("[BOOSTED PROMPT FALLBACK]", user_prompt)
+	return user_prompt
 
 def build_vision_followup_prompt(message):
-    return (
-        "You are Codunot.\n"
-        "An image was shown earlier in this channel.\n\n"
+	return (
+		"You are Codunot.\n"
+		"An image was shown earlier in this channel.\n\n"
 
-        "RULES:\n"
-        "- ONLY talk about the image if the user's message is clearly referring to it.\n"
-        "- If the user asks something unrelated (greetings, bot info, creator, general chat, etc.), "
-        "IGNORE the image completely and reply normally.\n"
-        "- If the user is unclear, ask ONE short clarification question.\n\n"
+		"RULES:\n"
+		"- ONLY talk about the image if the user's message is clearly referring to it.\n"
+		"- If the user asks something unrelated (greetings, bot info, creator, general chat, etc.), "
+		"IGNORE the image completely and reply normally.\n"
+		"- If the user is unclear, ask ONE short clarification question.\n\n"
 
-        f"User message:\n{message.content}"
-    )
-        
+		f"User message:\n{message.content}"
+	)
+		
 # ---------------- CHESS UTILS ----------------
 
 RESIGN_PHRASES = [
-    "resign", "i resign",
-    "give up", "i give up", "surrender", "i surrender",
-    "forfeit", "i forfeit", "quit", "i quit",
-    "done", "enough", "cant win", "can't win",
-    "lost", "i lost", "i'm done", "im done"
+	"resign", "i resign",
+	"give up", "i give up", "surrender", "i surrender",
+	"forfeit", "i forfeit", "quit", "i quit",
+	"done", "enough", "cant win", "can't win",
+	"lost", "i lost", "i'm done", "im done"
 ]
 
 CHESS_CHAT_KEYWORDS = [
 
-    # --- Hints & move guidance ---
-    "hint", "help", "assist", "suggest", "advice",
-    "what should", "what do i play", "what now",
-    "any ideas", "idea", "plan", "strategy",
-    "next move", "best move", "recommend",
-    "candidate move", "candidates",
+	# --- Hints & move guidance ---
+	"hint", "help", "assist", "suggest", "advice",
+	"what should", "what do i play", "what now",
+	"any ideas", "idea", "plan", "strategy",
+	"next move", "best move", "recommend",
+	"candidate move", "candidates",
 
-    # --- Move quality & evaluation ---
-    "good move", "bad move", "was that good", "was that bad",
-    "mistake", "blunder", "inaccuracy",
-    "did i blunder", "engine says",
-    "is this winning", "is this losing",
-    "am i better", "am i worse",
-    "equal", "equality", "advantage", "disadvantage",
-    "position", "evaluation", "eval",
+	# --- Move quality & evaluation ---
+	"good move", "bad move", "was that good", "was that bad",
+	"mistake", "blunder", "inaccuracy",
+	"did i blunder", "engine says",
+	"is this winning", "is this losing",
+	"am i better", "am i worse",
+	"equal", "equality", "advantage", "disadvantage",
+	"position", "evaluation", "eval",
 
-    # --- Draws & game state ---
-    "draw", "is this a draw", "drawn",
-    "threefold", "repetition",
-    "stalemate", "insufficient material",
-    "50 move rule", "fifty move rule",
-    "perpetual", "perpetual check",
-    "dead position",
+	# --- Draws & game state ---
+	"draw", "is this a draw", "drawn",
+	"threefold", "repetition",
+	"stalemate", "insufficient material",
+	"50 move rule", "fifty move rule",
+	"perpetual", "perpetual check",
+	"dead position",
 
-    # --- Analysis & explanation ---
-    "analyze", "analysis", "explain",
-    "why", "how", "what's the idea",
-    "what is the point", "what does this do",
-    "what am i missing", "thoughts",
-    "breakdown", "line", "variation",
-    "calculate", "calculation",
+	# --- Analysis & explanation ---
+	"analyze", "analysis", "explain",
+	"why", "how", "what's the idea",
+	"what is the point", "what does this do",
+	"what am i missing", "thoughts",
+	"breakdown", "line", "variation",
+	"calculate", "calculation",
 
-    # --- Learning & improvement ---
-    "teach", "learn", "lesson", "coach",
-    "how do i improve", "how to play",
-    "beginner", "intermediate", "advanced",
-    "tips", "principles", "fundamentals",
-    "training", "practice", "study",
-    "rating", "elo", "strength",
+	# --- Learning & improvement ---
+	"teach", "learn", "lesson", "coach",
+	"how do i improve", "how to play",
+	"beginner", "intermediate", "advanced",
+	"tips", "principles", "fundamentals",
+	"training", "practice", "study",
+	"rating", "elo", "strength",
 
-    # --- Openings & theory ---
-    "opening", "opening name", "what opening",
-    "is this an opening", "theory",
-    "book move", "out of book",
-    "prep", "preparation",
-    "main line", "sideline",
-    "gambit", "system", "setup",
+	# --- Openings & theory ---
+	"opening", "opening name", "what opening",
+	"is this an opening", "theory",
+	"book move", "out of book",
+	"prep", "preparation",
+	"main line", "sideline",
+	"gambit", "system", "setup",
 
-    # --- Middlegame concepts ---
-    "middlegame", "attack", "defense",
-    "initiative", "tempo", "development",
-    "space", "structure", "pawn structure",
-    "weakness", "outpost", "open file",
-    "king safety", "center",
+	# --- Middlegame concepts ---
+	"middlegame", "attack", "defense",
+	"initiative", "tempo", "development",
+	"space", "structure", "pawn structure",
+	"weakness", "outpost", "open file",
+	"king safety", "center",
 
-    # --- Endgame concepts ---
-    "endgame", "late game",
-    "pawn ending", "rook ending",
-    "bishop vs knight",
-    "opposition", "zugzwang",
-    "promotion", "passed pawn",
+	# --- Endgame concepts ---
+	"endgame", "late game",
+	"pawn ending", "rook ending",
+	"bishop vs knight",
+	"opposition", "zugzwang",
+	"promotion", "passed pawn",
 
-    # --- Threats & tactics ---
-    "am i in trouble", "is this dangerous",
-    "any threats", "what is he threatening",
-    "is my king safe", "am i getting mated",
-    "mate threat", "tactic", "trap",
-    "fork", "pin", "skewer", "discovered attack",
+	# --- Threats & tactics ---
+	"am i in trouble", "is this dangerous",
+	"any threats", "what is he threatening",
+	"is my king safe", "am i getting mated",
+	"mate threat", "tactic", "trap",
+	"fork", "pin", "skewer", "discovered attack",
 
-    # --- Comparison & decision questions ---
-    "or", "instead", "better than",
-    "which is better", "this or that",
-    "alternative", "other idea",
+	# --- Comparison & decision questions ---
+	"or", "instead", "better than",
+	"which is better", "this or that",
+	"alternative", "other idea",
 
-    # --- Players & levels (generic only) ---
-    "players", "strong players",
-    "gms", "grandmasters",
-    "engine", "computer",
-    "human move", "practical",
+	# --- Players & levels (generic only) ---
+	"players", "strong players",
+	"gms", "grandmasters",
+	"engine", "computer",
+	"human move", "practical",
 
-    # --- Post-game / casual ---
-    "gg", "good game", "that was fun",
-    "nice game", "rematch",
-    "again", "another",
-    "review", "analysis after",
+	# --- Post-game / casual ---
+	"gg", "good game", "that was fun",
+	"nice game", "rematch",
+	"again", "another",
+	"review", "analysis after",
 
-    # --- Confusion / uncertainty ---
-    "idk", "i don't know", "confused",
-    "lost", "i'm stuck", "not sure",
-    "help me understand",
+	# --- Confusion / uncertainty ---
+	"idk", "i don't know", "confused",
+	"lost", "i'm stuck", "not sure",
+	"help me understand",
 
-    # --- General casual chat inside chessmode ---
-    "lol", "lmao", "bruh", "bro",
-    "haha", "rip", "damn",
-    "oops", "my bad", "wow"
+	# --- General casual chat inside chessmode ---
+	"lol", "lmao", "bruh", "bro",
+	"haha", "rip", "damn",
+	"oops", "my bad", "wow"
 ]
 
 MOVE_REGEX = re.compile(
-    r"""^(
-        O-O(-O)? |
-        [KQRBN]?[a-h]x?[a-h][1-8](=[QRBN])?[+#]? |
-        [a-h][1-8][a-h][1-8][+#]?
-    )$""",
-    re.VERBOSE | re.IGNORECASE
+	r"""^(
+		O-O(-O)? |
+		[KQRBN]?[a-h]x?[a-h][1-8](=[QRBN])?[+#]? |
+		[a-h][1-8][a-h][1-8][+#]?
+	)$""",
+	re.VERBOSE | re.IGNORECASE
 )
 
 def is_resign_message(text: str) -> bool:
-    t = text.lower()
-    return any(p in t for p in RESIGN_PHRASES)
+	t = text.lower()
+	return any(p in t for p in RESIGN_PHRASES)
 
 
 def looks_like_chess_chat(text: str) -> bool:
-    t = text.lower().strip()
-    if any(k in t for k in CHESS_CHAT_KEYWORDS):
-        return True
-    if len(t.split()) > 4:
-        return True
-    return False
+	t = text.lower().strip()
+	if any(k in t for k in CHESS_CHAT_KEYWORDS):
+		return True
+	if len(t.split()) > 4:
+		return True
+	return False
 
 def normalize_move_input(board, move_input: str):
-    raw = move_input.strip()
-    if not raw:
-        return None
+	raw = move_input.strip()
+	if not raw:
+		return None
 
-    if is_resign_message(raw):
-        return "resign"
+	if is_resign_message(raw):
+		return "resign"
 
-    norm = (
-        raw.replace("0-0-0", "O-O-O")
-           .replace("0-0", "O-O")
-           .replace("o-o-o", "O-O-O")
-           .replace("o-o", "O-O")
-    )
+	norm = (
+		raw.replace("0-0-0", "O-O-O")
+		   .replace("0-0", "O-O")
+		   .replace("o-o-o", "O-O-O")
+		   .replace("o-o", "O-O")
+	)
 
-    legal_moves = list(board.legal_moves)
+	legal_moves = list(board.legal_moves)
 
-    # Pawn move like "e4"
-    if len(norm) == 2 and norm[0].lower() in "abcdefgh" and norm[1] in "12345678":
-        sq = chess.parse_square(norm.lower())
-        matches = [m for m in legal_moves if m.to_square == sq]
-        if len(matches) == 1:
-            return board.san(matches[0])
+	# Pawn move like "e4"
+	if len(norm) == 2 and norm[0].lower() in "abcdefgh" and norm[1] in "12345678":
+		sq = chess.parse_square(norm.lower())
+		matches = [m for m in legal_moves if m.to_square == sq]
+		if len(matches) == 1:
+			return board.san(matches[0])
 
-    # Normalize piece letter
-    if norm[0].lower() in "nbrqk":
-        norm = norm[0].upper() + norm[1:]
+	# Normalize piece letter
+	if norm[0].lower() in "nbrqk":
+		norm = norm[0].upper() + norm[1:]
 
-    # SAN
-    try:
-        move = board.parse_san(norm)
-        return board.san(move)
-    except:
-        pass
+	# SAN
+	try:
+		move = board.parse_san(norm)
+		return board.san(move)
+	except:
+		pass
 
-    # UCI
-    try:
-        move = chess.Move.from_uci(raw.lower())
-        if move in legal_moves:
-            return board.san(move)
-    except:
-        pass
+	# UCI
+	try:
+		move = chess.Move.from_uci(raw.lower())
+		if move in legal_moves:
+			return board.san(move)
+	except:
+		pass
 
-    return None
+	return None
 
 # global (near other channel_* dicts)
 channel_last_chess_result = {}
 
 def clean_chess_input(content: str, bot_id: int) -> str:
-    content = content.strip()
+	content = content.strip()
 
-    # Remove bot mentions
-    content = content.replace(f"<@{bot_id}>", "")
-    content = content.replace(f"<@!{bot_id}>", "")
+	# Remove bot mentions
+	content = content.replace(f"<@{bot_id}>", "")
+	content = content.replace(f"<@!{bot_id}>", "")
 
-    return content.strip()
+	return content.strip()
 
 # ---------------- ON MESSAGE ----------------
 
 @bot.event
 async def on_message(message: Message):
-    try:
-        if message.author.bot:
-            return
+	try:
+		if message.author.bot:
+			return
 
-        if isinstance(message.channel, discord.DMChannel):
-            async for msg in message.channel.history(limit=2):
-                first_message = msg
-                break
+		if isinstance(message.channel, discord.DMChannel):
+			async for msg in message.channel.history(limit=2):
+				first_message = msg
+				break
 
-            if first_message.id == message.id:
-                await message.channel.send(
-                    "**Hey! Thanks for starting a new chat with me! Before you chat, please read this:**\n\n"
-                    "➕ **Add me to Server:**\n"
-                    "https://discord.com/oauth2/authorize?client_id=1435987186502733878&permissions=121856&integration_type=0&scope=bot\n\n"
-                    "🌍 **Codunot official support server:**\n"
-                    "https://discord.gg/GVuFk5gxtW"
-                )
+			if first_message.id == message.id:
+				await message.channel.send(
+					"**Hey! Thanks for starting a new chat with me! Before you chat, please read this:**\n\n"
+					"➕ **Add me to Server:**\n"
+					"https://discord.com/oauth2/authorize?client_id=1435987186502733878&permissions=121856&integration_type=0&scope=bot\n\n"
+					"🌍 **Codunot official support server:**\n"
+					"https://discord.gg/GVuFk5gxtW"
+				)
 
-        get_usage(get_tier_key(message))
+		get_usage(get_tier_key(message))
 
-        # ---------- BASIC SETUP ----------
-        content = message.content.strip()
+		# ---------- BASIC SETUP ----------
+		content = message.content.strip()
 		content = message.content.strip()
 		
 		now = datetime.utcnow()
@@ -1611,7 +1611,7 @@ async def on_message(message: Message):
 		
 			return  # Stop further processing after TTS
 		
-        # ---------- IMAGE MERGE ----------
+		# ---------- IMAGE MERGE ----------
 		if image_action == "MERGE":
 			await require_vote(message)
 			
@@ -1903,6 +1903,6 @@ def run():
 	bot.run(DISCORD_TOKEN)
 		
 if __name__ == "__main__":
-    atexit.register(save_usage)
-    atexit.register(save_vote_unlocks)
-    run()
+	atexit.register(save_usage)
+	atexit.register(save_vote_unlocks)
+	run()
