@@ -372,13 +372,21 @@ async def process_queue():
 		await asyncio.sleep(0.02)
 
 async def send_human_reply(channel, reply_text):
-	if hasattr(channel, "trigger_typing"):
-		try:
-			await channel.trigger_typing()
-		except:
-			pass
-	await send_long_message(channel, reply_text)
+    if hasattr(channel, "trigger_typing"):
+        try:
+            await channel.trigger_typing()
+        except:
+            pass
 
+    if hasattr(channel, "guild") and channel.guild:
+        for member in channel.guild.members:
+            if f"@{member.name}" in reply_text:
+                reply_text = reply_text.replace(
+                    f"@{member.name}",
+                    member.mention
+                )
+
+    await send_long_message(channel, reply_text)
 def humanize_and_safeify(text, short=False):
 	if not isinstance(text, str):
 		text = str(text)
