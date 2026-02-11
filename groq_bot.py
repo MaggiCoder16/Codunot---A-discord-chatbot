@@ -1342,13 +1342,28 @@ def clean_chess_input(content: str, bot_id: int) -> str:
 
 @bot.event
 async def on_message(message: Message):
-	try:
-		if message.author.bot:
-			return
-		
-		get_usage(get_tier_key(message))
-		
-		# ---------- BASIC SETUP ----------
+    try:
+        if message.author.bot:
+            return
+
+        if isinstance(message.channel, discord.DMChannel):
+            async for msg in message.channel.history(limit=2):
+                first_message = msg
+                break
+
+            if first_message.id == message.id:
+                await message.channel.send(
+                    "**Hey! Thanks for starting a new chat with me! Before you chat, please read this:**\n\n"
+                    "➕ **Add me to Server:**\n"
+                    "https://discord.com/oauth2/authorize?client_id=1435987186502733878&permissions=121856&integration_type=0&scope=bot\n\n"
+                    "🌍 **Codunot official support server:**\n"
+                    "https://discord.gg/GVuFk5gxtW"
+                )
+
+        get_usage(get_tier_key(message))
+
+        # ---------- BASIC SETUP ----------
+        content = message.content.strip()
 		content = message.content.strip()
 		
 		now = datetime.utcnow()
