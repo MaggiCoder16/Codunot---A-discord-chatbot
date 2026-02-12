@@ -6,7 +6,7 @@ from typing import Optional
 
 DEAPI_API_KEY = os.getenv("DEAPI_API_KEY", "").strip()
 TXT2VID_ENDPOINT = "https://api.deapi.ai/api/v1/client/txt2video"
-RESULT_URL_BASE = os.getenv("DEAPI_RESULT_BASE", "http://localhost:8000")  # Default to localhost
+RESULT_URL_BASE = os.getenv("DEAPI_RESULT_BASE", "http://localhost:8000")
 
 
 class Text2VidError(Exception):
@@ -17,10 +17,7 @@ async def _submit_job(
     session: aiohttp.ClientSession,
     *,
     prompt: str,
-    frames: int,
-    fps: int,
     model: str,
-    negative_prompt: Optional[str],
 ) -> tuple[str, int]:
 
     seed = random.randint(0, 2**32 - 1)
@@ -29,27 +26,23 @@ async def _submit_job(
     form.add_field("prompt", prompt)
     form.add_field("width", "512")
     form.add_field("height", "512")
-    form.add_field("steps", "1")
-    form.add_field("guidance", "0")
-    form.add_field("frames", str(frames))
-    form.add_field("fps", str(fps))
+    form.add_field("frames", "96")
+    form.add_field("fps", "24") 
     form.add_field("seed", str(seed))
     form.add_field("model", model)
 
-    if negative_prompt:
-        form.add_field("negative_prompt", negative_prompt)
-
-    # Add webhook URL
-    WEBHOOK_URL = os.getenv("DEAPI_WEBHOOK_URL")
-    if not WEBHOOK_URL:
+    webhook_url = os.getenv("DEAPI_WEBHOOK_URL")
+    if not webhook_url:
         raise Text2VidError("DEAPI_WEBHOOK_URL is not set")
-    form.add_field("webhook_url", WEBHOOK_URL)
+
+    form.add_field("webhook_url", webhook_url)
 
     async with session.post(
         TXT2VID_ENDPOINT,
         data=form,
-        timeout=aiohttp.ClientTimeout(total=60),
+        timeout=aiohttp.ClientTimeout(total=120),
     ) as resp:
+
         print(
             "[VIDEO GEN] "
             f"RPM limit: {resp.headers.get('x-ratelimit-limit')}, "
@@ -76,17 +69,16 @@ async def _submit_job(
 async def generate_video(
     *,
     prompt: str,
-    negative_prompt: Optional[str] = None,
-    model: str = "Ltxv_13B_0_9_8_Distilled_FP8",
+    model: str = "Ltx2_19B_Dist_FP8",
     wait_for_result: bool = True,
 ) -> Optional[bytes]:
     """
-    Submit a txt2video request to deAPI via webhook.
-    If wait_for_result=True, polls /result endpoint using RESULT_URL_BASE until video is ready.
-    Returns raw video bytes if polling; otherwise returns None.
+    Generate a 4-second 512x512 video using LTX-2 19B Distilled FP8.
+    Returns raw video bytes if wait_for_result=True.
     """
+
     if not DEAPI_API_KEY:
-        raise Text2VidError("DEAPI_API_KEY_TEXT2VID is not set")
+        raise Text2VidError("DEAPI_API_KEY is not set")
 
     if not prompt or not prompt.strip():
         raise Text2VidError("Prompt is required")
@@ -100,24 +92,18 @@ async def generate_video(
         request_id, seed = await _submit_job(
             session,
             prompt=prompt,
-            frames=120,
-            fps=30,
             model=model,
-            negative_prompt=negative_prompt,
         )
 
-    print(f"[VIDEO GEN] request_id={request_id} submitted. Video will be delivered to your webhook.")
+    print(f"[VIDEO GEN] request_id={request_id} submitted.")
 
-    # ---------------------------
-    # Optional polling for result
-    # ---------------------------
     if wait_for_result and RESULT_URL_BASE:
         poll_url = f"{RESULT_URL_BASE}/result/{request_id}"
         print(f"[VIDEO GEN] Polling at: {poll_url}")
 
         async with aiohttp.ClientSession() as session:
-            max_attempts = 30
-            delay = 5  # seconds
+            max_attempts = 60
+            delay = 5
 
             for attempt in range(max_attempts):
                 try:
@@ -125,7 +111,7 @@ async def generate_video(
                         if r.status != 200:
                             print(
                                 f"[VIDEO GEN] Poll attempt {attempt + 1} failed "
-                                f"with status {r.status}"
+                                f"(status {r.status})"
                             )
                             await asyncio.sleep(delay)
                             continue
@@ -136,36 +122,44 @@ async def generate_video(
                         if status == "done":
                             result_url = status_data.get("result_url")
                             if not result_url:
-                                raise Text2VidError("Job done but no result_url returned")
+                                raise Text2VidError(
+                                    "Job done but no result_url returned"
+                                )
 
-                            print(f"[VIDEO GEN] Video ready! Downloading from: {result_url}")
+                            print(
+                                f"[VIDEO GEN] Video ready! Downloading from: {result_url}"
+                            )
 
                             async with session.get(result_url) as vresp:
                                 if vresp.status != 200:
                                     raise Text2VidError(
-                                        f"Failed to download video (status {vresp.status})"
+                                        f"Failed to download video "
+                                        f"(status {vresp.status})"
                                     )
                                 return await vresp.read()
 
                         elif status == "pending":
                             print(
-                                f"[VIDEO GEN] Polling attempt "
-                                f"{attempt + 1}/{max_attempts} - status: pending"
+                                f"[VIDEO GEN] Polling "
+                                f"{attempt + 1}/{max_attempts} - pending"
                             )
                             await asyncio.sleep(delay)
+
                         else:
-                            raise Text2VidError(f"Unexpected status: {status_data}")
+                            raise Text2VidError(
+                                f"Unexpected status response: {status_data}"
+                            )
 
                 except aiohttp.ClientError as e:
-                    print(f"[VIDEO GEN] Network error on attempt {attempt + 1}: {e}")
-                    await asyncio.sleep(delay)
-                except Exception as e:
-                    print(f"[VIDEO GEN] Error on attempt {attempt + 1}: {e}")
+                    print(
+                        f"[VIDEO GEN] Network error on attempt "
+                        f"{attempt + 1}: {e}"
+                    )
                     await asyncio.sleep(delay)
 
         raise Text2VidError(
-            f"Video not ready after {max_attempts * delay} seconds. "
+            "Video not ready after polling timeout. "
             "Check your webhook server."
         )
 
-    return None  # webhook will deliver the video if wait_for_result=False
+    return None
