@@ -1291,7 +1291,12 @@ async def on_message(message: Message):
 		content_lower = content.lower()
 		
 		# ---------- COMMAND HANDLING ----------
-		if content.startswith(bot.command_prefix):
+		is_owner_local_cmd = (
+			message.author.id in OWNER_IDS
+			and (content_lower.startswith("!quiet") or content_lower.startswith("!speak"))
+		)
+
+		if content.startswith(bot.command_prefix) and not is_owner_local_cmd:
 			original_content = message.content
 			message.content = content
 			await bot.process_commands(message)
