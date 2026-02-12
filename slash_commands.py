@@ -159,7 +159,7 @@ class Codunot(commands.Cog):
 
         if not check_total_limit(interaction, "attachments"):
             await interaction.response.send_message(
-                "🚫 You've hit your **total image generation limit**.\n"
+                "🚫 You've hit your **2 months' image generation limit**.\n"
                 "Contact aarav_2022 for an upgrade.",
                 ephemeral=False
             )
@@ -172,7 +172,7 @@ class Codunot(commands.Cog):
             image_bytes = await generate_image(boosted_prompt, aspect_ratio="16:9", steps=15)
 
             await interaction.followup.send(
-                content=f"{interaction.user.mention} 🖼️ Generated: `{prompt[:100]}...`" if len(prompt) > 100 else f"{interaction.user.mention} 🖼️ Generated: `{prompt}`",
+                content=f"{interaction.user.mention} 🖼️ Generated: `{prompt[:150]}...`" if len(prompt) > 150 else f"{interaction.user.mention} 🖼️ Generated: `{prompt}`",
                 file=discord.File(io.BytesIO(image_bytes), filename="generated_image.png")
             )
 
@@ -203,7 +203,7 @@ class Codunot(commands.Cog):
 
         if not check_total_limit(interaction, "attachments"):
             await interaction.response.send_message(
-                "🚫 You've hit your **total video generation limit**.\n"
+                "🚫 You've hit your **2 months' video generation limit**.\n"
                 "Contact aarav_2022 for an upgrade.",
                 ephemeral=False
             )
@@ -216,7 +216,7 @@ class Codunot(commands.Cog):
             video_bytes = await text_to_video_512(prompt=boosted_prompt)
 
             await interaction.followup.send(
-                content=f"{interaction.user.mention} 🎬 Generated: `{prompt[:100]}...`" if len(prompt) > 100 else f"{interaction.user.mention} 🎬 Generated: `{prompt}`",
+                content=f"{interaction.user.mention} 🎬 Generated: `{prompt[:150]}...`" if len(prompt) > 150 else f"{interaction.user.mention} 🎬 Generated: `{prompt}`",
                 file=discord.File(io.BytesIO(video_bytes), filename="generated_video.mp4")
             )
 
@@ -239,7 +239,7 @@ class Codunot(commands.Cog):
 
         if not check_limit(interaction, "attachments"):
             await interaction.response.send_message(
-                "🚫 You've hit your **daily TTS generation limit**.\n"
+                "🚫 You've hit your **daily text-to-speech generation limit**.\n"
                 "Try again tomorrow or contact aarav_2022 for an upgrade.",
                 ephemeral=False
             )
@@ -247,7 +247,7 @@ class Codunot(commands.Cog):
 
         if not check_total_limit(interaction, "attachments"):
             await interaction.response.send_message(
-                "🚫 You've hit your **total TTS generation limit**.\n"
+                "🚫 You've hit your **2 months' text-to-speech generation limit**.\n"
                 "Contact aarav_2022 for an upgrade.",
                 ephemeral=False
             )
@@ -265,7 +265,7 @@ class Codunot(commands.Cog):
                     audio_bytes = await resp.read()
 
             await interaction.followup.send(
-                content=f"{interaction.user.mention} 🔊 TTS: `{text[:100]}...`" if len(text) > 100 else f"{interaction.user.mention} 🔊 TTS: `{text}`",
+                content=f"{interaction.user.mention} 🔊 TTS: `{text[:150]}...`" if len(text) > 150 else f"{interaction.user.mention} 🔊 TTS: `{text}`",
                 file=discord.File(io.BytesIO(audio_bytes), filename="speech.mp3")
             )
 
