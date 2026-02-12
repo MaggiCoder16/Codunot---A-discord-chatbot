@@ -137,7 +137,8 @@ class Codunot(commands.Cog):
 			)
 			return
 
-		await interaction.response.send_message("🖼️ Summoning the image… just gimme a few seconds ✨", ephemeral=False)
+		# Defer the response (tells Discord we're working on it)
+		await interaction.response.defer()
 
 		try:
 			# Boost the prompt
@@ -146,8 +147,8 @@ class Codunot(commands.Cog):
 			# Generate image
 			image_bytes = await generate_image(boosted_prompt, aspect_ratio="16:9", steps=15)
 			
-			# Send the image
-			await interaction.channel.send(
+			# Send the image as a follow-up
+			await interaction.followup.send(
 				content=f"{interaction.user.mention} 🖼️ Generated: `{prompt[:100]}...`" if len(prompt) > 100 else f"{interaction.user.mention} 🖼️ Generated: `{prompt}`",
 				file=discord.File(io.BytesIO(image_bytes), filename="generated_image.png")
 			)
@@ -159,7 +160,7 @@ class Codunot(commands.Cog):
 
 		except Exception as e:
 			print(f"[SLASH IMAGE ERROR] {e}")
-			await interaction.channel.send(
+			await interaction.followup.send(
 				f"{interaction.user.mention} 🤔 Couldn't generate image right now. Please try again later."
 			)
 
@@ -187,7 +188,7 @@ class Codunot(commands.Cog):
 			)
 			return
 
-		await interaction.response.send_message("🎬 Video queued… go grab some popcorn 🍿 this may take a while :)", ephemeral=False)
+		await interaction.response.defer()
 
 		try:
 			# Boost the prompt
@@ -196,8 +197,8 @@ class Codunot(commands.Cog):
 			# Generate video
 			video_bytes = await text_to_video_512(prompt=boosted_prompt)
 			
-			# Send the video
-			await interaction.channel.send(
+			# Send the video as a follow-up
+			await interaction.followup.send(
 				content=f"{interaction.user.mention} 🎬 Generated: `{prompt[:100]}...`" if len(prompt) > 100 else f"{interaction.user.mention} 🎬 Generated: `{prompt}`",
 				file=discord.File(io.BytesIO(video_bytes), filename="generated_video.mp4")
 			)
@@ -209,7 +210,7 @@ class Codunot(commands.Cog):
 
 		except Exception as e:
 			print(f"[SLASH VIDEO ERROR] {e}")
-			await interaction.channel.send(
+			await interaction.followup.send(
 				f"{interaction.user.mention} 🤔 Couldn't generate video right now. Please try again later."
 			)
 
@@ -237,7 +238,8 @@ class Codunot(commands.Cog):
 			)
 			return
 
-		await interaction.response.send_message("🔊 Warming up the vocal cords… BRB! 🎤", ephemeral=False)
+		# Defer the response
+		await interaction.response.defer()
 
 		try:
 			# Generate TTS
@@ -250,8 +252,8 @@ class Codunot(commands.Cog):
 						raise Exception("Failed to download TTS audio")
 					audio_bytes = await resp.read()
 			
-			# Send the audio
-			await interaction.channel.send(
+			# Send the audio as a follow-up
+			await interaction.followup.send(
 				content=f"{interaction.user.mention} 🔊 TTS: `{text[:100]}...`" if len(text) > 100 else f"{interaction.user.mention} 🔊 TTS: `{text}`",
 				file=discord.File(io.BytesIO(audio_bytes), filename="speech.mp3")
 			)
@@ -263,7 +265,7 @@ class Codunot(commands.Cog):
 
 		except Exception as e:
 			print(f"[SLASH TTS ERROR] {e}")
-			await interaction.channel.send(
+			await interaction.followup.send(
 				f"{interaction.user.mention} 🤔 Couldn't generate speech right now. Please try again later."
 			)
 
