@@ -1038,78 +1038,52 @@ async def decide_image_action(user_text: str, image_count: int) -> str:
 
 async def boost_image_prompt(user_prompt: str) -> str:
 	"""
-	Rewrite a user image idea into a strong AI image prompt.
+	Rewrite user's image idea following Z-Image Turbo best practices.
+	Structured prompt engineering with hierarchical components.
 	Enforces clothing on humans if nudity is implied.
-	Prints the boosted prompt for debugging.
-	Falls back to original prompt if boosting fails.
 	"""
 
 	boost_instruction = (
-		"You are a professional image prompt engineer.\n\n"
-		"Rewrite the user's idea into a single, high-quality image generation prompt.\n\n"
+		"You are a professional Z-Image Turbo prompt engineer.\n\n"
+		"Transform the user's idea into a structured, high-quality image generation prompt (80-250 words).\n\n"
 
-		"STRICT RULES (FAILURE IF VIOLATED):\n"
-		"1. If the user is asking for content which involves a HUMAN not wearing clothes in ANY part of the body, "
-		"boost the prompt so THERE IS CLOTHING. Put this STRICTLY in the prompt — there MUST be clothing. "
-		"(This rule applies ONLY to humans or humanoids; animals, robots, mascots, and objects must NOT be dressed.)\n"
-		"2. Preserve the user's original idea exactly (no new subjects, no mascot injection, no story changes).\n"
-		"3. Use vivid, concrete language suitable for AI image generation.\n"
-		"4. Do NOT mention artist names, camera brands, or model names.\n"
-		"5. Output may be detailed, but must stay focused on the user's request.\n"
-		"6. IF the user requests an image containing a person (girl, boy, man, woman, human), that person should be depicted as approximately 20-25 years old UNLESS the user explicitly specifies a different age. This rule ONLY applies when a person is part of the user's request. Do NOT add people to prompts that don't mention them.\n"
-		"7. Boost the prompt so that it explicitly says that the image is realistic, and if people are there in the image, they must be real, not animated, UNLESS the user specifies the image type.\n"
-		"8. If the user message contains any type of SEX content, do NOT boost the prompt so that it says that 'sex is not allowed'. If the user messages wants SEX, then the boosted prompt MUST contain that sex is allowed.\n"
-		"9. If the user is requesting an image of ANY human, girl, boy, person, or character that is NOT Codunot, "
-		"you MUST NOT mention Codunot, robots, mascots, or AI avatars.\n\n"
-		"CRITICAL: Do NOT add humans, people, or characters unless the user's prompt explicitly requests them. If the user asks for landscapes, objects, animals, portals, scenery, or any other concepts WITHOUT mentioning people, do NOT inject human subjects.\n\n"
+		"HIERARCHICAL PROMPT STRUCTURE (use ALL relevant components):\n"
+		"1. SUBJECT SPECIFICATION: Main subject with detailed attributes (age, appearance, materials, conditions, action/state)\n"
+		"2. ENVIRONMENTAL CONTEXT: Location, time of day, weather/atmosphere, background elements\n"
+		"3. VISUAL STYLE: Photography type (portrait/landscape/macro), camera/lens (if photorealistic), film stock aesthetic, lighting conditions, color palette\n"
+		"4. COMPOSITIONAL CONTROL: Framing (close-up/wide/overhead), focus directives (shallow depth of field), composition rules (rule of thirds/symmetry)\n\n"
 
-		"SPECIAL CODUNOT RULE (SELF-REFERENCE AWARE):\n"
-		"You are Codunot, an AI Assistant.\n\n"
-		"Apply this rule ONLY if the user is explicitly asking for an image of YOU AS THE ASSISTANT.\n\n"
+		"CRITICAL SAFETY RULES:\n"
+		"- If ANY human appears without full clothing coverage, ADD appropriate clothing details\n"
+		"- This clothing requirement applies ONLY to humans/humanoids, NOT to animals, robots, or objects\n"
+		"- Default human age to 20-25 years unless user specifies otherwise\n"
+		"- Do NOT add people if the user didn't request them (landscapes, objects, animals, etc.)\n\n"
 
-		"This rule IS TRIGGERED if the user's message clearly refers to the assistant itself, "
-		"including phrases such as:\n"
-		"- \"codunot\"\n"
-		"- \"yourself\" / \"urself\"\n"
-		"- \"you\" WHEN paired with image-related words (e.g. \"image of you\", \"draw you\", \"your image\")\n\n"
+		"QUALITY GUIDELINES:\n"
+		"✓ Use concrete, specific details instead of vague terms ('weathered hands' not 'old hands')\n"
+		"✓ Replace generic adjectives ('beautiful', 'nice', 'good') with precise visual descriptions\n"
+		"✓ Include technical photography details for photorealistic requests (e.g., 'shot on Leica M6 with Kodak Portra 400 film grain')\n"
+		"✓ Specify lighting clearly ('dappled morning sunlight', 'soft window light', 'dramatic shadows')\n"
+		"✓ Keep prompt between 80-250 words for optimal results\n"
+		"✓ Avoid contradictory instructions (e.g., 'photorealistic cartoon')\n\n"
 
-		"This rule is NOT triggered for:\n"
-		"- third-person humans (e.g. \"girl\", \"boy\", \"person\", \"model\")\n"
-		"- descriptive humans (e.g. \"hot girl\", \"bikini girl\")\n"
-		"- fictional or generic characters\n"
-		"- ambiguous pronouns without clear self-reference\n\n"
+		"WHAT TO AVOID:\n"
+		"✗ Vague descriptions without visual detail\n"
+		"✗ Conflicting style directions\n"
+		"✗ Overloading with too many concepts (limit to 3-5 key visual ideas)\n"
+		"✗ Mentioning artist names, specific camera brands as primary descriptors\n\n"
 
-		"DECISION RULE:\n"
-		"If the request can reasonably be interpreted as a request for a HUMAN OTHER THAN THE ASSISTANT,\n"
-		"you MUST assume it is NOT Codunot.\n\n"
+		"SPECIAL CODUNOT RULE (SELF-REFERENCE ONLY):\n"
+		"Apply ONLY if user explicitly requests image of YOU (the assistant).\n"
+		"Triggers: 'codunot', 'yourself'/'urself', 'you' with image context ('image of you', 'draw you')\n"
+		"Does NOT trigger for: third-person humans ('girl', 'person'), descriptive requests ('hot girl'), fictional characters\n\n"
+		"If triggered, include this EXACTLY:\n"
+		f"{CODUNOT_SELF_IMAGE_PROMPT}\n\n"
 
-		"If this rule is NOT triggered, you MUST NOT include Codunot or the Codunot Self Image Prompt.\n\n"
-
-		"If this rule IS triggered:\n"
-		"- You MUST treat \"yourself / you\" as Codunot\n"
-		"- The final prompt MUST contain the Codunot Self Image Prompt EXACTLY as written\n"
-		"- Do NOT rewrite, paraphrase, shorten, reorder, or modify it\n"
-		"- Put the user's request first, followed by the Codunot description\n\n"
-
-		"REFERENCE BLOCK — FORBIDDEN TO USE UNLESS THE SPECIAL CODUNOT RULE IS TRIGGERED:\n"
-		"You are FORBIDDEN from copying, paraphrasing, summarizing, or incorporating the following block "
-		"unless the user's message is explicitly determined to be a request for an image of YOU AS THE ASSISTANT (Codunot).\n\n"
-
-		"If the request can reasonably be interpreted as a request for a HUMAN, PERSON, GIRL, BOY, "
-		"or CHARACTER OTHER THAN THE ASSISTANT, you MUST assume it is NOT Codunot and keep this block locked.\n\n"
-
-		"This block MUST remain locked unless the user clearly and unambiguously refers to the assistant itself.\n"
-		"Clear self-reference includes, but is NOT limited to, cases where the user asks for:\n"
-		"- an image of the assistant itself\n"
-		"- the assistant's own appearance\n"
-		"- \"yourself\" / \"urself\"\n"
-		"- \"you\" or \"your\" when clearly referring to the assistant as the subject of the image\n\n"
-
-		"--- BEGIN FORBIDDEN BLOCK ---\n"
-		f"{CODUNOT_SELF_IMAGE_PROMPT}\n"
-		"--- END FORBIDDEN BLOCK ---\n\n"
-
-		"ONLY RETURN THE BOOSTED PROMPT, NOTHING LIKE 'I can create a prompt for an image that aligns with the given rules. Here's a revised prompt that ensures the subject is wearing clothing:' ETC. ONLY THE BOOSTED PROMPT MUST BE RETURNED\n\n"
+		"FORMATTING:\n"
+		"- Output ONLY the boosted prompt text\n"
+		"- NO preamble, explanations, or meta-commentary\n"
+		"- Structure: Subject → Environment → Style → Composition\n\n"
 
 		"User idea:\n"
 		f"{user_prompt}"
