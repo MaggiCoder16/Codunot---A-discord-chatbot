@@ -192,7 +192,7 @@ class Codunot(commands.Cog):
     async def generate_video_slash(self, interaction: discord.Interaction, prompt: str):
         if not await require_vote_slash(interaction):
             return
-
+    
         if not check_limit(interaction, "attachments"):
             await interaction.response.send_message(
                 "🚫 You've hit your **daily video generation limit**.\n"
@@ -200,7 +200,7 @@ class Codunot(commands.Cog):
                 ephemeral=False
             )
             return
-
+    
         if not check_total_limit(interaction, "attachments"):
             await interaction.response.send_message(
                 "🚫 You've hit your **2 months' video generation limit**.\n"
@@ -208,22 +208,26 @@ class Codunot(commands.Cog):
                 ephemeral=False
             )
             return
-
+    
         await interaction.response.defer()
-
+    
         try:
-            boosted_prompt = await boost_image_prompt(prompt)
-            video_bytes = await text_to_video_512(prompt=boosted_prompt)
-
+            # Directly use the original prompt (no boosting)
+            video_bytes = await text_to_video_512(prompt=prompt)
+    
             await interaction.followup.send(
-                content=f"{interaction.user.mention} 🎬 Generated: `{prompt[:150]}...`" if len(prompt) > 150 else f"{interaction.user.mention} 🎬 Generated: `{prompt}`",
+                content=(
+                    f"{interaction.user.mention} 🎬 Generated: `{prompt[:150]}...`"
+                    if len(prompt) > 150
+                    else f"{interaction.user.mention} 🎬 Generated: `{prompt}`"
+                ),
                 file=discord.File(io.BytesIO(video_bytes), filename="generated_video.mp4")
             )
-
+    
             consume(interaction, "attachments")
             consume_total(interaction, "attachments")
             save_usage()
-
+    
         except Exception as e:
             print(f"[SLASH VIDEO ERROR] {e}")
             await interaction.followup.send(
