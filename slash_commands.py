@@ -31,6 +31,7 @@ VOTE_DURATION = 12 * 60 * 60
 BOT_NAME = "Codunot"
 MAX_TTS_LENGTH = 150
 boost_image_prompt = None
+boost_video_prompt = None
 save_vote_unlocks = None
 
 # =========================
@@ -188,7 +189,8 @@ class Codunot(commands.Cog):
         await interaction.response.defer()
     
         try:
-            video_bytes = await text_to_video_512(prompt=prompt)
+            boosted_prompt = await boost_video_prompt(prompt)
+            video_bytes = await text_to_video_512(prompt=boosted_prompt)
     
             await interaction.followup.send(
                 content=(
