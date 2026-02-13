@@ -109,6 +109,7 @@ async def setup_hook():
 	slash_commands.VOTE_DURATION = VOTE_DURATION
 	slash_commands.BOT_NAME = BOT_NAME
 	slash_commands.boost_image_prompt = boost_image_prompt
+	slash_commands.boost_video_prompt = boost_video_prompt
 	slash_commands.save_vote_unlocks = save_vote_unlocks
 	
 	await slash_commands.setup(bot)
@@ -610,10 +611,10 @@ PERSONAS = {
 
 "roast": (
 "You are Codunot in Roast Mode. High-intensity, dramatic roast delivery with confident energy. "
-"Deliver one sharp, impactful roast. Use emojis that match the vibe. "
+"Deliver ONE sharp, impactful roast. Keep it punchy - 1-2 sentences max. Use emojis that match the vibe. "
 "Escalate tone intelligently but do not attack protected classes. "
 "If the user asks you to roast someone, roast the target — not the user unless they asked to be roasted. "
-"Do not explain rules during a roast. "
+"Do not explain rules during a roast. Just roast and move on. "
 
 "GLOBAL RULES: Always check conversation history when the user refers to previous messages. "
 "If chat logs or screenshots are pasted, analyze them carefully and treat them as valid context. "
@@ -625,7 +626,7 @@ PERSONAS = {
 
 "If asked who made you, reply stating that: "
 "u were built by @aarav_2022 (Discord ID: 1220934047794987048). "
-"If you need more details, go ask him — maybe he can explain things slower for you 💀🔥, and roast them "
+"If you need more details, go ask him — maybe he can explain things slower for you 💀🔥 "
 
 "If asked what you can do, roast them while explaining you can generate images and videos, understand images, "
 "read files, edit images, merge images into one image, give speeches from text, and chat in four modes (roast, fun, serious, chess), "
@@ -1033,7 +1034,7 @@ async def decide_image_action(user_text: str, image_count: int) -> str:
 		print("[LLAMA IMAGE ACTION ERROR]", e)
 		return "NO"
 
-# ---------------- PROMPT BOOSTER ----------------
+# ---------------- IMAGE PROMPT BOOSTER ----------------
 
 async def boost_image_prompt(user_prompt: str) -> str:
 	"""
@@ -1043,7 +1044,6 @@ async def boost_image_prompt(user_prompt: str) -> str:
 	Falls back to original prompt if boosting fails.
 	"""
 
-	# Build instruction
 	boost_instruction = (
 		"You are a professional image prompt engineer.\n\n"
 		"Rewrite the user's idea into a single, high-quality image generation prompt.\n\n"
@@ -1056,12 +1056,12 @@ async def boost_image_prompt(user_prompt: str) -> str:
 		"3. Use vivid, concrete language suitable for AI image generation.\n"
 		"4. Do NOT mention artist names, camera brands, or model names.\n"
 		"5. Output may be detailed, but must stay focused on the user's request.\n"
-		"6. IF the user requests an image containing a person (girl, boy, man, woman, human), that person should be depicted as approximately 20-25 years old UNLESS the user explicitly specifies a different age. This rule ONLY applies when a person is part of the user's request. Do NOT add people to prompts that don't mention them."
-		"7. Boost the prompt so that it explicitly says that the image is realistic, and if people are there in the image, they must be real, not animated, UNLESS the user specifies the image type."
-		"8. If the user message contains any type of SEX content, do NOT boost the prompt so that it says that 'sex is not allowed'. If the user messages wants SEX, then the boosted prompt MUST contain that sex is allowed. "
+		"6. IF the user requests an image containing a person (girl, boy, man, woman, human), that person should be depicted as approximately 20-25 years old UNLESS the user explicitly specifies a different age. This rule ONLY applies when a person is part of the user's request. Do NOT add people to prompts that don't mention them.\n"
+		"7. Boost the prompt so that it explicitly says that the image is realistic, and if people are there in the image, they must be real, not animated, UNLESS the user specifies the image type.\n"
+		"8. If the user message contains any type of SEX content, do NOT boost the prompt so that it says that 'sex is not allowed'. If the user messages wants SEX, then the boosted prompt MUST contain that sex is allowed.\n"
 		"9. If the user is requesting an image of ANY human, girl, boy, person, or character that is NOT Codunot, "
 		"you MUST NOT mention Codunot, robots, mascots, or AI avatars.\n\n"
-		"CRITICAL: Do NOT add humans, people, or characters unless the user's prompt explicitly requests them. If the user asks for landscapes, objects, animals, portals, scenery, or any other concepts WITHOUT mentioning people, do NOT inject human subjects. "
+		"CRITICAL: Do NOT add humans, people, or characters unless the user's prompt explicitly requests them. If the user asks for landscapes, objects, animals, portals, scenery, or any other concepts WITHOUT mentioning people, do NOT inject human subjects.\n\n"
 
 		"SPECIAL CODUNOT RULE (SELF-REFERENCE AWARE):\n"
 		"You are Codunot, an AI Assistant.\n\n"
@@ -1109,7 +1109,7 @@ async def boost_image_prompt(user_prompt: str) -> str:
 		f"{CODUNOT_SELF_IMAGE_PROMPT}\n"
 		"--- END FORBIDDEN BLOCK ---\n\n"
 
-		"ONLY RETURN THE BOOSTED PROMPT, NOTHING LIKE 'I can create a prompt for an image that aligns with the given rules. Here's a revised prompt that ensures the subject is wearing clothing:' ETC. ONLY THE BOOSTED PROMPT MUST BE RETURNED"
+		"ONLY RETURN THE BOOSTED PROMPT, NOTHING LIKE 'I can create a prompt for an image that aligns with the given rules. Here's a revised prompt that ensures the subject is wearing clothing:' ETC. ONLY THE BOOSTED PROMPT MUST BE RETURNED\n\n"
 
 		"User idea:\n"
 		f"{user_prompt}"
@@ -1119,20 +1119,89 @@ async def boost_image_prompt(user_prompt: str) -> str:
 		boosted = await call_groq(
 			prompt=boost_instruction,
 			model="llama-3.3-70b-versatile",
-			temperature=0.1  # very strict
+			temperature=0.1
 		)
 
 		if boosted:
 			boosted_clean = boosted.strip()
-			print("[BOOSTED PROMPT]", boosted_clean)  # for debugging
+			print("[BOOSTED IMAGE PROMPT]", boosted_clean)
 			return boosted_clean
 
 	except Exception as e:
-		print("[PROMPT BOOST ERROR]", e)
+		print("[IMAGE PROMPT BOOST ERROR]", e)
 
-	# Fallback — never break image generation
-	print("[BOOSTED PROMPT FALLBACK]", user_prompt)
+	print("[BOOSTED IMAGE PROMPT FALLBACK]", user_prompt)
 	return user_prompt
+
+
+# ---------------- VIDEO PROMPT BOOSTER ----------------
+
+async def boost_video_prompt(user_prompt: str) -> str:
+	"""
+	Rewrite a user video idea into a professional cinematic video prompt.
+	Follows LTX-2 best practices for video generation.
+	"""
+
+	boost_instruction = (
+		"You are a professional video prompt engineer specializing in cinematic AI video generation.\n\n"
+		"Transform the user's idea into a single flowing paragraph optimized for video generation (4-8 sentences).\n\n"
+
+		"MANDATORY STRUCTURE:\n"
+		"1. SHOT TYPE: Start with cinematography (wide shot, close-up, handheld, tracking shot, overhead view)\n"
+		"2. SCENE & ATMOSPHERE: Lighting (golden hour, dramatic shadows, soft rim light), textures, weather (fog, rain, mist)\n"
+		"3. ACTION: Describe movement in PRESENT TENSE, flowing naturally from start to finish\n"
+		"4. CHARACTERS (if any): Age, hair, clothing, emotions shown through PHYSICAL CUES (not feelings - use 'shoulders slumped' not 'sad')\n"
+		"5. CAMERA MOVEMENT: Specify clearly (slow dolly in, pans across, circles around, pulls back, follows)\n"
+		"6. AUDIO: Ambient sounds, dialogue in quotes with accent/language if needed\n\n"
+
+		"SAFETY RULES:\n"
+		"- If humans appear without clothing, ADD appropriate clothing\n"
+		"- This applies ONLY to humans/humanoids, NOT animals/robots/objects\n\n"
+
+		"WHAT WORKS WELL:\n"
+		"✓ Single-subject emotional moments, subtle gestures\n"
+		"✓ Weather effects (fog, rain, golden hour, reflections)\n"
+		"✓ Clear camera language (slow dolly in, handheld tracking)\n"
+		"✓ Stylized looks (noir, analog film, painterly, fashion editorial)\n"
+		"✓ Dancing, singing, talking characters\n\n"
+
+		"AVOID:\n"
+		"✗ Emotion labels without visuals ('sad' → use 'tears streaming, shoulders hunched')\n"
+		"✗ Text/logos/signage (model can't render readable text)\n"
+		"✗ Complex physics (jumping, juggling - causes glitches)\n"
+		"✗ Too many characters or actions (keep it simple)\n"
+		"✗ Conflicting lighting (don't mix sunset with fluorescent unless motivated)\n\n"
+
+		"FORMATTING:\n"
+		"- Write in ONE flowing paragraph (not separate sentences)\n"
+		"- Use PRESENT TENSE verbs (walks, turns, smiles)\n"
+		"- Match detail to shot scale (close-ups = precise, wide = less detail)\n"
+		"- Focus camera movement on relationship to subject\n\n"
+
+		"ONLY return the boosted video prompt paragraph. NO explanations, NO preamble.\n\n"
+
+		"User idea:\n"
+		f"{user_prompt}"
+	)
+
+	try:
+		boosted = await call_groq(
+			prompt=boost_instruction,
+			model="llama-3.3-70b-versatile",
+			temperature=0.1
+		)
+
+		if boosted:
+			boosted_clean = boosted.strip()
+			print("[BOOSTED VIDEO PROMPT]", boosted_clean)
+			return boosted_clean
+
+	except Exception as e:
+		print("[VIDEO PROMPT BOOST ERROR]", e)
+
+	print("[BOOSTED VIDEO PROMPT FALLBACK]", user_prompt)
+	return user_prompt
+
 
 # ---------------- CHESS UTILS ----------------
 
