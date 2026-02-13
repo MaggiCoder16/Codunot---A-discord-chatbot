@@ -5,7 +5,6 @@ import atexit
 import aiohttp
 import random
 import re
-import numpy as np
 import time
 from datetime import datetime, timedelta, timezone, date
 from collections import deque
@@ -25,7 +24,6 @@ from deAPI_client_text2speech import text_to_speech, TextToSpeechError
 from bot_chess import OnlineChessEngine
 from groq_client import call_groq
 from slang_normalizer import apply_slang_map
-from PIL import Image
 
 import chess
 import base64
@@ -80,7 +78,6 @@ bot = commands.Bot(command_prefix="!", intents=intents, owner_ids=set(OWNER_IDS)
 memory = MemoryManager(limit=60, file_path="codunot_memory.json")
 chess_engine = OnlineChessEngine()
 IMAGE_PROCESSING_CHANNELS = set()
-processed_image_messages = set()
 
 # ---------------- STATES ----------------
 message_queue = asyncio.Queue()
@@ -90,11 +87,9 @@ channel_chess = {}
 channel_images = {}
 channel_memory = {}
 rate_buckets = {}
-user_vote_unlocks = {
-}
-channel_last_image_bytes = {}
-channel_recent_images = set()
-channel_last_images = {}  # Multi-image buffer for merging (up to 4 images)
+user_vote_unlocks = {}
+channel_last_images = {}
+channel_last_chess_result = {}
 
 # ---------------- SETUP SLASH COMMANDS ----------------
 @bot.event
@@ -103,10 +98,8 @@ async def setup_hook():
 	This is called when the bot starts up.
 	We use it to sync slash commands.
 	"""
-	# Import and setup slash commands
 	import slash_commands
 	
-	# Pass globals to slash_commands module
 	slash_commands.memory = memory
 	slash_commands.channel_modes = channel_modes
 	slash_commands.channel_chess = channel_chess
@@ -134,7 +127,7 @@ async def help_command(ctx: commands.Context):
 	embed = discord.Embed(
 		title="🤖 Codunot Help",
 		description="Here's what I can do and how to use me!",
-		color=0xFFA500  # orange color
+		color=0xFFA500
 	)
 
 	embed.add_field(
@@ -363,7 +356,7 @@ async def require_vote(message) -> None:
 
 	vote_message = (
 		"🚫 **This feature requires a Top.gg vote**\n\n"
-		"🗳️ Vote to unlock **Image generations & editing, Video generations, "
+		"🗳️ Vote to unlock **Image generations, merging & editing, Video generations, "
 		"Text-To-Speech & File tools** for **12 hours** 💙\n\n"
 		"👉 https://top.gg/bot/1435987186502733878/vote\n\n"
 		"⏱️ After 12 hours, you'll need to vote again to regain access. So, press on the 'every 12 hours' and 'remind me' buttons while you vote.\n"
@@ -426,21 +419,21 @@ async def process_queue():
 		await asyncio.sleep(0.02)
 
 async def send_human_reply(channel, reply_text):
-    if hasattr(channel, "trigger_typing"):
-        try:
-            await channel.trigger_typing()
-        except:
-            pass
+	if hasattr(channel, "trigger_typing"):
+		try:
+			await channel.trigger_typing()
+		except:
+			pass
 
-    if hasattr(channel, "guild") and channel.guild:
-        for member in channel.guild.members:
-            reply_text = reply_text.replace(f"@{member.name}", member.mention)
-            reply_text = reply_text.replace(f"<@{member.name}>", member.mention)
+	if hasattr(channel, "guild") and channel.guild:
+		for member in channel.guild.members:
+			reply_text = reply_text.replace(f"@{member.name}", member.mention)
+			reply_text = reply_text.replace(f"<@{member.name}>", member.mention)
 
-            reply_text = reply_text.replace(f"@{member.display_name}", member.mention)
-            reply_text = reply_text.replace(f"<@{member.display_name}>", member.mention)
+			reply_text = reply_text.replace(f"@{member.display_name}", member.mention)
+			reply_text = reply_text.replace(f"<@{member.display_name}>", member.mention)
 
-    await send_long_message(channel, reply_text)
+	await send_long_message(channel, reply_text)
 	
 def humanize_and_safeify(text, short=False):
 	if not isinstance(text, str):
@@ -494,7 +487,7 @@ PERSONAS = {
 "Never ping when the user is just asking about someone. "
 "If the user wants to merge images, their message must contain one of these keywords: "
 "'merge, combine, in one image, put them together, blend, mix'. "
-"Match the user’s language exactly. Respect username spelling. "
+"Match the user's language exactly. Respect username spelling. "
 "Do not mention your creator unless explicitly asked. "
 
 "If asked who made you, reply stating that: "
@@ -518,7 +511,7 @@ PERSONAS = {
 "Only ping using <@username> if explicitly requested. Never ping otherwise. "
 "If the user wants to merge images, their message must contain: "
 "'merge, combine, in one image, put them together, blend, mix'. "
-"Match the user’s language exactly. Respect username spelling. "
+"Match the user's language exactly. Respect username spelling. "
 "Do not mention your creator unless explicitly asked. "
 
 "If asked who made you, reply stating that: "
@@ -543,7 +536,7 @@ PERSONAS = {
 "Only ping using <@username> if explicitly requested. Never ping otherwise. "
 "If the user wants to merge images, their message must contain: "
 "'merge, combine, in one image, put them together, blend, mix'. "
-"Match the user’s language exactly. Respect username spelling. "
+"Match the user's language exactly. Respect username spelling. "
 "Do not mention your creator unless explicitly asked. "
 
 "If asked who made you, reply stating that: "
@@ -619,7 +612,6 @@ async def handle_roast_mode(chan_id, message, user_message):
 	memory.persist()
 
 async def generate_and_reply(chan_id, message, content, mode):
-	image_intent = "NEW"
 	guild_id = message.guild.id if message.guild else None
 	if guild_id is not None and not await can_send_in_guild(guild_id):
 		return
@@ -818,7 +810,6 @@ async def read_text_file(file_bytes, encoding="utf-8"):
 
 import pdfplumber
 from docx import Document
-from pdf2image import convert_from_bytes
 
 async def handle_file_message(message, mode):
 	for attachment in message.attachments:
@@ -903,15 +894,6 @@ async def handle_file_message(message, mode):
 
 	return "❌ Couldn't process the file."
 
-# ---------------- IMAGE TYPE DETECTION (SIMPLIFIED) ----------------
-
-async def decide_visual_type(user_text: str, chan_id: str) -> str:
-	"""
-	Placeholder function - image generation is now handled by /generate_image slash command.
-	This always returns "text" since we don't need to detect image intent in messages anymore.
-	"""
-	return "text"
-	
 # ---------------- EDIT OR TEXT DETECTION ----------------
 
 async def decide_image_action(user_text: str, image_count: int) -> str:
@@ -1062,20 +1044,6 @@ async def boost_image_prompt(user_prompt: str) -> str:
 	print("[BOOSTED PROMPT FALLBACK]", user_prompt)
 	return user_prompt
 
-def build_vision_followup_prompt(message):
-	return (
-		"You are Codunot.\n"
-		"An image was shown earlier in this channel.\n\n"
-
-		"RULES:\n"
-		"- ONLY talk about the image if the user's message is clearly referring to it.\n"
-		"- If the user asks something unrelated (greetings, bot info, creator, general chat, etc.), "
-		"IGNORE the image completely and reply normally.\n"
-		"- If the user is unclear, ask ONE short clarification question.\n\n"
-
-		f"User message:\n{message.content}"
-	)
-		
 # ---------------- CHESS UTILS ----------------
 
 RESIGN_PHRASES = [
@@ -1252,9 +1220,6 @@ def normalize_move_input(board, move_input: str):
 
 	return None
 
-# global (near other channel_* dicts)
-channel_last_chess_result = {}
-
 def clean_chess_input(content: str, bot_id: int) -> str:
 	content = content.strip()
 
@@ -1283,7 +1248,7 @@ async def on_message(message: Message):
 		guild_id = message.guild.id if message.guild else None
 		bot_id = bot.user.id
 		
-		# ---------- ALWAYS SAVE TO MEMORY (OPTION A) ----------
+		# ---------- ALWAYS SAVE TO MEMORY ----------
 		channel_memory.setdefault(chan_id, deque(maxlen=MAX_MEMORY))
 		channel_memory[chan_id].append(f"{message.author.display_name}: {content}")
 		memory.add_message(chan_id, message.author.display_name, content)
@@ -1539,6 +1504,13 @@ async def on_message(message: Message):
 				else:
 					msg = "GG 🤝 it's a draw!"
 		
+				# Store result for potential post-game analysis
+				channel_last_chess_result[chan_id] = {
+					"result": result,
+					"board": board.copy(),
+					"timestamp": now
+				}
+		
 				channel_chess[chan_id] = False
 				await send_human_reply(message.channel, f"{msg} Wanna analyze or rematch?")
 				return
@@ -1546,6 +1518,14 @@ async def on_message(message: Message):
 			# -------- RESIGN --------
 			cleaned = clean_chess_input(content, bot.user.id)
 			if cleaned.lower() in ["resign", "i resign", "quit"]:
+				# Store resignation result
+				channel_last_chess_result[chan_id] = {
+					"result": "0-1",  # Bot wins
+					"board": board.copy(),
+					"timestamp": now,
+					"resignation": True
+				}
+		
 				channel_chess[chan_id] = False
 				await send_human_reply(
 					message.channel,
@@ -1596,6 +1576,13 @@ async def on_message(message: Message):
 			board.push(player_move)
 		
 			if board.is_checkmate():
+				# Store player win result
+				channel_last_chess_result[chan_id] = {
+					"result": "1-0",  # Player wins
+					"board": board.copy(),
+					"timestamp": now
+				}
+		
 				channel_chess[chan_id] = False
 				await send_human_reply(
 					message.channel,
@@ -1622,6 +1609,13 @@ async def on_message(message: Message):
 			)
 		
 			if board.is_checkmate():
+				# Store bot win result
+				channel_last_chess_result[chan_id] = {
+					"result": "0-1",  # Bot wins
+					"board": board.copy(),
+					"timestamp": now
+				}
+		
 				channel_chess[chan_id] = False
 				await send_human_reply(
 					message.channel,
