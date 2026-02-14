@@ -130,8 +130,10 @@ def overlay_action_text_on_gif(gif_bytes: bytes, action_word: str, actor_name: s
 
         draw = ImageDraw.Draw(canvas)
 
+        # Use more horizontal padding to ensure text fits properly
         max_text_width = w - 40
         
+        # Use full names - let _fit_text handle the sizing
         title = f"{actor_name} {ACTION_TEXT[action_word]} {target_name}"
         title_font, title_text = _fit_text(draw, title, max_width=max_text_width, base_size=32)
         
@@ -139,6 +141,7 @@ def overlay_action_text_on_gif(gif_bytes: bytes, action_word: str, actor_name: s
         title_w = title_bbox[2] - title_bbox[0]
         title_x = ((w - title_w) // 2) - title_bbox[0]
         
+        # Position closer to the bottom of the band for better use of space
         title_y = band_height - (title_bbox[3] - title_bbox[1]) - 12
         _draw_outlined_text(draw, (title_x, title_y), title_text, title_font)
 
@@ -406,13 +409,15 @@ class Codunot(commands.Cog):
 
         try:
             source_url = random.choice(ACTION_GIF_SOURCES[action])
-            source_bytes = await fetch_bytes(source_url)
             
-            # Send the GIF without text overlay
-            await interaction.followup.send(
-                content=f"{interaction.user.mention} {ACTION_TEXT[action]} {target_user.mention}!",
-                file=discord.File(io.BytesIO(source_bytes), filename=f"{action}.gif")
+            # Create an embed with the GIF
+            embed = discord.Embed(
+                description=f"{interaction.user.mention} {ACTION_TEXT[action]} {target_user.mention}!",
+                color=0xFFA500  # Orange color for the side line
             )
+            embed.set_image(url=source_url)
+            
+            await interaction.followup.send(embed=embed)
         except Exception as e:
             print(f"[SLASH {action.upper()} ERROR] {e}")
             await interaction.followup.send(
