@@ -397,17 +397,17 @@ class Codunot(commands.Cog):
                 f"🤔 Couldn't generate a {action} GIF right now. Try again in a bit."
             )
 
-    @app_commands.command(name="hug", description="🤗 Send a hugging GIF with custom names")
+    @app_commands.command(name="hug", description="🤗 Hug any user with a random GIF")
     @app_commands.describe(target_user="The user you want to hug")
     async def hug_slash(self, interaction: discord.Interaction, target_user: discord.User):
         await self._send_action_gif(interaction, "hug", target_user)
 
-    @app_commands.command(name="kiss", description="💋 Send a kissing GIF with custom names")
+    @app_commands.command(name="kiss", description="💋 Kiss any user with a random GIF *pucker*")
     @app_commands.describe(target_user="The user you want to kiss")
     async def kiss_slash(self, interaction: discord.Interaction, target_user: discord.User):
         await self._send_action_gif(interaction, "kiss", target_user)
 
-    @app_commands.command(name="kick", description="🥋 Send an anime kick GIF with custom names")
+    @app_commands.command(name="kick", description="🥋 Kick any user with a random anime GIF")
     @app_commands.describe(target_user="The user you want to kick")
     async def kick_slash(self, interaction: discord.Interaction, target_user: discord.User):
         await self._send_action_gif(interaction, "kick", target_user)
