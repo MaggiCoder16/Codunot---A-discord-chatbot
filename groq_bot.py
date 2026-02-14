@@ -686,7 +686,6 @@ async def generate_and_reply(chan_id, message, content, mode):
     # ---------------- CHECK FOR REPLY CONTEXT ----------------
     reply_context = await build_reply_context(message)
     if reply_context:
-        print("[REPLY CONTEXT] Added replied-to message context to normal prompt")
 
     prompt = (
         build_general_prompt(chan_id, mode, message, include_last_image=False)
@@ -1425,9 +1424,7 @@ async def on_message(message: Message):
 				image_action = "VISION"
 		elif image_count >= 1:
 			image_action = "VISION"
-		
-		print(f"[IMAGE ACTION] Count: {image_count}, Intent: {content[:50]}, Decision: {image_action}")
-		
+				
 		# ---------- IMAGE HANDLING ----------
 		if image_action == "EDIT":
 			# User wants to EDIT the image
