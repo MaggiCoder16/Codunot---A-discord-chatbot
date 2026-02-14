@@ -88,14 +88,10 @@ def _fit_text(draw: ImageDraw.ImageDraw, text: str, max_width: int, base_size: i
     while len(truncated) > 1:
         bbox = draw.textbbox((0, 0), truncated + ellipsis, font=font)
         if bbox[2] - bbox[0] <= max_width:
-            truncated = truncated + ellipsis
-            break
+            return font, truncated + ellipsis
         truncated = truncated[:-1]
-    else:
-        truncated = ellipsis
-
-    return font, truncated
-
+    
+    return font, ellipsis
 
 def _draw_outlined_text(draw: ImageDraw.ImageDraw, xy: tuple[int, int], txt: str, font: ImageFont.ImageFont):
     x, y = xy
@@ -130,13 +126,16 @@ def overlay_action_text_on_gif(gif_bytes: bytes, action_word: str, actor_name: s
 
         draw = ImageDraw.Draw(canvas)
 
+        max_text_width = w - 40
+        
         title = f"{actor_name} {ACTION_TEXT[action_word]} {target_name}"
-        title_font, title_text = _fit_text(draw, title, max_width=w - 24, base_size=40)
+        title_font, title_text = _fit_text(draw, title, max_width=max_text_width, base_size=40)
         title_bbox = draw.textbbox((0, 0), title_text, font=title_font)
         title_w = title_bbox[2] - title_bbox[0]
         title_x = ((w - title_w) // 2) - title_bbox[0]
-        _draw_outlined_text(draw, (title_x, 8), title_text, title_font)
-
+        
+        title_y = (band_height - (title_bbox[3] - title_bbox[1])) // 2
+        _draw_outlined_text(draw, (title_x, title_y), title_text, title_font)
 
         frames.append(canvas.convert("P", palette=Image.ADAPTIVE))
         durations.append(frame.info.get("duration", gif.info.get("duration", 80)))
