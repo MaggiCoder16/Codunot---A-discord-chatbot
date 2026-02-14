@@ -46,14 +46,20 @@ ACTION_GIF_SOURCES = {
     "hug": [
         "https://media1.giphy.com/media/v1.Y2lkPTc5MGI3NjExYjFxbWd0djU0Y240MHE3d2t3dnIyZWtsaGI0aTFleGVncWswcDdkYyZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/uakdGGShmMS0KYfTgp/giphy.gif",
         "https://media.tenor.com/bVN5MdTrelYAAAAj/yaseen1.gif",
+        "https://media.tenor.com/FNX3Xvr6yGwAAAAi/snek-bubu.gif",
+        "https://i.imgur.com/uXL0iTg.gif",
     ],
     "kiss": [
         "https://media0.giphy.com/media/v1.Y2lkPTc5MGI3NjExOGVoeXMxd3FteTF0cGRmMDQzNjRxMm0ybWV1Zno2ZGJycGs3enlhcSZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/G3va31oEEnIkM/giphy.gif",
         "https://media.giphy.com/media/bGm9FuBCGg4SY/giphy.gif",
+        "https://media1.tenor.com/m/dd4mZNppytYAAAAd/1.gif",
+        "https://media1.tenor.com/m/Y2AdPDiQoK8AAAAC/kiss-love.gif",
     ],
     "kick": [
         "https://media0.giphy.com/media/v1.Y2lkPTc5MGI3NjExcHpjMHQ4NnNxZjMzOWdpOXozamNpbmRrOG9jZ2xpcnNmb3V3M3pxdiZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/DfI1LsaCkWD20xRc4r/giphy.gif",
         "https://media0.giphy.com/media/v1.Y2lkPTc5MGI3NjExaG1raWhsZWZoYTRmNTB5ZXJqano3dDdtcnN2cGtpazJoMm1zZDBpcSZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/3o7TKwVQMoQh2At9qU/giphy.gif",
+        "https://media.tenor.com/TDQXdEBNNjUAAAAi/milk-and-mocha.gif",
+        "https://media.tenor.com/ztHpFwsax84AAAAi/hau-zozo-smile.gif",
     ],
 }
 
