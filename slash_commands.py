@@ -78,6 +78,7 @@ def _fit_text(draw: ImageDraw.ImageDraw, text: str, max_width: int, base_size: i
             return font, content
         size -= 2
 
+    # If still doesn't fit, use smallest font and truncate
     try:
         font = ImageFont.truetype("DejaVuSans-Bold.ttf", 18)
     except Exception:
@@ -91,7 +92,9 @@ def _fit_text(draw: ImageDraw.ImageDraw, text: str, max_width: int, base_size: i
             return font, truncated + ellipsis
         truncated = truncated[:-1]
     
+    # If even a single character doesn't fit, return ellipsis
     return font, ellipsis
+
 
 def _draw_outlined_text(draw: ImageDraw.ImageDraw, xy: tuple[int, int], txt: str, font: ImageFont.ImageFont):
     x, y = xy
@@ -106,6 +109,13 @@ async def fetch_bytes(url: str) -> bytes:
             if resp.status != 200:
                 raise Exception(f"Failed to fetch gif: HTTP {resp.status}")
             return await resp.read()
+
+
+def _abbreviate_name(name: str, max_len: int = 15) -> str:
+    """Abbreviate a name if it's too long."""
+    if len(name) <= max_len:
+        return name
+    return name[:max_len-3] + "..."
 
 
 def overlay_action_text_on_gif(gif_bytes: bytes, action_word: str, actor_name: str, target_name: str) -> bytes:
@@ -128,8 +138,21 @@ def overlay_action_text_on_gif(gif_bytes: bytes, action_word: str, actor_name: s
 
         max_text_width = w - 40
         
-        title = f"{actor_name} {ACTION_TEXT[action_word]} {target_name}"
+        actor = actor_name
+        target = target_name
+        
+        title = f"{actor} {ACTION_TEXT[action_word]} {target}"
         title_font, title_text = _fit_text(draw, title, max_width=max_text_width, base_size=40)
+        
+        if title_text.endswith("...") and "..." not in title:
+            for name_max_len in [15, 12, 10, 8]:
+                actor = _abbreviate_name(actor_name, name_max_len)
+                target = _abbreviate_name(target_name, name_max_len)
+                title = f"{actor} {ACTION_TEXT[action_word]} {target}"
+                title_font, title_text = _fit_text(draw, title, max_width=max_text_width, base_size=40)
+                if not title_text.endswith("..."):
+                    break
+        
         title_bbox = draw.textbbox((0, 0), title_text, font=title_font)
         title_w = title_bbox[2] - title_bbox[0]
         title_x = ((w - title_w) // 2) - title_bbox[0]
