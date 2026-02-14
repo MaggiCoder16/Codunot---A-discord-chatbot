@@ -67,21 +67,34 @@ ACTION_GIF_SOURCES = {
 def _fit_text(draw: ImageDraw.ImageDraw, text: str, max_width: int, base_size: int = 32) -> tuple[ImageFont.ImageFont, str]:
     """Pick a font size and fallback-truncated text that fit inside max_width."""
     size = base_size
+    kohinoor_warning_shown = False
     while size >= 14:
         try:
-            font = ImageFont.truetype("DejaVuSans.ttf", size)
+            # Try Kohinoor font
+            font = ImageFont.truetype("Kohinoor.ttf", size)
         except Exception:
-            font = ImageFont.load_default()
+            if not kohinoor_warning_shown:
+                print("[FONT WARNING] Kohinoor font isn't available, falling back to DejaVuSans")
+                kohinoor_warning_shown = True
+            try:
+                # Fallback to DejaVuSans if Kohinoor not available
+                font = ImageFont.truetype("DejaVuSans.ttf", size)
+            except Exception:
+                font = ImageFont.load_default()
         content = text
         bbox = draw.textbbox((0, 0), content, font=font)
         if bbox[2] - bbox[0] <= max_width:
             return font, content
         size -= 2
 
+    # If still doesn't fit, use smallest font and truncate
     try:
-        font = ImageFont.truetype("DejaVuSans.ttf", 14)
+        font = ImageFont.truetype("Kohinoor.ttf", 14)
     except Exception:
-        font = ImageFont.load_default()
+        try:
+            font = ImageFont.truetype("DejaVuSans.ttf", 14)
+        except Exception:
+            font = ImageFont.load_default()
 
     truncated = text
     ellipsis = "..."
@@ -91,7 +104,9 @@ def _fit_text(draw: ImageDraw.ImageDraw, text: str, max_width: int, base_size: i
             return font, truncated + ellipsis
         truncated = truncated[:-1]
     
+    # If even a single character doesn't fit, return ellipsis
     return font, ellipsis
+
 
 def _draw_outlined_text(draw: ImageDraw.ImageDraw, xy: tuple[int, int], txt: str, font: ImageFont.ImageFont):
     x, y = xy
