@@ -37,9 +37,9 @@ boost_video_prompt = None
 save_vote_unlocks = None
 
 ACTION_TEXT = {
-    "hug": "hug",
-    "kiss": "kiss",
-    "kick": "kicked",
+    "hug": "hugged",
+    "kiss": "kissed",
+    "kick": "kick",
 }
 
 ACTION_GIF_SOURCES = {
