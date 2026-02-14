@@ -6,7 +6,6 @@ import time
 import io
 import aiohttp
 import random
-from PIL import Image, ImageDraw, ImageFont, ImageSequence
 
 from memory import MemoryManager
 from deAPI_client_image import generate_image
@@ -64,103 +63,12 @@ ACTION_GIF_SOURCES = {
 }
 
 
-def _fit_text(draw: ImageDraw.ImageDraw, text: str, max_width: int, base_size: int = 32) -> tuple[ImageFont.ImageFont, str]:
-    """Pick a font size and fallback-truncated text that fit inside max_width."""
-    size = base_size
-    while size >= 14:
-        try:
-            font = ImageFont.truetype("DejaVuSans.ttf", size)
-        except Exception:
-            font = ImageFont.load_default()
-        content = text
-        bbox = draw.textbbox((0, 0), content, font=font)
-        if bbox[2] - bbox[0] <= max_width:
-            return font, content
-        size -= 2
-
-    # If still doesn't fit, use smallest font and truncate
-    try:
-        font = ImageFont.truetype("DejaVuSans.ttf", 14)
-    except Exception:
-        font = ImageFont.load_default()
-
-    truncated = text
-    ellipsis = "..."
-    while len(truncated) > 1:
-        bbox = draw.textbbox((0, 0), truncated + ellipsis, font=font)
-        if bbox[2] - bbox[0] <= max_width:
-            return font, truncated + ellipsis
-        truncated = truncated[:-1]
-    
-    # If even a single character doesn't fit, return ellipsis
-    return font, ellipsis
-
-
-def _draw_outlined_text(draw: ImageDraw.ImageDraw, xy: tuple[int, int], txt: str, font: ImageFont.ImageFont):
-    x, y = xy
-    # Thinner outline (1 pixel instead of 2)
-    for ox, oy in [(-1, -1), (-1, 0), (-1, 1), (0, -1), (0, 1), (1, -1), (1, 0), (1, 1)]:
-        draw.text((x + ox, y + oy), txt, font=font, fill=(0, 0, 0))
-    draw.text((x, y), txt, font=font, fill=(255, 255, 255))
-
-
 async def fetch_bytes(url: str) -> bytes:
     async with aiohttp.ClientSession() as session:
         async with session.get(url) as resp:
             if resp.status != 200:
                 raise Exception(f"Failed to fetch gif: HTTP {resp.status}")
             return await resp.read()
-
-
-def overlay_action_text_on_gif(gif_bytes: bytes, action_word: str, actor_name: str, target_name: str) -> bytes:
-    """Overlay title + participant labels on each GIF frame."""
-    gif = Image.open(io.BytesIO(gif_bytes))
-
-    frames = []
-    durations = []
-    loop = gif.info.get("loop", 0)
-
-    for frame in ImageSequence.Iterator(gif):
-        rgba = frame.convert("RGBA")
-        w, h = rgba.size
-
-        band_height = max(80, int(h * 0.24))
-        canvas = Image.new("RGBA", (w, h + band_height), (0, 0, 0, 220))
-        canvas.alpha_composite(rgba, dest=(0, band_height))
-
-        draw = ImageDraw.Draw(canvas)
-
-        # Use more horizontal padding to ensure text fits properly
-        max_text_width = w - 40
-        
-        # Use full names - let _fit_text handle the sizing
-        title = f"{actor_name} {ACTION_TEXT[action_word]} {target_name}"
-        title_font, title_text = _fit_text(draw, title, max_width=max_text_width, base_size=32)
-        
-        title_bbox = draw.textbbox((0, 0), title_text, font=title_font)
-        title_w = title_bbox[2] - title_bbox[0]
-        title_x = ((w - title_w) // 2) - title_bbox[0]
-        
-        # Position closer to the bottom of the band for better use of space
-        title_y = band_height - (title_bbox[3] - title_bbox[1]) - 12
-        _draw_outlined_text(draw, (title_x, title_y), title_text, title_font)
-
-        frames.append(canvas.convert("P", palette=Image.ADAPTIVE))
-        durations.append(frame.info.get("duration", gif.info.get("duration", 80)))
-
-    output = io.BytesIO()
-    frames[0].save(
-        output,
-        format="GIF",
-        save_all=True,
-        append_images=frames[1:],
-        duration=durations,
-        loop=loop,
-        optimize=False,
-        disposal=2,
-    )
-    output.seek(0)
-    return output.read()
 
 
 # =========================
@@ -411,8 +319,13 @@ class Codunot(commands.Cog):
             source_url = random.choice(ACTION_GIF_SOURCES[action])
             
             # Create an embed with the GIF
+            if action == "hug":
+                text = f"{interaction.user.mention} gave {target_user.mention} a hug!"
+            else:
+                text = f"{interaction.user.mention} {ACTION_TEXT[action]} {target_user.mention}!"
+            
             embed = discord.Embed(
-                description=f"{interaction.user.mention} {ACTION_TEXT[action]} {target_user.mention}!",
+                description=text,
                 color=0xFFA500  # Orange color for the side line
             )
             embed.set_image(url=source_url)
