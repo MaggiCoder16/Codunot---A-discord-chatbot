@@ -36,6 +36,12 @@ boost_image_prompt = None
 boost_video_prompt = None
 save_vote_unlocks = None
 
+ACTION_TEXT = {
+    "hug": "hug",
+    "kiss": "kiss",
+    "kick": "kicked",
+}
+
 ACTION_GIF_SOURCES = {
     "hug": [
         "https://media1.giphy.com/media/v1.Y2lkPTc5MGI3NjExYjFxbWd0djU0Y240MHE3d2t3dnIyZWtsaGI0aTFleGVncWswcDdkYyZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/uakdGGShmMS0KYfTgp/giphy.gif",
@@ -108,11 +114,12 @@ def overlay_action_text_on_gif(gif_bytes: bytes, action_word: str, actor_name: s
 
         draw = ImageDraw.Draw(canvas)
 
-        title = f"{actor_name} {action_word} {target_name}"
+        title = f"{actor_name} {ACTION_TEXT[action_word]} {target_name}"
         title_font, title_text = _fit_text(draw, title, max_width=w - 24, base_size=40)
         title_bbox = draw.textbbox((0, 0), title_text, font=title_font)
         title_w = title_bbox[2] - title_bbox[0]
-        _draw_outlined_text(draw, ((w - title_w) // 2, 8), title_text, title_font)
+        title_x = ((w - title_w) // 2) - title_bbox[0]
+        _draw_outlined_text(draw, (title_x, 8), title_text, title_font)
 
 
         frames.append(canvas.convert("P", palette=Image.ADAPTIVE))
@@ -388,7 +395,7 @@ class Codunot(commands.Cog):
             )
 
             await interaction.followup.send(
-                content=f"{interaction.user.mention} {action} {target_user.mention}",
+                content=f"{interaction.user.mention} {ACTION_TEXT[action]} {target_user.mention}",
                 file=discord.File(io.BytesIO(gif_bytes), filename=f"{action}.gif")
             )
         except Exception as e:
@@ -402,7 +409,7 @@ class Codunot(commands.Cog):
     async def hug_slash(self, interaction: discord.Interaction, target_user: discord.User):
         await self._send_action_gif(interaction, "hug", target_user)
 
-    @app_commands.command(name="kiss", description="💋 Kiss any user with a random GIF *pucker*")
+    @app_commands.command(name="kiss", description="💋 Kiss any user with a random GIF")
     @app_commands.describe(target_user="The user you want to kiss")
     async def kiss_slash(self, interaction: discord.Interaction, target_user: discord.User):
         await self._send_action_gif(interaction, "kiss", target_user)
