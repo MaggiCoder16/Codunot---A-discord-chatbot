@@ -194,7 +194,7 @@ async def require_vote_slash(interaction: discord.Interaction) -> bool:
         "Text-To-Speech & File tools** for **12 hours** 💙\n\n"
         "👉 https://top.gg/bot/1435987186502733878/vote\n\n"
         "⏱️ After 12 hours, you'll need to vote again to regain access.\n"
-        "⏳ Once you vote, please wait for **5-10 minutes** before retrying.",
+        "⏳ Once you vote, please wait for **about 5 minutes** before retrying.",
         ephemeral=False
     )
     return False
@@ -401,8 +401,13 @@ class Codunot(commands.Cog):
                 f"{interaction.user.mention} 🤔 Couldn't generate speech right now. Please try again later."
             )
 
+    # ============ ACTION COMMANDS ============
 
     async def _send_action_gif(self, interaction: discord.Interaction, action: str, target_user: discord.User):
+        # Vote check first
+        if not await require_vote_slash(interaction):
+            return
+
         if target_user.id == interaction.user.id:
             await interaction.response.send_message(
                 f"😅 You can't /{action} yourself. Pick someone else!",
@@ -432,38 +437,44 @@ class Codunot(commands.Cog):
                 f"🤔 Couldn't generate a {action} GIF right now. Try again in a bit."
             )
 
-    @app_commands.command(name="hug", description="🤗 Hug any user with a random GIF")
+    @app_commands.command(name="hug", description="🤗 Hug any user with a random GIF (Vote Required)")
     @app_commands.describe(target_user="The user you want to hug")
     async def hug_slash(self, interaction: discord.Interaction, target_user: discord.User):
         await self._send_action_gif(interaction, "hug", target_user)
 
-    @app_commands.command(name="kiss", description="💋 Kiss any user with a random GIF")
+    @app_commands.command(name="kiss", description="💋 Kiss any user with a random GIF (Vote Required)")
     @app_commands.describe(target_user="The user you want to kiss")
     async def kiss_slash(self, interaction: discord.Interaction, target_user: discord.User):
         await self._send_action_gif(interaction, "kiss", target_user)
 
-    @app_commands.command(name="kick", description="🥋 Kick any user with a random anime GIF")
+    @app_commands.command(name="kick", description="🥋 Kick any user with a random anime GIF (Vote Required)")
     @app_commands.describe(target_user="The user you want to kick")
     async def kick_slash(self, interaction: discord.Interaction, target_user: discord.User):
         await self._send_action_gif(interaction, "kick", target_user)
 
-    @app_commands.command(name="slap", description="🖐️ Slap any user with a random anime GIF")
+    @app_commands.command(name="slap", description="🖐️ Slap any user with a random anime GIF (Vote Required)")
     @app_commands.describe(target_user="The user you want to slap")
     async def slap_slash(self, interaction: discord.Interaction, target_user: discord.User):
         await self._send_action_gif(interaction, "slap", target_user)
 
-    @app_commands.command(name="wish_goodmorning", description="🌅 Wish someone a very good morning with a GIF")
+    @app_commands.command(name="wish_goodmorning", description="🌅 Wish someone a very good morning with a GIF (Vote Required)")
     @app_commands.describe(target_user="The user you want to wish good morning")
     async def wish_goodmorning_slash(self, interaction: discord.Interaction, target_user: discord.User):
         await self._send_action_gif(interaction, "wish_goodmorning", target_user)
 
-    @app_commands.command(name="bet", description="🪙 Bet on heads or tails with a coin flip")
+    # ============ FUN COMMANDS ============
+
+    @app_commands.command(name="bet", description="🪙 Bet on heads or tails with a coin flip (Vote Required)")
     @app_commands.describe(side="Choose heads or tails")
     @app_commands.choices(side=[
         app_commands.Choice(name="heads", value="heads"),
         app_commands.Choice(name="tails", value="tails"),
     ])
     async def bet_slash(self, interaction: discord.Interaction, side: app_commands.Choice[str]):
+        # Vote check first
+        if not await require_vote_slash(interaction):
+            return
+
         result = random.choice(["heads", "tails"])
         did_win = side.value == result
 
@@ -478,8 +489,12 @@ class Codunot(commands.Cog):
 
         await interaction.response.send_message(message, ephemeral=False)
 
-    @app_commands.command(name="meme", description="😂 Send a random meme")
+    @app_commands.command(name="meme", description="😂 Send a random meme (Vote Required)")
     async def meme_slash(self, interaction: discord.Interaction):
+        # Vote check 
+        if not await require_vote_slash(interaction):
+            return
+
         meme_url = random.choice(MEME_SOURCES)
         embed = discord.Embed(
             title="😂 Random Meme",
@@ -488,5 +503,11 @@ class Codunot(commands.Cog):
         embed.set_image(url=meme_url)
         await interaction.response.send_message(embed=embed, ephemeral=False)
 
+
 async def setup(bot: commands.Bot):
-    await bot.add_cog(Codunot(bot))
+    """
+    Setup function called by Discord.py to load the cog.
+    """
+    cog = Codunot(bot)
+    await bot.add_cog(cog)
+    print(f"[COG] Loaded Codunot cog with {len(cog.get_app_commands())} app commands")
