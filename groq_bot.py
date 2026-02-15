@@ -94,79 +94,119 @@ channel_last_chess_result = {}
 # ---------------- SETUP SLASH COMMANDS ----------------
 @bot.event
 async def setup_hook():
-	"""
-	This is called when the bot starts up.
-	We use it to sync slash commands.
-	"""
-	import slash_commands
-	
-	slash_commands.memory = memory
-	slash_commands.channel_modes = channel_modes
-	slash_commands.channel_chess = channel_chess
-	slash_commands.user_vote_unlocks = user_vote_unlocks
-	slash_commands.chess_engine = chess_engine
-	slash_commands.OWNER_IDS = OWNER_IDS
-	slash_commands.VOTE_DURATION = VOTE_DURATION
-	slash_commands.BOT_NAME = BOT_NAME
-	slash_commands.boost_image_prompt = boost_image_prompt
-	slash_commands.boost_video_prompt = boost_video_prompt
-	slash_commands.save_vote_unlocks = save_vote_unlocks
-	
-	await slash_commands.setup(bot)
+    import slash_commands
+    
+    slash_commands.memory = memory
+    slash_commands.channel_modes = channel_modes
+    slash_commands.channel_chess = channel_chess
+    slash_commands.user_vote_unlocks = user_vote_unlocks
+    slash_commands.chess_engine = chess_engine
+    slash_commands.OWNER_IDS = OWNER_IDS
+    slash_commands.VOTE_DURATION = VOTE_DURATION
+    slash_commands.BOT_NAME = BOT_NAME
+    slash_commands.boost_image_prompt = boost_image_prompt
+    slash_commands.boost_video_prompt = boost_video_prompt
+    slash_commands.save_vote_unlocks = save_vote_unlocks
+    
+    await slash_commands.setup(bot)
 
-	# Keep slash commands global only (no per-guild command sync).
-	try:
-		# Explicitly clear any commands in the local guild tree cache to avoid accidental guild-scoped sync.
-		bot.tree.clear_commands(guild=None)
-		synced = await bot.tree.sync()
-		print(f"[SLASH COMMANDS] Synced {len(synced)} global command(s)")
-	except Exception as e:
-		print(f"[SLASH COMMANDS] Failed to sync global commands: {e}")
+    try:
+        synced = await bot.tree.sync()
+        print(f"[SLASH COMMANDS] Synced {len(synced)} global command(s)")
+    except Exception as e:
+        print(f"[SLASH COMMANDS] Failed to sync global commands: {e}")
 
 # ---------------- COMMANDS ----------------
 @bot.command(name="codunot_help")
 async def help_command(ctx: commands.Context):
 	"""
-	Sends a help embed describing Codunot's modes and bonus powers.
+	Sends a help embed describing Codunot's modes, features, and tiers.
 	"""
 	embed = discord.Embed(
 		title="🤖 Codunot Help",
-		description="Here's what I can do and how to use me!",
+		description="Here's everything I can do!",
 		color=0xFFA500
 	)
 
 	embed.add_field(
-		name="🟢 Fun Mode",
-		value="`!funmode` or `/funmode` — jokes, memes & chill vibes 😎",
-		inline=False
-	)
-	embed.add_field(
-		name="🔥 Roast Mode",
-		value="`!roastmode` or `/roastmode` — playful burns for anyone 😈",
-		inline=False
-	)
-	embed.add_field(
-		name="📘 Serious Mode",
-		value="`!seriousmode` or `/seriousmode` — clean, fact-based help 📚",
-		inline=False
-	)
-	embed.add_field(
-		name="♟️ Chess Mode",
-		value="`!chessmode` or `/chessmode` — play chess with me ♟️",
-		inline=False
-	)
-	embed.add_field(
-		name="✨ Bonus Powers",
+		name="🔥 Modes (Prefix + Slash)",
 		value=(
-			"📄 Read & summarize files\n"
-			"🖼️ See and understand images\n"
-			"🎨 Generate & edit images (`/generate_image`)\n"
-			"🎬 Generate videos (`/generate_video`)\n"
-			"🔊 Text-to-speech audio (`/generate_tts`)"
+			"Switch personalities anytime:\n"
+			"😎 **Fun Mode** — jokes, memes, chill vibes\n"
+			"`!funmode` or `/funmode`\n\n"
+			"🔥 **Roast Mode** — playful savage burns\n"
+			"`!roastmode` or `/roastmode`\n\n"
+			"📘 **Serious Mode** — focused, fact-based help\n"
+			"`!seriousmode` or `/seriousmode`\n\n"
+			"♟️ **Chess Mode** — play chess inside Discord\n"
+			"`!chessmode` or `/chessmode`"
 		),
 		inline=False
 	)
-	embed.set_footer(text="Tip: In servers, always remember to ping me using @Codunot 'your text'. This is not required in DMs.")
+
+	embed.add_field(
+		name="✨ Bonus Features (Vote to Unlock)",
+		value=(
+			"🗳️ **Vote every 12 hours:** https://top.gg/bot/1435987186502733878/vote\n\n"
+			"Unlocked features include:\n"
+			"• 📄 File Reading & Summaries\n"
+			"• 🖼️ Image Analysis\n"
+			"• 🎨 Generate Image — `/generate_image`\n"
+			"• 🎬 Generate Video — `/generate_video`\n"
+			"• 🔊 Text-to-Speech — `/generate_tts`\n"
+			"• 🖌️ Edit Images (send image + instruction)\n"
+			"• 🖼️ Merge Images (attach 2+ images + say 'merge')"
+		),
+		inline=False
+	)
+
+	embed.add_field(
+		name="💬 Interactive Action Commands (Slash)",
+		value=(
+			"Make chats fun and chaotic:\n"
+			"• 🤗 Hug — `/hug @user`\n"
+			"• 💋 Kiss — `/kiss @user`\n"
+			"• 🥋 Kick — `/kick @user`\n"
+			"• 🖐️ Slap — `/slap @user`\n"
+			"• 🌅 Good Morning — `/wish_goodmorning @user`\n"
+			"• 🪙 Coin Flip Bet — `/bet [heads/tails]`\n"
+			"• 😂 Random Meme — `/meme`\n\n"
+			"Each command sends a random GIF with custom text!"
+		),
+		inline=False
+	)
+
+	embed.add_field(
+		name="🔐 Account Tiers",
+		value=(
+			"🟢 **Basic (Free)**\n"
+			"• 50 messages/day\n"
+			"• 7 attachments/day\n"
+			"• 30 attachments per 2 months\n\n"
+			"🔵 **Premium** — $10 / 2 months\n"
+			"• 100 messages/day\n"
+			"• 15 attachments/day\n"
+			"• 50 attachments per 2 months\n\n"
+			"🟡 **Gold 👑** — $15 / 2 months\n"
+			"• Unlimited messages\n"
+			"• 25 attachments/day\n"
+			"• 100 attachments per 2 months"
+		),
+		inline=False
+	)
+
+	embed.add_field(
+		name="📎 What Counts as an Attachment?",
+		value=(
+			"• Image generation or editing\n"
+			"• Video generation\n"
+			"• File uploads (PDF, DOCX, TXT)\n"
+			"• Text-to-speech audio"
+		),
+		inline=False
+	)
+
+	embed.set_footer(text="💡 Tip: In servers, ping me with @Codunot 'your text' | DMs don't need pings!")
 
 	await ctx.send(embed=embed)
 
