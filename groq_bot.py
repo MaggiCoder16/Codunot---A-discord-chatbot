@@ -23,6 +23,7 @@ from deAPI_client_text2vid import generate_video as text_to_video_512
 from deAPI_client_text2speech import text_to_speech, TextToSpeechError
 from bot_chess import OnlineChessEngine
 from groq_client import call_groq
+from replicate_client import call_replicate
 from slang_normalizer import apply_slang_map
 
 import chess
@@ -268,6 +269,35 @@ async def chessmode(ctx: commands.Context):
 	chess_engine.new_board(chan_id)
 
 	await ctx.send("♟️ Chess mode ACTIVATED. You are white, start!")
+
+@bot.command(name="replicate_test")
+async def replicate_test(ctx: commands.Context, *, message: str):
+	"""
+	Test Replicate GPT-OSS-120B model (Owner only)
+	Usage: !replicate_test your message here
+	"""
+	
+	if not await is_owner_user(ctx.author):
+		await ctx.send("Owner only command")
+		return
+	
+	await ctx.send("Testing Replicate GPT-OSS-120B...")
+	
+	try:
+		response = await call_replicate(
+			prompt=message,
+			temperature=0.7,
+			system_prompt="You are Codunot, a helpful and witty AI assistant."
+		)
+		
+		if response:
+			await send_long_message(ctx.channel, f"**Replicate Response:**\n{response}")
+		else:
+			await ctx.send("Replicate call failed - check logs")
+	
+	except Exception as e:
+		await ctx.send(f"Error: {e}")
+		print(f"[REPLICATE TEST ERROR] {e}")
 
 # ---------------- MODELS ----------------
 PRIMARY_MODEL = "meta-llama/llama-4-scout-17b-16e-instruct"  # Default for all modes
