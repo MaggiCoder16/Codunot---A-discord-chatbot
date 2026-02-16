@@ -1073,6 +1073,7 @@ async def boost_image_prompt(user_prompt: str) -> str:
 		"- This clothing requirement applies ONLY to humans/humanoids, NOT to animals, robots, or objects\n"
 		"- Default human age to 20-25 years unless user specifies otherwise\n"
 		"- Do NOT add people if the user didn't request them (landscapes, objects, animals, etc.)\n\n"
+		"- If the user wants an image of a kitten/cat or any animal that has FUR, don't make it CURLY fur, unless the user specifies that they want CURLY FUR.\n\n"
 
 		"QUALITY GUIDELINES:\n"
 		"✓ Use concrete, specific details instead of vague terms ('weathered hands' not 'old hands')\n"
