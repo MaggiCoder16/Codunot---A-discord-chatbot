@@ -405,7 +405,7 @@ async def require_vote(message) -> None:
 		"Text-To-Speech & File tools** for **12 hours** 💙\n\n"
 		"👉 https://top.gg/bot/1435987186502733878/vote\n\n"
 		"⏱️ After 12 hours, you'll need to vote again to regain access. So, press on the 'every 12 hours' and 'remind me' buttons while you vote.\n"
-		"⏳ Once you vote, please wait for **5-10 minutes** before retrying."
+		"⏳ Once you vote, please wait for **5-10 seconds** before retrying."
 	)
 	
 	await message.channel.send(vote_message)
