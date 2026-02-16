@@ -404,10 +404,11 @@ class Codunot(commands.Cog):
     # ============ ACTION COMMANDS ============
 
     async def _send_action_gif(self, interaction: discord.Interaction, action: str, target_user: discord.User):
-        # Vote check first
+        # Vote check MUST happen first, before any interaction response
         if not await require_vote_slash(interaction):
             return
 
+        # Self-action check - this also sends a response
         if target_user.id == interaction.user.id:
             await interaction.response.send_message(
                 f"😅 You can't /{action} yourself. Pick someone else!",
@@ -415,8 +416,9 @@ class Codunot(commands.Cog):
             )
             return
 
-        if not interaction.response.is_done():
-            await interaction.response.defer()
+        # Only defer after all checks that might send a message
+        await interaction.response.defer()
+        
         try:
             source_url = random.choice(ACTION_GIF_SOURCES[action])
             text = random.choice(ACTION_MESSAGES[action]).format(
