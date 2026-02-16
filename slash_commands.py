@@ -168,11 +168,45 @@ async def fetch_bytes(url: str) -> bytes:
             return await resp.read()
 
 
-# =========================
 #  VOTE CHECK
-# =========================
+
+async def require_vote_deferred(interaction: discord.Interaction) -> bool:
+    """
+    Vote check function for commands that have already deferred.
+    Uses followup.send() instead of response.send_message().
+    """
+    if interaction.user.id in OWNER_IDS:
+        return True
+
+    user_id = interaction.user.id
+    now = time.time()
+    unlock_time = user_vote_unlocks.get(user_id)
+    if unlock_time and (now - unlock_time) < VOTE_DURATION:
+        return True
+
+    if await has_voted(user_id):
+        user_vote_unlocks[user_id] = now
+        if save_vote_unlocks:
+            save_vote_unlocks()
+        return True
+
+    await interaction.followup.send(
+        "🚫 **This feature requires a Top.gg vote**\n\n"
+        "🗳️ Vote to unlock **Image generations, merging & editing, Video generations, "
+        "Text-To-Speech & File tools** for **12 hours** 💙\n\n"
+        "👉 https://top.gg/bot/1435987186502733878/vote\n\n"
+        "⏱️ After 12 hours, you'll need to vote again to regain access.\n"
+        "⏳ Once you vote, please wait for **about 5 minutes** before retrying.",
+        ephemeral=False
+    )
+    return False
+
 
 async def require_vote_slash(interaction: discord.Interaction) -> bool:
+    """
+    Vote check function for commands that have NOT deferred yet.
+    Uses response.send_message().
+    """
     if interaction.user.id in OWNER_IDS:
         return True
 
@@ -258,11 +292,15 @@ class Codunot(commands.Cog):
     @app_commands.command(name="generate_image", description="🖼️ Generate an AI image from a text prompt")
     @app_commands.describe(prompt="Describe the image you want to generate")
     async def generate_image_slash(self, interaction: discord.Interaction, prompt: str):
-        if not await require_vote_slash(interaction):
+        # Defer FIRST to prevent timeout
+        await interaction.response.defer()
+        
+        # Then check vote (using deferred version)
+        if not await require_vote_deferred(interaction):
             return
 
         if not check_limit(interaction, "attachments"):
-            await interaction.response.send_message(
+            await interaction.followup.send(
                 "🚫 You've hit your **daily image generation limit**.\n"
                 "Try again tomorrow or contact aarav_2022 for an upgrade.",
                 ephemeral=False
@@ -270,14 +308,12 @@ class Codunot(commands.Cog):
             return
 
         if not check_total_limit(interaction, "attachments"):
-            await interaction.response.send_message(
+            await interaction.followup.send(
                 "🚫 You've hit your **2 months' image generation limit**.\n"
                 "Contact aarav_2022 for an upgrade.",
                 ephemeral=False
             )
             return
-
-        await interaction.response.defer()
 
         try:
             boosted_prompt = await boost_image_prompt(prompt)
@@ -301,11 +337,15 @@ class Codunot(commands.Cog):
     @app_commands.command(name="generate_video", description="🎬 Generate an AI video from a text prompt")
     @app_commands.describe(prompt="Describe the video you want to generate")
     async def generate_video_slash(self, interaction: discord.Interaction, prompt: str):
-        if not await require_vote_slash(interaction):
+        # Defer FIRST to prevent timeout
+        await interaction.response.defer()
+        
+        # Then check vote (using deferred version)
+        if not await require_vote_deferred(interaction):
             return
     
         if not check_limit(interaction, "attachments"):
-            await interaction.response.send_message(
+            await interaction.followup.send(
                 "🚫 You've hit your **daily video generation limit**.\n"
                 "Try again tomorrow or contact aarav_2022 for an upgrade.",
                 ephemeral=False
@@ -313,14 +353,12 @@ class Codunot(commands.Cog):
             return
     
         if not check_total_limit(interaction, "attachments"):
-            await interaction.response.send_message(
+            await interaction.followup.send(
                 "🚫 You've hit your **2 months' video generation limit**.\n"
                 "Contact aarav_2022 for an upgrade.",
                 ephemeral=False
             )
             return
-    
-        await interaction.response.defer()
     
         try:
             boosted_prompt = await boost_video_prompt(prompt)
@@ -348,11 +386,15 @@ class Codunot(commands.Cog):
     @app_commands.command(name="generate_tts", description="🔊 Generate text-to-speech audio")
     @app_commands.describe(text="The text you want to convert to speech")
     async def generate_tts_slash(self, interaction: discord.Interaction, text: str):
-        if not await require_vote_slash(interaction):
+        # Defer FIRST to prevent timeout
+        await interaction.response.defer()
+        
+        # Then check vote (using deferred version)
+        if not await require_vote_deferred(interaction):
             return
 
         if len(text) > MAX_TTS_LENGTH:
-            await interaction.response.send_message(
+            await interaction.followup.send(
                 f"🚫 Text is too long! Maximum {MAX_TTS_LENGTH} characters allowed.\n"
                 f"Your text: {len(text)} characters.",
                 ephemeral=False
@@ -360,7 +402,7 @@ class Codunot(commands.Cog):
             return
 
         if not check_limit(interaction, "attachments"):
-            await interaction.response.send_message(
+            await interaction.followup.send(
                 "🚫 You've hit your **daily text-to-speech generation limit**.\n"
                 "Try again tomorrow or contact aarav_2022 for an upgrade.",
                 ephemeral=False
@@ -368,14 +410,12 @@ class Codunot(commands.Cog):
             return
 
         if not check_total_limit(interaction, "attachments"):
-            await interaction.response.send_message(
+            await interaction.followup.send(
                 "🚫 You've hit your **2 months' text-to-speech generation limit**.\n"
                 "Contact aarav_2022 for an upgrade.",
                 ephemeral=False
             )
             return
-
-        await interaction.response.defer()
 
         try:
             audio_url = await text_to_speech(text=text, voice="am_michael")
@@ -404,11 +444,6 @@ class Codunot(commands.Cog):
     # ============ ACTION COMMANDS ============
 
     async def _send_action_gif(self, interaction: discord.Interaction, action: str, target_user: discord.User):
-        # Vote check MUST happen first, before any interaction response
-        if not await require_vote_slash(interaction):
-            return
-
-        # Self-action check - this also sends a response
         if target_user.id == interaction.user.id:
             await interaction.response.send_message(
                 f"😅 You can't /{action} yourself. Pick someone else!",
@@ -416,8 +451,10 @@ class Codunot(commands.Cog):
             )
             return
 
-        # Only defer after all checks that might send a message
         await interaction.response.defer()
+        
+        if not await require_vote_deferred(interaction):
+            return
         
         try:
             source_url = random.choice(ACTION_GIF_SOURCES[action])
@@ -473,8 +510,9 @@ class Codunot(commands.Cog):
         app_commands.Choice(name="tails", value="tails"),
     ])
     async def bet_slash(self, interaction: discord.Interaction, side: app_commands.Choice[str]):
-        # Vote check first
-        if not await require_vote_slash(interaction):
+        await interaction.response.defer()
+        
+        if not await require_vote_deferred(interaction):
             return
 
         result = random.choice(["heads", "tails"])
@@ -489,12 +527,13 @@ class Codunot(commands.Cog):
                 f"🪙 The coin landed on **{result}**! {interaction.user.mention} guessed **{side.value}** and lost this round."
             )
 
-        await interaction.response.send_message(message, ephemeral=False)
+        await interaction.followup.send(message, ephemeral=False)
 
     @app_commands.command(name="meme", description="😂 Send a random meme (Vote Required)")
     async def meme_slash(self, interaction: discord.Interaction):
-        # Vote check 
-        if not await require_vote_slash(interaction):
+        await interaction.response.defer()
+        
+        if not await require_vote_deferred(interaction):
             return
 
         meme_url = random.choice(MEME_SOURCES)
@@ -503,7 +542,7 @@ class Codunot(commands.Cog):
             color=0x00BFFF,
         )
         embed.set_image(url=meme_url)
-        await interaction.response.send_message(embed=embed, ephemeral=False)
+        await interaction.followup.send(embed=embed, ephemeral=False)
 
 
 async def setup(bot: commands.Bot):
