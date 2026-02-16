@@ -41,18 +41,30 @@ ACTION_GIF_SOURCES = {
         "https://media.tenor.com/bVN5MdTrelYAAAAj/yaseen1.gif",
         "https://media.tenor.com/FNX3Xvr6yGwAAAAi/snek-bubu.gif",
         "https://i.imgur.com/uXL0iTg.gif",
+        "https://i.giphy.com/IzXiddo2twMmdmU8Lv.webp",
+        "https://i.giphy.com/VbawWIGNtKYwOFXF7U.webp",
+        
     ],
     "kiss": [
-        "https://media0.giphy.com/media/v1.Y2lkPTc5MGI3NjExOGVoeXMxd3FteTF0cGRmMDQzNjRxMm0ybWV1Zno2ZGJycGs3enlhcSZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/G3va31oEEnIkM/giphy.gif",
-        "https://media.giphy.com/media/bGm9FuBCGg4SY/giphy.gif",
-        "https://media1.tenor.com/m/dd4mZNppytYAAAAd/1.gif",
-        "https://media1.tenor.com/m/Y2AdPDiQoK8AAAAC/kiss-love.gif",
+        "https://i.giphy.com/G3va31oEEnIkM.webp",
+        "https://i.giphy.com/bGm9FuBCGg4SY.webp",
+        "https://c.tenor.com/dd4mZNppytYAAAAd/tenor.gif",
+        "https://c.tenor.com/Y2AdPDiQoK8AAAAC/tenor.gif",
+        "https://i.giphy.com/PBbFIL4bF8uS4.webp",
+        "https://i.giphy.com/rFdqmnaIxx6qk.webp",
+        "https://i.giphy.com/MqbZjCY1ghSAo.webp",
+        "https://i.giphy.com/6Q9P2ry85GGOKbxKiC.webp",
     ],
     "kick": [
-        "https://media0.giphy.com/media/v1.Y2lkPTc5MGI3NjExcHpjMHQ4NnNxZjMzOWdpOXozamNpbmRrOG9jZ2xpcnNmb3V3M3pxdiZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/DfI1LsaCkWD20xRc4r/giphy.gif",
-        "https://media0.giphy.com/media/v1.Y2lkPTc5MGI3NjExaG1raWhsZWZoYTRmNTB5ZXJqano3dDdtcnN2cGtpazJoMm1zZDBpcSZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/3o7TKwVQMoQh2At9qU/giphy.gif",
+        "https://i.giphy.com/DfI1LsaCkWD20xRc4r.webp",
+        "https://i.giphy.com/3o7TKwVQMoQh2At9qU.webp",
         "https://media.tenor.com/TDQXdEBNNjUAAAAi/milk-and-mocha.gif",
         "https://media.tenor.com/ztHpFwsax84AAAAi/hau-zozo-smile.gif",
+        "https://i.giphy.com/l3V0j3ytFyGHqiV7W.webp",
+        "https://i.giphy.com/k3j9oaRV4FAT3ksIG1.webp",
+        "https://i.giphy.com/xr9FpQBn2sPUOVtnNZ.webp",
+        "https://i.giphy.com/RN96CaqhRoRHk4DlLV.webp",
+        "https://i.giphy.com/qiiimDJtLj4XK.webp",
     ],
     "slap": [
         "https://media.tenor.com/TVPYqh_E1JYAAAAj/peach-goma-peach-and-goma.gif",
@@ -60,12 +72,18 @@ ACTION_GIF_SOURCES = {
         "https://c.tenor.com/OTr4wv64hwwAAAAd/tenor.gif",
         "https://c.tenor.com/4Ut_QPbeCZIAAAAd/tenor.gif",
         "https://c.tenor.com/LHlITawhrEcAAAAd/tenor.gif",
+        "https://i.giphy.com/3oriNXBCGHrzCYIbZK.webp",
+        "https://i.giphy.com/qyjexFwQwJp9yUvMxq.webp",
+        "https://media1.giphy.com/media/v1.Y2lkPWVjZjA1ZTQ3MDN6cnRhbzg1OGZodjQybXBmbXJkNDNrdTU3cDNmZzN6Nm42NmxlZyZlcD12MV9naWZzX3NlYXJjaCZjdD1n/E2MeuITk1M4pi/200.webp",
+        "https://i.giphy.com/RYOYNPbKoRORepL80E.webp",
     ],
     "wish_goodmorning": [
         "https://media.tenor.com/xwlZJGC0EqwAAAAj/pengu-pudgy.gif",
         "https://media.tenor.com/4pnZsJP06XMAAAAj/have-a-great-day-good-day.gif",
         "https://media.tenor.com/xlwtvJtC6FAAAAAM/jjk-jujutsu-kaisen.gif",
         "https://c.tenor.com/6VbeqshMfkEAAAAd/tenor.gif",
+        "https://i.giphy.com/jhQ6s2Qwjhqpivlitm.webp",
+        "https://i.giphy.com/GjfNsZPvCFs9dQrw36.webp",
     ],
 }
 
@@ -161,10 +179,11 @@ MEME_SOURCES = [
 
 
 async def fetch_bytes(url: str) -> bytes:
+    """Fetch bytes from URL - supports gif, webp, and other image formats"""
     async with aiohttp.ClientSession() as session:
         async with session.get(url) as resp:
             if resp.status != 200:
-                raise Exception(f"Failed to fetch gif: HTTP {resp.status}")
+                raise Exception(f"Failed to fetch image: HTTP {resp.status}")
             return await resp.read()
 
 
@@ -292,10 +311,8 @@ class Codunot(commands.Cog):
     @app_commands.command(name="generate_image", description="🖼️ Generate an AI image from a text prompt")
     @app_commands.describe(prompt="Describe the image you want to generate")
     async def generate_image_slash(self, interaction: discord.Interaction, prompt: str):
-        # Defer FIRST to prevent timeout
         await interaction.response.defer()
         
-        # Then check vote (using deferred version)
         if not await require_vote_deferred(interaction):
             return
 
@@ -337,10 +354,8 @@ class Codunot(commands.Cog):
     @app_commands.command(name="generate_video", description="🎬 Generate an AI video from a text prompt")
     @app_commands.describe(prompt="Describe the video you want to generate")
     async def generate_video_slash(self, interaction: discord.Interaction, prompt: str):
-        # Defer FIRST to prevent timeout
         await interaction.response.defer()
         
-        # Then check vote (using deferred version)
         if not await require_vote_deferred(interaction):
             return
     
@@ -386,10 +401,8 @@ class Codunot(commands.Cog):
     @app_commands.command(name="generate_tts", description="🔊 Generate text-to-speech audio")
     @app_commands.describe(text="The text you want to convert to speech")
     async def generate_tts_slash(self, interaction: discord.Interaction, text: str):
-        # Defer FIRST to prevent timeout
         await interaction.response.defer()
         
-        # Then check vote (using deferred version)
         if not await require_vote_deferred(interaction):
             return
 
@@ -462,6 +475,14 @@ class Codunot(commands.Cog):
                 user=interaction.user.mention,
                 target=target_user.mention
             )
+            
+            file_ext = "gif"
+            if ".webp" in source_url.lower():
+                file_ext = "webp"
+            elif ".png" in source_url.lower():
+                file_ext = "png"
+            elif ".jpg" in source_url.lower() or ".jpeg" in source_url.lower():
+                file_ext = "jpg"
             
             embed = discord.Embed(
                 description=text,
