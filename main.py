@@ -55,9 +55,24 @@ async def deapi_webhook(req: Request):
 
 @app.post("/topgg-webhook")
 async def topgg_webhook(req: Request):
-    auth = req.headers.get("Authorization")
+    auth_header = req.headers.get("Authorization")
+    env_secret = os.getenv("TOPGG_WEBHOOK_AUTH")
 
-    if not TOPGG_WEBHOOK_AUTH or auth != TOPGG_WEBHOOK_AUTH:
+    print("----- TOPGG DEBUG -----")
+    print("Header Authorization:", repr(auth_header))
+    print("Env Secret:", repr(env_secret))
+    print("-----------------------")
+
+    if not env_secret:
+        print("ENV SECRET IS NONE")
+        return JSONResponse(status_code=500, content={"error": "Server misconfigured"})
+
+    if auth_header and env_secret:
+        auth_header = auth_header.strip()
+        env_secret = env_secret.strip()
+
+    if auth_header != env_secret:
+        print("AUTH MISMATCH")
         return JSONResponse(status_code=401, content={"error": "Unauthorized"})
 
     payload = await req.json()
