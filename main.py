@@ -4,14 +4,14 @@ import os
 import uvicorn
 import json
 import time
+import hmac
+import hashlib
 from pathlib import Path
 
 app = FastAPI()
 RESULTS = {}
 
 # TOP.GG CONFIG
-
-TOPGG_WEBHOOK_AUTH = os.getenv("TOPGG_WEBHOOK_AUTH")
 VOTE_FILE = Path("topgg_votes.json")
 VOTE_DURATION_SECONDS = 60 * 60 * 12  # 12 hours
 
@@ -30,6 +30,7 @@ def save_votes(data):
     with VOTE_FILE.open("w", encoding="utf-8") as f:
         json.dump(data, f)
 
+
 @app.post("/webhook")
 async def deapi_webhook(req: Request):
     payload = await req.json()
@@ -38,7 +39,7 @@ async def deapi_webhook(req: Request):
     data = payload.get("data", {})
     request_id = data.get("job_request_id")
 
-    print(f"[Webhook] 📨 {event_type} | request_id={request_id}")
+    print(f"[Webhook] {event_type} | request_id={request_id}")
 
     if event_type == "job.processing":
         return JSONResponse(status_code=200, content={"status": "ack"})
@@ -53,41 +54,57 @@ async def deapi_webhook(req: Request):
 
     return JSONResponse(status_code=200, content={"status": "ack"})
 
+
 @app.post("/topgg-webhook")
 async def topgg_webhook(req: Request):
-    auth_header = req.headers.get("Authorization")
-    env_secret = os.getenv("TOPGG_WEBHOOK_AUTH")
+    secret = os.getenv("TOPGG_WEBHOOK_AUTH")
+    signature_header = req.headers.get("x-topgg-signature")
 
-    print("----- TOPGG DEBUG -----")
-    print("Header Authorization:", repr(auth_header))
-    print("Env Secret:", repr(env_secret))
-    print("-----------------------")
+    if not secret:
+        return JSONResponse(status_code=500, content={"error": "Webhook secret not configured"})
 
-    if not env_secret:
-        print("ENV SECRET IS NONE")
-        return JSONResponse(status_code=500, content={"error": "Server misconfigured"})
+    if not signature_header:
+        return JSONResponse(status_code=401, content={"error": "Missing signature header"})
 
-    if auth_header and env_secret:
-        auth_header = auth_header.strip()
-        env_secret = env_secret.strip()
+    try:
+        parts = dict(item.split("=") for item in signature_header.split(","))
+        timestamp = parts.get("t")
+        signature = parts.get("v1")
+    except Exception:
+        return JSONResponse(status_code=400, content={"error": "Invalid signature format"})
 
-    if auth_header != env_secret:
-        print("AUTH MISMATCH")
-        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+    if not timestamp or not signature:
+        return JSONResponse(status_code=400, content={"error": "Malformed signature header"})
 
-    payload = await req.json()
-    user_id = payload.get("user")
+    raw_body = await req.body()
 
-    if not user_id:
-        return JSONResponse(status_code=400, content={"error": "Missing user"})
+    message = f"{timestamp}.".encode() + raw_body
+    expected_signature = hmac.new(
+        secret.encode(),
+        message,
+        hashlib.sha256
+    ).hexdigest()
 
-    votes = load_votes()
-    votes[str(user_id)] = int(time.time() + VOTE_DURATION_SECONDS)
-    save_votes(votes)
+    if not hmac.compare_digest(expected_signature, signature):
+        return JSONResponse(status_code=401, content={"error": "Invalid signature"})
 
-    print(f"[Top.gg] Vote received for user {user_id}")
+    payload = json.loads(raw_body)
+    event_type = payload.get("type")
+
+    if event_type == "vote.create":
+        user_id = payload["data"]["user"]["platform_id"]
+
+        votes = load_votes()
+        votes[str(user_id)] = int(time.time() + VOTE_DURATION_SECONDS)
+        save_votes(votes)
+
+        print(f"[Top.gg] Vote received for user {user_id}")
+
+    elif event_type == "webhook.test":
+        print("[Top.gg] Webhook test received")
 
     return {"status": "ok"}
+
 
 @app.get("/result/{request_id}")
 async def get_result(request_id: str):
