@@ -415,8 +415,8 @@ class Codunot(commands.Cog):
             )
             return
 
-        await interaction.response.defer()
-
+        if not interaction.response.is_done():
+            await interaction.response.defer()
         try:
             source_url = random.choice(ACTION_GIF_SOURCES[action])
             text = random.choice(ACTION_MESSAGES[action]).format(
