@@ -11,3 +11,4 @@ python-docx
 requests
 fastapi
 uvicorn
+replicate
