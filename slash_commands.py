@@ -5,6 +5,7 @@ import os
 import time
 import io
 import aiohttp
+import asyncio
 import random
 
 from memory import MemoryManager
