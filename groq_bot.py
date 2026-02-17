@@ -1920,6 +1920,12 @@ async def on_message(message: Message):
 # ---------------- EVENTS ----------------
 @bot.event
 async def on_ready():
+	await bot.change_presence(
+		activity=discord.CustomActivity(
+			name="🍊 /help · codunot.bot"
+		),
+		status=discord.Status.online
+	)
 	print(f"{BOT_NAME} is ready!")
 	asyncio.create_task(process_queue())
 	asyncio.create_task(autosave_usage())
