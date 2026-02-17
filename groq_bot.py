@@ -265,7 +265,7 @@ async def chessmode(ctx: commands.Context):
 	)
 
 	channel_chess[chan_id] = True
-	channel_modes[chan_id] = "funny"  # optional default during chess
+	channel_modes[chan_id] = "funny"
 	chess_engine.new_board(chan_id)
 
 	await ctx.send("♟️ Chess mode ACTIVATED. You are white, start!")
@@ -299,49 +299,49 @@ async def replicate_test(ctx: commands.Context, *, message: str):
 		await ctx.send(f"Error: {e}")
 		print(f"[REPLICATE TEST ERROR] {e}")
 
-@bot.command(name="test_gpt_groq")
-async def test_gpt_groq(ctx: commands.Context, mode: str = "funny", *, message: str):
-    """
-    Test Groq's GPT OSS 120B model (Owner only)
-    Usage: !test_gpt_groq [funny/serious/roast] your message
-    Example: !test_gpt_groq roast my friend Alex
-    """
+@bot.command(name="test_llama")
+async def test_llama(ctx: commands.Context, mode: str = "funny", *, message: str):
+	"""
+	Test Llama 4 Scout model (Owner only)
+	Usage: !test_llama [funny/serious/roast] your message
+	Example: !test_llama roast my friend Alex
+	"""
 
-    if not await is_owner_user(ctx.author):
-        await ctx.send("🚫 Owner only command.")
-        return
+	if not await is_owner_user(ctx.author):
+		await ctx.send("🚫 Owner only command.")
+		return
 
-    valid_modes = {"funny", "serious", "roast"}
-    if mode not in valid_modes:
-        await ctx.send("❌ Invalid mode. Use: `funny`, `serious`, or `roast`")
-        return
+	valid_modes = {"funny", "serious", "roast"}
+	if mode not in valid_modes:
+		await ctx.send("❌ Invalid mode. Use: `funny`, `serious`, or `roast`")
+		return
 
-    await ctx.send(f"🧪 Testing GPT OSS 120B in `{mode}` mode...")
+	await ctx.send(f"🧪 Testing Llama 4 Scout in `{mode}` mode...")
 
-    try:
-        if mode == "roast":
-            prompt = build_roast_prompt("test", message)
-        else:
-            prompt = build_general_prompt("test", mode, None, False) + f"\nUser says:\n{message}\n\nReply:"
+	try:
+		if mode == "roast":
+			prompt = build_roast_prompt("test", message)
+		else:
+			prompt = build_general_prompt("test", mode, None, False) + f"\nUser says:\n{message}\n\nReply:"
 
-        response = await call_groq(
-            prompt=prompt,
-            model="openai/gpt-oss-120b",
-            temperature=1.3 if mode == "roast" else 0.7,
-        )
+		response = await call_groq(
+			prompt=prompt,
+			model="meta-llama/llama-4-scout-17b-16e-instruct",
+			temperature=1.3 if mode == "roast" else 0.7,
+		)
 
-        if response:
-            await send_long_message(ctx.channel, f"**GPT OSS 120B ({mode}):**\n{response}")
-        else:
-            await ctx.send("❌ Groq call failed — check logs.")
+		if response:
+			await send_long_message(ctx.channel, f"**Llama 4 Scout ({mode}):**\n{response}")
+		else:
+			await ctx.send("❌ Groq call failed — check logs.")
 
-    except Exception as e:
-        await ctx.send(f"❌ Error: {e}")
-        print(f"[TEST_GPT_GROQ ERROR] {e}")
+	except Exception as e:
+		await ctx.send(f"❌ Error: {e}")
+		print(f"[TEST_LLAMA ERROR] {e}")
 
 # ---------------- MODELS ----------------
-PRIMARY_MODEL = "meta-llama/llama-4-scout-17b-16e-instruct"  # Default for all modes
-FALLBACK_MODEL = "meta-llama/llama-4-maverick-17b-128e-instruct"  # Used when PRIMARY is overloaded
+PRIMARY_MODEL = "openai/gpt-oss-120b"
+FALLBACK_MODEL = "meta-llama/llama-4-scout-17b-16e-instruct"
 
 PRIMARY_COOLDOWN_UNTIL = None
 PRIMARY_COOLDOWN_DURATION = timedelta(minutes=10)
@@ -803,8 +803,7 @@ def build_general_prompt(chan_id, mode, message, include_last_image=False):
 		f"Reply as Codunot:"
 	)
 
-def build_roast_prompt(chan_id, user_message):
-	"""Build roast prompt WITH conversation history"""
+def build_roast_prompt(chan_id, user_message, reply_context=""):
 	mem = channel_memory.get(chan_id, deque())
 	history_text = "\n".join(mem) if mem else "No previous messages."
 	
@@ -813,17 +812,24 @@ def build_roast_prompt(chan_id, user_message):
 		f"=== CONVERSATION HISTORY ===\n"
 		f"{history_text}\n"
 		f"=== END HISTORY ===\n\n"
-		f"ANALYZE the entire conversation context above.\n"
+		+ (f"{reply_context}\n" if reply_context else "")
+		+ f"IMPORTANT: Read the conversation history above carefully.\n"
+		f"If the user is replying to something, respond to THAT specific thing.\n"
+		f"If the user says 'wdym', 'what', 'huh' etc — roast them FOR being confused, referencing exactly what you said before.\n"
+		f"NEVER break character. NEVER explain yourself normally. ALWAYS stay in roast mode.\n\n"
 		f"User's latest message: '{user_message}'\n"
-		f"Generate ONE savage roast that uses context from the conversation."
+		f"Generate ONE savage roast response."
 	)
 
 async def handle_roast_mode(chan_id, message, user_message):
 	guild_id = message.guild.id if message.guild else None
 	if guild_id is not None and not await can_send_in_guild(guild_id):
 		return
-	prompt = build_roast_prompt(chan_id, user_message)
-	raw = await call_groq(prompt, model="llama-3.3-70b-versatile", temperature=1.3)
+	
+	reply_context = await build_reply_context(message)
+	prompt = build_roast_prompt(chan_id, user_message, reply_context=reply_context)
+	
+	raw = await call_groq(prompt, model="openai/gpt-oss-120b", temperature=1.3)
 	reply = raw.strip() if raw else choose_fallback()
 	if reply and not reply.endswith(('.', '!', '?')):
 		reply += '.'
