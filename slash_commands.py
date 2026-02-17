@@ -185,10 +185,7 @@ async def fetch_bytes(url: str) -> bytes:
             return await resp.read()
 
 
-# ============ VOTE CHECK ============
-
 def _build_vote_embed() -> discord.Embed:
-    """Shared embed builder for vote requirement."""
     embed = discord.Embed(
         title="🔒 Vote Required to Unlock This Feature",
         description=(
@@ -249,7 +246,6 @@ def _build_vote_embed() -> discord.Embed:
 
 
 def _build_vote_view() -> discord.ui.View:
-    """Shared vote button view."""
     view = discord.ui.View(timeout=None)
     view.add_item(discord.ui.Button(
         label="🗳️ Vote Now",
@@ -260,41 +256,32 @@ def _build_vote_view() -> discord.ui.View:
 
 
 async def check_vote_status(user_id: int) -> bool:
-    """
-    Pure vote check — no Discord interaction needed.
-    Returns True if user has voted, False if not.
-    """
     if user_id in OWNER_IDS:
         return True
-
     now = time.time()
     unlock_time = user_vote_unlocks.get(user_id)
     if unlock_time and (now - unlock_time) < VOTE_DURATION:
         return True
-
     if await has_voted(user_id):
         user_vote_unlocks[user_id] = now
         if save_vote_unlocks:
             save_vote_unlocks()
         return True
-
     return False
 
 
 async def require_vote_deferred(interaction: discord.Interaction) -> bool:
-    """Vote check for already-deferred interactions. Uses followup.send()."""
     voted = await check_vote_status(interaction.user.id)
     if not voted:
-        await interaction.followup.send(
+        await interaction.edit_original_response(
+            content=None,
             embed=_build_vote_embed(),
-            view=_build_vote_view(),
-            ephemeral=False
+            view=_build_vote_view()
         )
     return voted
 
 
 async def require_vote_slash(interaction: discord.Interaction) -> bool:
-    """Vote check for non-deferred interactions. Uses response.send_message()."""
     voted = await check_vote_status(interaction.user.id)
     if not voted:
         await interaction.response.send_message(
@@ -305,13 +292,9 @@ async def require_vote_slash(interaction: discord.Interaction) -> bool:
     return voted
 
 
-# ============ COG ============
-
 class Codunot(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
-
-    # ============ MODE COMMANDS ============
 
     @app_commands.command(name="funmode", description="😎 Activate Fun Mode - jokes, memes & chill vibes")
     async def funmode_slash(self, interaction: discord.Interaction):
@@ -349,39 +332,41 @@ class Codunot(commands.Cog):
         chess_engine.new_board(chan_id)
         await interaction.response.send_message("♟️ Chess mode ACTIVATED. You are white, start!", ephemeral=False)
 
-    # ============ GENERATION COMMANDS ============
-
     @app_commands.command(name="generate_image", description="🖼️ Generate an AI image from a text prompt")
     @app_commands.describe(prompt="Describe the image you want to generate")
     async def generate_image_slash(self, interaction: discord.Interaction, prompt: str):
         await interaction.response.defer()
-        await interaction.followup.send("🗳️ Checking your vote status...")
+        await interaction.edit_original_response(content="🗳️ **Checking your vote status...**")
 
         if not await require_vote_deferred(interaction):
             return
 
         if not check_limit(interaction, "attachments"):
-            await interaction.followup.send(
-                "🚫 You've hit your **daily image generation limit**.\n"
-                "Try again tomorrow or contact aarav_2022 for an upgrade."
+            await interaction.edit_original_response(
+                content="🚫 You've hit your **daily image generation limit**.\nTry again tomorrow or contact aarav_2022 for an upgrade.",
+                embed=None,
+                view=None
             )
             return
 
         if not check_total_limit(interaction, "attachments"):
-            await interaction.followup.send(
-                "🚫 You've hit your **2 months' image generation limit**.\n"
-                "Contact aarav_2022 for an upgrade."
+            await interaction.edit_original_response(
+                content="🚫 You've hit your **2 months' image generation limit**.\nContact aarav_2022 for an upgrade.",
+                embed=None,
+                view=None
             )
             return
 
-        await interaction.followup.send("✅ Vote verified! 🎨 Cooking up your image... hang tight ✨")
+        await interaction.edit_original_response(content="✅ **Vote verified! 🎨 Cooking up your image... hang tight ✨**")
 
         try:
             boosted_prompt = await boost_image_prompt(prompt)
             image_bytes = await generate_image(boosted_prompt, aspect_ratio="16:9", steps=15)
 
+            await interaction.edit_original_response(
+                content=f"{interaction.user.mention} 🖼️ Generated: `{prompt[:150]}...`" if len(prompt) > 150 else f"{interaction.user.mention} 🖼️ Generated: `{prompt}`"
+            )
             await interaction.followup.send(
-                content=f"{interaction.user.mention} 🖼️ Generated: `{prompt[:150]}...`" if len(prompt) > 150 else f"{interaction.user.mention} 🖼️ Generated: `{prompt}`",
                 file=discord.File(io.BytesIO(image_bytes), filename="generated_image.png")
             )
 
@@ -391,45 +376,51 @@ class Codunot(commands.Cog):
 
         except Exception as e:
             print(f"[SLASH IMAGE ERROR] {e}")
-            await interaction.followup.send(
-                f"{interaction.user.mention} 🤔 Couldn't generate image right now. Please try again later."
+            await interaction.edit_original_response(
+                content=f"{interaction.user.mention} 🤔 Couldn't generate image right now. Please try again later.",
+                embed=None,
+                view=None
             )
 
     @app_commands.command(name="generate_video", description="🎬 Generate an AI video from a text prompt")
     @app_commands.describe(prompt="Describe the video you want to generate")
     async def generate_video_slash(self, interaction: discord.Interaction, prompt: str):
         await interaction.response.defer()
-        await interaction.followup.send("🗳️ Checking your vote status...")
+        await interaction.edit_original_response(content="🗳️ **Checking your vote status...**")
 
         if not await require_vote_deferred(interaction):
             return
 
         if not check_limit(interaction, "attachments"):
-            await interaction.followup.send(
-                "🚫 You've hit your **daily video generation limit**.\n"
-                "Try again tomorrow or contact aarav_2022 for an upgrade."
+            await interaction.edit_original_response(
+                content="🚫 You've hit your **daily video generation limit**.\nTry again tomorrow or contact aarav_2022 for an upgrade.",
+                embed=None,
+                view=None
             )
             return
 
         if not check_total_limit(interaction, "attachments"):
-            await interaction.followup.send(
-                "🚫 You've hit your **2 months' video generation limit**.\n"
-                "Contact aarav_2022 for an upgrade."
+            await interaction.edit_original_response(
+                content="🚫 You've hit your **2 months' video generation limit**.\nContact aarav_2022 for an upgrade.",
+                embed=None,
+                view=None
             )
             return
 
-        await interaction.followup.send("✅ Vote verified! 🎬 Rendering your video... this may take upto ~1 min ⏳")
+        await interaction.edit_original_response(content="✅ **Vote verified! 🎬 Rendering your video... this may take up to ~1 min ⏳**")
 
         try:
             boosted_prompt = await boost_video_prompt(prompt)
             video_bytes = await text_to_video_512(prompt=boosted_prompt)
 
-            await interaction.followup.send(
+            await interaction.edit_original_response(
                 content=(
                     f"{interaction.user.mention} 🎬 Generated: `{prompt[:150]}...`"
                     if len(prompt) > 150
                     else f"{interaction.user.mention} 🎬 Generated: `{prompt}`"
-                ),
+                )
+            )
+            await interaction.followup.send(
                 file=discord.File(io.BytesIO(video_bytes), filename="generated_video.mp4")
             )
 
@@ -439,41 +430,46 @@ class Codunot(commands.Cog):
 
         except Exception as e:
             print(f"[SLASH VIDEO ERROR] {e}")
-            await interaction.followup.send(
-                f"{interaction.user.mention} 🤔 Couldn't generate video right now. Please try again later."
+            await interaction.edit_original_response(
+                content=f"{interaction.user.mention} 🤔 Couldn't generate video right now. Please try again later.",
+                embed=None,
+                view=None
             )
 
     @app_commands.command(name="generate_tts", description="🔊 Generate text-to-speech audio")
     @app_commands.describe(text="The text you want to convert to speech")
     async def generate_tts_slash(self, interaction: discord.Interaction, text: str):
         await interaction.response.defer()
-        await interaction.followup.send("🗳️ Checking your vote status...")
+        await interaction.edit_original_response(content="🗳️ **Checking your vote status...**")
 
         if not await require_vote_deferred(interaction):
             return
 
         if len(text) > MAX_TTS_LENGTH:
-            await interaction.followup.send(
-                f"🚫 Text is too long! Maximum {MAX_TTS_LENGTH} characters allowed.\n"
-                f"Your text: {len(text)} characters."
+            await interaction.edit_original_response(
+                content=f"🚫 Text is too long! Maximum {MAX_TTS_LENGTH} characters allowed.\nYour text: {len(text)} characters.",
+                embed=None,
+                view=None
             )
             return
 
         if not check_limit(interaction, "attachments"):
-            await interaction.followup.send(
-                "🚫 You've hit your **daily TTS generation limit**.\n"
-                "Try again tomorrow or contact aarav_2022 for an upgrade."
+            await interaction.edit_original_response(
+                content="🚫 You've hit your **daily TTS generation limit**.\nTry again tomorrow or contact aarav_2022 for an upgrade.",
+                embed=None,
+                view=None
             )
             return
 
         if not check_total_limit(interaction, "attachments"):
-            await interaction.followup.send(
-                "🚫 You've hit your **2 months' TTS generation limit**.\n"
-                "Contact aarav_2022 for an upgrade."
+            await interaction.edit_original_response(
+                content="🚫 You've hit your **2 months' TTS generation limit**.\nContact aarav_2022 for an upgrade.",
+                embed=None,
+                view=None
             )
             return
 
-        await interaction.followup.send("✅ Vote verified! 🔊 Generating your audio... almost there 🎙️")
+        await interaction.edit_original_response(content="✅ **Vote verified! 🔊 Generating your audio... almost there 🎙️**")
 
         try:
             audio_url = await text_to_speech(text=text, voice="am_michael")
@@ -484,8 +480,10 @@ class Codunot(commands.Cog):
                         raise Exception("Failed to download TTS audio")
                     audio_bytes = await resp.read()
 
+            await interaction.edit_original_response(
+                content=f"{interaction.user.mention} 🔊 TTS: `{text[:150]}...`" if len(text) > 150 else f"{interaction.user.mention} 🔊 TTS: `{text}`"
+            )
             await interaction.followup.send(
-                content=f"{interaction.user.mention} 🔊 TTS: `{text[:150]}...`" if len(text) > 150 else f"{interaction.user.mention} 🔊 TTS: `{text}`",
                 file=discord.File(io.BytesIO(audio_bytes), filename="speech.mp3")
             )
 
@@ -495,11 +493,11 @@ class Codunot(commands.Cog):
 
         except Exception as e:
             print(f"[SLASH TTS ERROR] {e}")
-            await interaction.followup.send(
-                f"{interaction.user.mention} 🤔 Couldn't generate speech right now. Please try again later."
+            await interaction.edit_original_response(
+                content=f"{interaction.user.mention} 🤔 Couldn't generate speech right now. Please try again later.",
+                embed=None,
+                view=None
             )
-
-    # ============ ACTION COMMANDS ============
 
     async def _send_action_gif(self, interaction: discord.Interaction, action: str, target_user: discord.User):
         if target_user.id == interaction.user.id:
@@ -510,12 +508,12 @@ class Codunot(commands.Cog):
             return
 
         await interaction.response.defer()
-        await interaction.followup.send("🗳️ Checking your vote status...")
+        await interaction.edit_original_response(content="🗳️ **Checking your vote status...**")
 
         if not await require_vote_deferred(interaction):
             return
 
-        await interaction.followup.send("✅ Vote verified! Loading your GIF... 🎉")
+        await interaction.edit_original_response(content="✅ **Vote verified! 🎉 Loading your GIF...**")
 
         try:
             source_url = random.choice(ACTION_GIF_SOURCES[action])
@@ -527,12 +525,14 @@ class Codunot(commands.Cog):
             embed = discord.Embed(description=text, color=0xFFA500)
             embed.set_image(url=source_url)
 
-            await interaction.followup.send(embed=embed)
+            await interaction.edit_original_response(content=None, embed=embed)
 
         except Exception as e:
             print(f"[SLASH {action.upper()} ERROR] {e}")
-            await interaction.followup.send(
-                f"🤔 Couldn't generate a {action} GIF right now. Try again in a bit."
+            await interaction.edit_original_response(
+                content=f"🤔 Couldn't generate a {action} GIF right now. Try again in a bit.",
+                embed=None,
+                view=None
             )
 
     @app_commands.command(name="hug", description="🤗 Hug any user with a random GIF (Vote Required)")
@@ -560,8 +560,6 @@ class Codunot(commands.Cog):
     async def wish_goodmorning_slash(self, interaction: discord.Interaction, target_user: discord.User):
         await self._send_action_gif(interaction, "wish_goodmorning", target_user)
 
-    # ============ FUN COMMANDS ============
-
     @app_commands.command(name="bet", description="🪙 Bet on heads or tails with a coin flip (Vote Required)")
     @app_commands.describe(side="Choose heads or tails")
     @app_commands.choices(side=[
@@ -570,37 +568,37 @@ class Codunot(commands.Cog):
     ])
     async def bet_slash(self, interaction: discord.Interaction, side: app_commands.Choice[str]):
         await interaction.response.defer()
-        await interaction.followup.send("🗳️ Checking your vote status...")
+        await interaction.edit_original_response(content="🗳️ **Checking your vote status...**")
 
         if not await require_vote_deferred(interaction):
             return
 
-        await interaction.followup.send("✅ Vote verified! 🪙 Flipping the coin...")
+        await interaction.edit_original_response(content="✅ **Vote verified! 🪙 Flipping the coin...**")
 
         result = random.choice(["heads", "tails"])
         did_win = side.value == result
 
         if did_win:
-            message = f"🪙 The coin landed on **{result}**! {interaction.user.mention} guessed correctly and wins! 🎉"
+            msg = f"🪙 The coin landed on **{result}**! {interaction.user.mention} guessed correctly and wins! 🎉"
         else:
-            message = f"🪙 The coin landed on **{result}**! {interaction.user.mention} guessed **{side.value}** and lost this round."
+            msg = f"🪙 The coin landed on **{result}**! {interaction.user.mention} guessed **{side.value}** and lost this round."
 
-        await interaction.followup.send(message, ephemeral=False)
+        await interaction.edit_original_response(content=msg)
 
     @app_commands.command(name="meme", description="😂 Send a random meme (Vote Required)")
     async def meme_slash(self, interaction: discord.Interaction):
         await interaction.response.defer()
-        await interaction.followup.send("🗳️ Checking your vote status...")
+        await interaction.edit_original_response(content="🗳️ **Checking your vote status...**")
 
         if not await require_vote_deferred(interaction):
             return
 
-        await interaction.followup.send("✅ Vote verified! 😂 Loading your meme...")
+        await interaction.edit_original_response(content="✅ **Vote verified! 😂 Loading your meme...**")
 
         meme_url = random.choice(MEME_SOURCES)
         embed = discord.Embed(title="😂 Random Meme", color=0x00BFFF)
         embed.set_image(url=meme_url)
-        await interaction.followup.send(embed=embed, ephemeral=False)
+        await interaction.edit_original_response(content=None, embed=embed)
 
 
 async def setup(bot: commands.Bot):
