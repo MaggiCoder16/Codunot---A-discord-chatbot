@@ -299,6 +299,35 @@ async def replicate_test(ctx: commands.Context, *, message: str):
 		await ctx.send(f"Error: {e}")
 		print(f"[REPLICATE TEST ERROR] {e}")
 
+@bot.command(name="test_gpt_groq")
+async def test_gpt_groq(ctx: commands.Context, *, message: str):
+    """
+    Test Groq's GPT OSS 120B model (Owner only)
+    Usage: !test_gpt_groq your message here
+    """
+
+    if not await is_owner_user(ctx.author):
+        await ctx.send("🚫 Owner only command.")
+        return
+
+    await ctx.send("🧪 Testing Groq GPT OSS 120B...")
+
+    try:
+        response = await call_groq(
+            prompt=message,
+            model="openai/gpt-oss-120b",
+            temperature=0.7,
+        )
+
+        if response:
+            await send_long_message(ctx.channel, f"**GPT OSS 120B Response:**\n{response}")
+        else:
+            await ctx.send("❌ Groq call failed — check logs.")
+
+    except Exception as e:
+        await ctx.send(f"❌ Error: {e}")
+        print(f"[TEST_GPT_GROQ ERROR] {e}")
+
 # ---------------- MODELS ----------------
 PRIMARY_MODEL = "meta-llama/llama-4-scout-17b-16e-instruct"  # Default for all modes
 FALLBACK_MODEL = "meta-llama/llama-4-maverick-17b-128e-instruct"  # Used when PRIMARY is overloaded
