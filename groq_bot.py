@@ -1215,12 +1215,12 @@ async def handle_file_message(message, mode):
 		return None
 
 	persona = PERSONAS.get(mode, PERSONAS["serious"])
-    prompt = (
-        f"{persona}\n"
-        f"The user uploaded a file `{filename}`. Content:\n{text}\n\n"
-        f"The user's specific request is: {message.content}\n"
-        f"Answer ONLY what the user asked. If the user didn't ask anything and just sent the file, just summarize the file, and tell the user what the file is about."
-    )
+	prompt = (
+		f"{persona}\n"
+		f"The user uploaded a file `{filename}`. Content:\n{text}\n\n"
+		f"The user's specific request is: {message.content}\n"
+		f"Answer ONLY what the user asked. If the user didn't ask anything and just sent the file, just summarize the file, and tell the user what the file is about."
+	)
 	try:
 		response = await call_groq_with_health(
 			prompt=prompt,
