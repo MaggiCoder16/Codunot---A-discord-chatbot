@@ -30,6 +30,7 @@ user_vote_unlocks = {}
 chess_engine = None
 OWNER_IDS = set()
 VOTE_DURATION = 12 * 60 * 60
+BYPASS_IDS = {1220934047794987048, 1167443519070290051}
 BOT_NAME = "Codunot"
 MAX_TTS_LENGTH = 150
 boost_image_prompt = None
@@ -257,19 +258,20 @@ def _build_vote_view() -> discord.ui.View:
 
 
 async def check_vote_status(user_id: int) -> bool:
-    if user_id in OWNER_IDS:
-        return True
-    now = time.time()
-    unlock_time = user_vote_unlocks.get(user_id)
-    if unlock_time and (now - unlock_time) < VOTE_DURATION:
-        return True
-    if await has_voted(user_id):
-        user_vote_unlocks[user_id] = now
-        if save_vote_unlocks:
-            save_vote_unlocks()
-        return True
-    return False
-
+	if user_id in OWNER_IDS:
+		return True
+	if user_id in BYPASS_IDS:
+		return True
+	now = time.time()
+	unlock_time = user_vote_unlocks.get(user_id)
+	if unlock_time and (now - unlock_time) < VOTE_DURATION:
+		return True
+	if await has_voted(user_id):
+		user_vote_unlocks[user_id] = now
+		if save_vote_unlocks:
+			save_vote_unlocks()
+		return True
+	return False
 
 async def require_vote_deferred(interaction: discord.Interaction) -> bool:
     voted = await check_vote_status(interaction.user.id)
