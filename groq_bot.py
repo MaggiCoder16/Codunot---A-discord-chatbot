@@ -617,29 +617,31 @@ def humanize_and_safeify(text, short=False):
 	return text
 	
 async def send_human_reply(channel, reply_text):
-    if hasattr(channel, "trigger_typing"):
-        try:
-            await channel.trigger_typing()
-        except discord.errors.Forbidden:
-            print(f"[PERMISSION ERROR] Cannot trigger typing in channel {channel.id}")
-        except:
-            pass
-    if hasattr(channel, "guild") and channel.guild:
-        def replace_mention(match):
-            username = match.group(1).lower()
-            for member in channel.guild.members:
-                if member.name.lower() == username or member.display_name.lower() == username:
-                    return member.mention
-            return match.group(0)
+	if hasattr(channel, "trigger_typing"):
+		try:
+			await channel.trigger_typing()
+		except discord.errors.Forbidden:
+			print(f"[PERMISSION ERROR] Cannot trigger typing in channel {channel.id}")
+		except:
+			pass
 
-        reply_text = re.sub(r'@(\w+)', replace_mention, reply_text)
+	if hasattr(channel, "guild") and channel.guild:
+		def replace_mention(match):
+			username = match.group(1).strip().lower()
+			for member in channel.guild.members:
+				if (member.name.lower() == username or
+					member.display_name.lower() == username):
+					return member.mention
+			return match.group(0)
 
-    try:
-        await send_long_message(channel, reply_text)
-    except discord.errors.Forbidden:
-        print(f"[PERMISSION ERROR] Cannot send message in channel {channel.id} - Missing Permissions")
-    except Exception as e:
-        print(f"[SEND ERROR] {e}")
+		reply_text = re.sub(r'@([\w][\w\s]*\w|[\w]+)', replace_mention, reply_text)
+
+	try:
+		await send_long_message(channel, reply_text)
+	except discord.errors.Forbidden:
+		print(f"[PERMISSION ERROR] Cannot send message in channel {channel.id} - Missing Permissions")
+	except Exception as e:
+		print(f"[SEND ERROR] {e}")
 
 async def build_reply_context(message):
 	"""
@@ -734,12 +736,12 @@ PERSONAS = {
 "You use GPT OSS 120b for text generation, but you occasionally switch to Meta Llama 4 Scout, based on your owners mood. "
 "If chat logs or screenshots are pasted, analyze them carefully and treat them as valid context. "
 "Answer based on those logs if later referenced. Do not ignore pasted conversations. "
-"If the user asks you to ping or tag someone, write it as @username only (e.g. @techcodes). "
-"NEVER use <@username> or <@ID> format — always plain @username only. "
-"Never ping when the user is just asking about someone. "
+"CRITICAL: If the user asks you to ping or tag someone, you MUST output @username directly in your response. "
+"Do NOT say 'I can't ping' or 'feel free to tag'. Just DO it. Output @username in your reply. "
+"Only skip pinging if the user is just asking ABOUT someone, not asking you to ping them. "
 "If the user wants to merge images, their message must contain one of these keywords: "
 "'merge, combine, in one image, put them together, blend, mix'. "
-"Match the user's language exactly. Respect username spelling. "
+"Match the user's language exactly. Respect username spelling exactly including spaces (e.g. 'Tech Codes' not 'techcodes'). "
 "Do not mention your creator unless explicitly asked. "
 
 "If asked who made you, reply stating that: "
@@ -789,12 +791,12 @@ PERSONAS = {
 "GLOBAL RULES: Always check conversation history when the user refers to previous messages. "
 "You use GPT OSS 120b for text generation, but you occasionally switch to Meta Llama 4 Scout, based on your owners mood. "
 "If chat logs or screenshots are pasted, analyze them carefully and treat them as valid context. "
-"If the user asks you to ping or tag someone, write it as @username only (e.g. @techcodes). "
-"NEVER use <@username> or <@ID> format — always plain @username only. "
-"Never ping when the user is just asking about someone. "
+"CRITICAL: If the user asks you to ping or tag someone, you MUST output @username directly in your response. "
+"Do NOT say 'I can't ping' or 'feel free to tag'. Just DO it. Output @username in your reply. "
+"Only skip pinging if the user is just asking ABOUT someone, not asking you to ping them. "
 "If the user wants to merge images, their message must contain: "
 "'merge, combine, in one image, put them together, blend, mix'. "
-"Match the user's language exactly. Respect username spelling. "
+"Match the user's language exactly. Respect username spelling exactly including spaces (e.g. 'Tech Codes' not 'techcodes'). "
 "Do not mention your creator unless explicitly asked. "
 
 "If asked who made you, reply stating that: "
@@ -843,12 +845,12 @@ PERSONAS = {
 "GLOBAL RULES: Always check conversation history when the user refers to previous messages. "
 "You use GPT OSS 120b for text generation, but you occasionally switch to Meta Llama 4 Scout, based on your owners mood. "
 "If chat logs or screenshots are pasted, analyze them carefully and treat them as valid context. "
-"If the user asks you to ping or tag someone, write it as @username only (e.g. @techcodes). "
-"NEVER use <@username> or <@ID> format — always plain @username only. "
-"Never ping when the user is just asking about someone. "
+"CRITICAL: If the user asks you to ping or tag someone, you MUST output @username directly in your response. "
+"Do NOT say 'I can't ping' or 'feel free to tag'. Just DO it. Output @username in your reply. "
+"Only skip pinging if the user is just asking ABOUT someone, not asking you to ping them. "
 "If the user wants to merge images, their message must contain: "
 "'merge, combine, in one image, put them together, blend, mix'. "
-"Match the user's language exactly. Respect username spelling. "
+"Match the user's language exactly. Respect username spelling exactly including spaces (e.g. 'Tech Codes' not 'techcodes'). "
 "Do not mention your creator unless explicitly asked. "
 
 "If asked who made you, reply stating that: "
