@@ -7,6 +7,7 @@ import io
 import aiohttp
 import asyncio
 import random
+from typing import Optional
 
 from memory import MemoryManager
 from deAPI_client_image import generate_image
@@ -36,6 +37,9 @@ MAX_TTS_LENGTH = 150
 boost_image_prompt = None
 boost_video_prompt = None
 save_vote_unlocks = None
+set_server_mode = None
+set_channels_mode = None
+get_guild_config = None
 
 ACTION_GIF_SOURCES = {
 	"hug": [
@@ -295,9 +299,86 @@ async def require_vote_slash(interaction: discord.Interaction) -> bool:
 	return voted
 
 
+
+
+class ConfigureGroup(app_commands.Group):
+	def __init__(self):
+		super().__init__(name="configure", description="Configure where the bot can chat in this server")
+
+	async def _ensure_guild_owner(self, interaction: discord.Interaction) -> bool:
+		if interaction.guild is None:
+			await interaction.response.send_message(
+				"❌ This command can only be used inside a server.",
+				ephemeral=True
+			)
+			return False
+
+		if interaction.guild.owner_id != interaction.user.id:
+			await interaction.response.send_message(
+				"❌ Only the **server owner** can use `/configure`.",
+				ephemeral=True
+			)
+			return False
+
+		if set_server_mode is None or set_channels_mode is None or get_guild_config is None:
+			await interaction.response.send_message(
+				"⚠️ Configuration system is not ready. Please try again in a moment.",
+				ephemeral=True
+			)
+			return False
+
+		return True
+
+	@app_commands.command(name="server", description="Allow the bot to chat in all channels in this server")
+	async def configure_server(self, interaction: discord.Interaction):
+		if not await self._ensure_guild_owner(interaction):
+			return
+
+		set_server_mode(interaction.guild.id)
+		await interaction.response.send_message(
+			"✅ Configuration updated: I can now chat in **the whole server** when pinged.",
+			ephemeral=True
+		)
+
+	@app_commands.command(name="channels", description="Restrict bot chat to selected channel(s) in this server")
+	@app_commands.describe(
+		channel_1="Required channel",
+		channel_2="Optional channel",
+		channel_3="Optional channel",
+		channel_4="Optional channel",
+		channel_5="Optional channel",
+	)
+	async def configure_channels(
+		self,
+		interaction: discord.Interaction,
+		channel_1: discord.TextChannel,
+		channel_2: Optional[discord.TextChannel] = None,
+		channel_3: Optional[discord.TextChannel] = None,
+		channel_4: Optional[discord.TextChannel] = None,
+		channel_5: Optional[discord.TextChannel] = None,
+	):
+		if not await self._ensure_guild_owner(interaction):
+			return
+
+		selected_channels = [
+			ch for ch in [channel_1, channel_2, channel_3, channel_4, channel_5]
+			if ch is not None
+		]
+		channel_ids = [ch.id for ch in selected_channels]
+
+		set_channels_mode(interaction.guild.id, channel_ids)
+
+		mentions = ", ".join(ch.mention for ch in selected_channels)
+		await interaction.response.send_message(
+			f"✅ Configuration updated: I will now only chat in these channel(s): {mentions}",
+			ephemeral=True
+		)
+
+
 class Codunot(commands.Cog):
 	def __init__(self, bot: commands.Bot):
 		self.bot = bot
+		self.bot.tree.add_command(ConfigureGroup())
 
 	@app_commands.command(name="funmode", description="😎 Activate Fun Mode - jokes, memes & chill vibes")
 	async def funmode_slash(self, interaction: discord.Interaction):
