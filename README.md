@@ -17,6 +17,8 @@
 🎬 Can generate videos from your prompts
 🔊 Can generate text-to-speech audio from your text
 
+⚙️ Server owners can now use `/configure server` or `/configure channels` to control where Codunot is allowed to chat in a server
+
 🔐 ***Account Types***
 
 *(Applies to both DMs and servers — both count toward limits)*

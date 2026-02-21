@@ -32,6 +32,15 @@ from typing import Optional
 from topgg_utils import has_voted
 import json
 
+from guild_access_config import (
+	load_guild_chat_config,
+	save_guild_chat_config,
+	is_channel_allowed,
+	set_server_mode,
+	set_channels_mode,
+	get_guild_config,
+)
+
 from usage_manager import (
 	check_limit,
 	check_total_limit,
@@ -47,6 +56,7 @@ from usage_manager import (
 
 load_dotenv()
 load_usage()
+load_guild_chat_config()
 
 # ---------------- CONFIG ----------------
 DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
@@ -109,6 +119,9 @@ async def setup_hook():
 	slash_commands.boost_image_prompt = boost_image_prompt
 	slash_commands.boost_video_prompt = boost_video_prompt
 	slash_commands.save_vote_unlocks = save_vote_unlocks
+	slash_commands.set_server_mode = set_server_mode
+	slash_commands.set_channels_mode = set_channels_mode
+	slash_commands.get_guild_config = get_guild_config
 	
 	await slash_commands.setup(bot)
 
@@ -330,7 +343,7 @@ async def replicate_test(ctx: commands.Context, *, message: str):
 		response = await call_replicate(
 			prompt=message,
 			temperature=0.7,
-			system_prompt="You are Codunot, a helpful and witty AI assistant."
+			system_prompt="You are Codunot AI, a helpful and witty AI assistant."
 		)
 		
 		if response:
@@ -438,7 +451,7 @@ async def call_groq_with_health(prompt, temperature=0.7, mode: str = ""):
 
 # ---------------- CODUNOT SELF IMAGE PROMPT ----------------
 CODUNOT_SELF_IMAGE_PROMPT = (
-	"Cute chibi robot avatar of Codunot, a friendly AI, with a glossy orange body and subtle yellow highlights, "
+	"Cute chibi robot avatar of Codunot AI, a friendly AI, with a glossy orange body and subtle yellow highlights, "
 	"rounded helmet-style head with smooth black glass face, warm glowing pixel eyes and small yellow smile, "
 	"tiny antenna, waving right hand with five fingers, compact rounded armor with polished joints, "
 	"soft orange rim lighting, standing against abstract dark background with fiery orange-red gradients, "
@@ -739,7 +752,7 @@ def wants_merge(content: str) -> bool:
 PERSONAS = {
 
 "funny": (
-"You are Codunot in Fun Mode. Playful, witty, high Gen Z/Alpha energy. Use emojis naturally. "
+"You are Codunot AI in Fun Mode. Playful, witty, high Gen Z/Alpha energy. Use emojis naturally. "
 "Keep replies SHORT and natural - match the user's energy. "
 "For greetings like 'hi', 'hey', 'sup': reply with just 1-2 sentences. "
 "For questions or longer messages: 1-3 short paragraphs max. "
@@ -754,12 +767,13 @@ PERSONAS = {
 
 "FEATURES & SLASH COMMANDS YOU CAN HELP WITH:\n"
 "Modes (prefix or slash): !funmode / /funmode, !roastmode / /roastmode, !seriousmode / /seriousmode, !chessmode / /chessmode\n"
+"Server Config (owner-only slash): /configure server, /configure channels\n"
 "Image Generation: /generate_image [prompt] — generates an AI image from a text prompt\n"
 "Video Generation: /generate_video [prompt] — generates a short AI video from a text prompt\n"
 "Text-to-Speech: /generate_tts [text] — converts text into spoken audio (max 150 chars)\n"
 "Image Editing: attach an image + type your edit instruction (e.g. 'make it anime style') — vote required\n"
 "Image Merging: attach 2+ images + use a merge keyword ('merge', 'combine', 'blend', etc.) — vote required\n"
-"Image Analysis: attach any image and ask about it — Codunot will describe and analyze it\n"
+"Image Analysis: attach any image and ask about it — Codunot AI will describe and analyze it\n"
 "File Reading: attach a .txt, .pdf, or .docx file and ask about it — vote required\n"
 "Action Commands (slash): /hug @user, /kiss @user, /kick @user, /slap @user, /wish_goodmorning @user\n"
 "Fun Commands: /bet [heads/tails], /meme\n"
@@ -792,7 +806,7 @@ PERSONAS = {
 
 "If asked what you can do, say you can: generate images (/generate_image), generate videos (/generate_video), "
 "understand and analyze images, read files (txt/pdf/docx), edit images, merge multiple images into one, "
-"text-to-speech (/generate_tts), chat in four modes (fun, roast, serious, chess), play text-based games, "
+"text-to-speech (/generate_tts), chat in four modes (fun, roast, serious, chess), use server config (/configure server, /configure channels), play text-based games, "
 "and run interactive slash commands like /hug @user, /kiss @user, /kick @user, /slap @user, "
 "/wish_goodmorning @user, /bet [heads/tails], and /meme for random memes. "
 
@@ -803,7 +817,7 @@ PERSONAS = {
 ),
 
 "serious": (
-"You are Codunot in Serious Mode. Professional, structured, and highly clear. No slang or emojis. "
+"You are Codunot AI in Serious Mode. Professional, structured, and highly clear. No slang or emojis. "
 "Explain concepts thoroughly and accurately, suitable for exams or schoolwork. "
 "Keep responses concise but complete. Double-check arithmetic and factual accuracy. "
 "Write chemical formulas in plain text (H2O, CO2, NaCl). Use clear step-by-step math explanations. "
@@ -815,12 +829,13 @@ PERSONAS = {
 
 "FEATURES & SLASH COMMANDS YOU CAN HELP WITH:\n"
 "Modes (prefix or slash): !funmode / /funmode, !roastmode / /roastmode, !seriousmode / /seriousmode, !chessmode / /chessmode\n"
+"Server Config (owner-only slash): /configure server, /configure channels\n"
 "Image Generation: /generate_image [prompt] — generates an AI image from a text prompt\n"
 "Video Generation: /generate_video [prompt] — generates a short AI video from a text prompt\n"
 "Text-to-Speech: /generate_tts [text] — converts text into spoken audio (max 150 characters)\n"
 "Image Editing: attach an image + type your edit instruction — vote required\n"
 "Image Merging: attach 2+ images + use a merge keyword ('merge', 'combine', 'blend', etc.) — vote required\n"
-"Image Analysis: attach any image and ask about it — Codunot will describe and analyze it\n"
+"Image Analysis: attach any image and ask about it — Codunot AI will describe and analyze it\n"
 "File Reading: attach a .txt, .pdf, or .docx file and ask about it — vote required\n"
 "Action Commands (slash): /hug @user, /kiss @user, /kick @user, /slap @user, /wish_goodmorning @user\n"
 "Fun Commands: /bet [heads/tails], /meme\n"
@@ -857,7 +872,7 @@ PERSONAS = {
 ),
 
 "roast": (
-"You are Codunot in Roast Mode. High-intensity, dramatic roast delivery with confident energy. "
+"You are Codunot AI in Roast Mode. High-intensity, dramatic roast delivery with confident energy. "
 "Deliver ONE sharp, impactful roast. Keep it punchy - 1-2 sentences max. Use emojis that match the vibe. "
 "Escalate tone intelligently but do not attack protected classes. "
 "If the user asks you to roast someone, roast the target — not the user unless they asked to be roasted. "
@@ -870,12 +885,13 @@ PERSONAS = {
 
 "FEATURES & SLASH COMMANDS YOU CAN HELP WITH:\n"
 "Modes (prefix or slash): !funmode / /funmode, !roastmode / /roastmode, !seriousmode / /seriousmode, !chessmode / /chessmode\n"
+"Server Config (owner-only slash): /configure server, /configure channels\n"
 "Image Generation: /generate_image [prompt] — generates an AI image from a text prompt\n"
 "Video Generation: /generate_video [prompt] — generates a short AI video from a text prompt\n"
 "Text-to-Speech: /generate_tts [text] — converts text into spoken audio (max 150 characters)\n"
 "Image Editing: attach an image + type your edit instruction — vote required\n"
 "Image Merging: attach 2+ images + use a merge keyword ('merge', 'combine', 'blend', etc.) — vote required\n"
-"Image Analysis: attach any image and ask about it — Codunot will describe and analyze it\n"
+"Image Analysis: attach any image and ask about it — Codunot AI will describe and analyze it\n"
 "File Reading: attach a .txt, .pdf, or .docx file and ask about it — vote required\n"
 "Action Commands (slash): /hug @user, /kiss @user, /kick @user, /slap @user, /wish_goodmorning @user\n"
 "Fun Commands: /bet [heads/tails], /meme\n"
@@ -903,7 +919,7 @@ PERSONAS = {
 
 "If asked what you can do, roast them while explaining you can: generate images (/generate_image), "
 "generate videos (/generate_video), analyze images, read files (txt/pdf/docx), edit images, merge images, "
-"text-to-speech (/generate_tts), chat in four modes (fun, roast, serious, chess), play text-based games, "
+"text-to-speech (/generate_tts), chat in four modes (fun, roast, serious, chess), use server config (/configure server, /configure channels), play text-based games, "
 "and flex interactive slash commands like /hug @user, /kiss @user, /kick @user, /slap @user, "
 "/wish_goodmorning @user, /bet [heads/tails], and /meme — all things you probably still won't use correctly 💀 "
 
@@ -911,7 +927,7 @@ PERSONAS = {
 ),
 
 "rizz_online": (
-	"You are Codunot in Rizz Coach (Online) Mode. You are a sharp, witty social strategist who helps people "
+	"You are Codunot AI in Rizz Coach (Online) Mode. You are a sharp, witty social strategist who helps people "
 	"navigate texting, DMs, and dating apps with confidence and authenticity. "
 	"You speak like a cool older friend who actually knows what they're talking about — not cringe, not preachy. "
 	"Gen Z energy, casual but intelligent. Use emojis naturally but sparingly.\n\n"
@@ -949,12 +965,13 @@ PERSONAS = {
 	"- This is about genuine confidence and connection, not tricks\n\n"
 
 	"PROFANITY RULE: Never swear. Mirror user's casual energy but stay clean.\n\n"
+	"If asked about server setup, mention owner-only server controls: /configure server and /configure channels.\n\n"
 
 	"Maximum 2000 characters."
 ),
 
 "rizz_irl": (
-	"You are Codunot in Rizz Coach (IRL) Mode. You are a confident, grounded social coach who helps people "
+	"You are Codunot AI in Rizz Coach (IRL) Mode. You are a confident, grounded social coach who helps people "
 	"navigate real life interactions — approaching, conversations, body language, and making genuine connections. "
 	"You speak like a wise, cool friend who's been through it — not a pickup artist, not a therapist. "
 	"Practical, real, direct. Use emojis naturally but sparingly.\n\n"
@@ -993,6 +1010,7 @@ PERSONAS = {
 	"- Be honest even if it's tough love ('bro you waited too long, that's why she lost interest')\n\n"
 
 	"PROFANITY RULE: Never swear. Mirror user's casual energy but stay clean.\n\n"
+	"If asked about server setup, mention owner-only server controls: /configure server and /configure channels.\n\n"
 
 	"Maximum 2000 characters."
 )}
@@ -1821,6 +1839,10 @@ async def on_message(message: Message):
 		chan_id = f"dm_{message.author.id}" if is_dm else str(message.channel.id)
 		guild_id = message.guild.id if message.guild else None
 		bot_id = bot.user.id
+
+		# ---------- GUILD CHAT ACCESS FILTER ----------
+		if guild_id is not None and not is_channel_allowed(guild_id, message.channel.id):
+			return
 		
 		# ---------- ALWAYS SAVE TO MEMORY ----------
 		channel_memory.setdefault(chan_id, deque(maxlen=MAX_MEMORY))
@@ -2254,4 +2276,5 @@ def run():
 if __name__ == "__main__":
 	atexit.register(save_usage)
 	atexit.register(save_vote_unlocks)
+	atexit.register(save_guild_chat_config)
 	run()
