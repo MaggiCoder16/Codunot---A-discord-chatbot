@@ -193,7 +193,7 @@ async def help_command(ctx: commands.Context):
 	)
 
 	embed.add_field(
-		name="🛠️ Server Setup (Owner-Only Slash)",
+		name="🛠️ Server Setup (Server Owner-Only Slash Command)",
 		value=(
 			"Configure where Codunot can chat in your server:\n"
 			"• `/configure server`\n"
