@@ -11,13 +11,9 @@ class VideoToTextError(Exception):
     pass
 
 
-async def transcribe_video(*, video_url: str, max_minutes: int = 30, language: str = "en") -> str:
+async def transcribe_video(*, video_url: str, max_minutes: int = 30) -> str:
     if not DEAPI_API_KEY:
         raise VideoToTextError("DEAPI_API_KEY is not set")
-
-    webhook_url = os.getenv("DEAPI_WEBHOOK_URL")
-    if not webhook_url:
-        raise VideoToTextError("DEAPI_WEBHOOK_URL is not set")
 
     if not video_url or not video_url.strip():
         raise VideoToTextError("Video URL is required")
@@ -29,10 +25,10 @@ async def transcribe_video(*, video_url: str, max_minutes: int = 30, language: s
     }
 
     payload = {
+        "model": "WhisperLargeV3",
+        "include_ts": False,
+        "return_result_in_response": True,
         "video_url": video_url.strip(),
-        "language": language,
-        "max_duration_minutes": max_minutes,
-        "webhook_url": webhook_url,
     }
 
     async with aiohttp.ClientSession(headers=headers) as session:
@@ -47,6 +43,18 @@ async def transcribe_video(*, video_url: str, max_minutes: int = 30, language: s
                 )
 
             response_data = await resp.json()
+
+            # If deAPI returns the transcript directly in submit response,
+            # use it immediately (as requested by return_result_in_response=true).
+            submit_data = response_data.get("data", {})
+            immediate_transcript = (
+                submit_data.get("transcription")
+                or submit_data.get("transcript")
+                or submit_data.get("text")
+            )
+            if immediate_transcript:
+                return immediate_transcript.strip()
+
             request_id = response_data.get("data", {}).get("request_id")
             if not request_id:
                 raise VideoToTextError("No request_id returned from video-to-text")
