@@ -5,13 +5,12 @@ import os
 # Bot token from GitHub Actions secret
 TOKEN = os.environ["DISCORD_TOKEN"]
 
-# Channel ID (works for both DM and server channels)
-CHANNEL_ID = 1439456449813151764
+CHANNEL_ID = 1420865735026278550
 
 intents = discord.Intents.default()
 intents.message_content = True
-intents.dm_messages = True      # ← For DMs
-intents.guilds = True           # ← For server channels
+intents.dm_messages = True
+intents.guilds = True
 
 client = discord.Client(intents=intents)
 
@@ -41,7 +40,7 @@ async def on_ready():
                 except Exception as e:
                     print(f"Error deleting message: {e}")
                 
-                if deleted >= 3:  # Stop after deleting 3 messages
+                if deleted >= 2:  # Stop after deleting 2 messages
                     break
         
         print(f"Deleted {deleted} bot messages")
