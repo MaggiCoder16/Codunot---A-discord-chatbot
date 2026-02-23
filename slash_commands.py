@@ -435,6 +435,10 @@ class Codunot(commands.Cog):
 	def _bot_missing_from_guild(self, interaction: discord.Interaction) -> bool:
 		if interaction.guild_id is None:
 			return False
+
+		if hasattr(interaction, "is_user_integration") and interaction.is_user_integration():
+			return True
+
 		return interaction.client.get_guild(interaction.guild_id) is None
 
 	async def _resolve_paid_usage_key(self, interaction: discord.Interaction) -> str | None:
@@ -1030,12 +1034,24 @@ class Codunot(commands.Cog):
 			if not register_base:
 				raise RuntimeError("Transcription register base URL is not configured")
 
+			register_channel_id = interaction.channel.id
+			if deliver_in_dm:
+				if usage_key and usage_key.isdigit():
+					register_channel_id = int(usage_key)
+				else:
+					try:
+						dm_channel = interaction.user.dm_channel or await interaction.user.create_dm()
+						if dm_channel is not None:
+							register_channel_id = dm_channel.id
+					except Exception as e:
+						print(f"[TRANSCRIBE REGISTER] DM channel resolve failed: {e}")
+
 			async with aiohttp.ClientSession() as session:
 				async with session.post(
 					f"{register_base}/register-transcription",
 					json={
 						"request_id": request_id,
-						"channel_id": interaction.channel.id,
+						"channel_id": register_channel_id,
 						"user_id": interaction.user.id,
 						"deliver_in_dm": deliver_in_dm,
 					},
