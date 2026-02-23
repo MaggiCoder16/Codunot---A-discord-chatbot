@@ -69,6 +69,17 @@ ALLOWED_TRANSCRIBE_HOST_SUFFIXES = (
 	"kick.com",
 )
 
+TRANSCRIBE_HOST_NORMALIZATION = {
+	"m.youtube.com": "www.youtube.com",
+	"music.youtube.com": "www.youtube.com",
+	"m.twitch.tv": "www.twitch.tv",
+	"m.x.com": "x.com",
+	"mobile.x.com": "x.com",
+	"m.twitter.com": "twitter.com",
+	"mobile.twitter.com": "twitter.com",
+	"m.kick.com": "www.kick.com",
+}
+
 ACTION_GIF_SOURCES = {
 	"hug": [
 		"https://media1.giphy.com/media/v1.Y2lkPTc5MGI3NjExYjFxbWd0djU0Y240MHE3d2t3dnIyZWtsaGI0aTFleGVncWswcDdkYyZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/uakdGGShmMS0KYfTgp/giphy.gif",
@@ -426,17 +437,13 @@ class Codunot(commands.Cog):
 			return False
 		return interaction.client.get_guild(interaction.guild_id) is None
 
-	def _external_apps_allowed(self, interaction: discord.Interaction) -> bool:
-		perms = getattr(interaction, "app_permissions", None)
-		return bool(getattr(perms, "use_external_apps", False))
-
 	def _paid_usage_key(self, interaction: discord.Interaction) -> str | None:
 		if self._bot_missing_from_guild(interaction):
 			return self._dm_usage_key(interaction)
 		return None
 
 	def _should_deliver_paid_output_in_dm(self, interaction: discord.Interaction) -> bool:
-		return self._bot_missing_from_guild(interaction) and self._external_apps_allowed(interaction)
+		return self._bot_missing_from_guild(interaction)
 
 	async def _deliver_paid_attachment(
 		self,
@@ -918,23 +925,52 @@ class Codunot(commands.Cog):
 
 		await interaction.edit_original_response(content=None, embed=embed)
 
-	def _is_allowed_video_url(self, url: str) -> bool:
-		from urllib.parse import urlparse
+	def _normalize_transcribe_url(self, url: str) -> str | None:
+		from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 		try:
-			host = (urlparse(url).hostname or "").lower()
+			parsed = urlparse((url or "").strip())
 		except Exception:
-			return False
+			return None
 
-		if host in ALLOWED_TRANSCRIBE_HOSTS:
-			return True
+		if parsed.scheme not in {"http", "https"}:
+			return None
 
-		return any(host.endswith(f".{suffix}") for suffix in ALLOWED_TRANSCRIBE_HOST_SUFFIXES)
+		host = (parsed.hostname or "").lower()
+		if not host:
+			return None
+
+		host = TRANSCRIBE_HOST_NORMALIZATION.get(host, host)
+		if host.startswith("www."):
+			host_for_check = host[4:]
+		else:
+			host_for_check = host
+
+		allowed = host in ALLOWED_TRANSCRIBE_HOSTS or any(
+			host_for_check == suffix or host_for_check.endswith(f".{suffix}")
+			for suffix in ALLOWED_TRANSCRIBE_HOST_SUFFIXES
+		)
+		if not allowed:
+			return None
+
+		query_items = parse_qsl(parsed.query, keep_blank_values=True)
+		filtered_query = urlencode([
+			(k, v)
+			for (k, v) in query_items
+			if not k.lower().startswith("utm_") and k.lower() not in {"si", "feature", "pp"}
+		])
+
+		netloc = host
+		if parsed.port:
+			netloc = f"{host}:{parsed.port}"
+
+		return urlunparse((parsed.scheme, netloc, parsed.path, parsed.params, filtered_query, ""))
 
 	@app_commands.command(name="transcribe", description="📝 Transcribe a supported video URL (max 30 mins)")
 	@app_commands.describe(video_url="Supported: YouTube, Twitch VOD, X, Kick")
 	async def transcribe_slash(self, interaction: discord.Interaction, video_url: str):
 		usage_key = self._paid_usage_key(interaction)
-		if not self._is_allowed_video_url(video_url):
+		normalized_video_url = self._normalize_transcribe_url(video_url)
+		if not normalized_video_url:
 			await interaction.response.send_message(
 				"❌ Only YouTube, Twitch VODs, X, and Kick video URLs are allowed.",
 				ephemeral=False,
@@ -963,7 +999,7 @@ class Codunot(commands.Cog):
 		deliver_in_dm = self._should_deliver_paid_output_in_dm(interaction)
 	
 		try:
-			request_id = await transcribe_video(video_url=video_url, max_minutes=30)
+			request_id = await transcribe_video(video_url=normalized_video_url, max_minutes=30)
 	
 			railway_base = os.getenv("DEAPI_VID2TXT_BASE_URL", "").strip().rstrip("/")
 			if railway_base:
