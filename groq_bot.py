@@ -1668,6 +1668,8 @@ async def boost_image_prompt(user_prompt: str) -> str:
 		"- NO preamble, explanations, or meta-commentary\n"
 		"- Structure: Subject → Environment → Style → Composition\n\n"
 
+		"DONT MAKE IT TOO BIG - ABOUT 200-250 WORDS MAX "
+
 		"User idea:\n"
 		f"{user_prompt}"
 	)
@@ -1736,6 +1738,7 @@ async def boost_video_prompt(user_prompt: str) -> str:
 		"- Focus camera movement on relationship to subject\n\n"
 
 		"ONLY return the boosted video prompt paragraph. NO explanations, NO preamble.\n\n"
+		"DONT MAKE IT TOO BIG - ABOUT 200-250 WORDS MAX "
 
 		"User idea:\n"
 		f"{user_prompt}"
