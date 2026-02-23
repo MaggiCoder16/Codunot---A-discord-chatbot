@@ -418,6 +418,53 @@ class Codunot(commands.Cog):
 		self.bot = bot
 		self.bot.tree.add_command(ConfigureGroup())
 
+	def _dm_usage_key(self, interaction: discord.Interaction) -> str:
+		return f"dm_{interaction.user.id}"
+
+	def _bot_missing_from_guild(self, interaction: discord.Interaction) -> bool:
+		if interaction.guild_id is None:
+			return False
+		return interaction.client.get_guild(interaction.guild_id) is None
+
+	def _external_apps_allowed(self, interaction: discord.Interaction) -> bool:
+		perms = getattr(interaction, "app_permissions", None)
+		return bool(getattr(perms, "use_external_apps", False))
+
+	def _paid_usage_key(self, interaction: discord.Interaction) -> str | None:
+		if self._bot_missing_from_guild(interaction):
+			return self._dm_usage_key(interaction)
+		return None
+
+	def _should_deliver_paid_output_in_dm(self, interaction: discord.Interaction) -> bool:
+		return self._bot_missing_from_guild(interaction) and self._external_apps_allowed(interaction)
+
+	async def _deliver_paid_attachment(
+		self,
+		interaction: discord.Interaction,
+		content: str,
+		filename: str,
+		payload_bytes: bytes,
+	):
+		if not self._should_deliver_paid_output_in_dm(interaction):
+			await interaction.followup.send(
+				content=content,
+				file=discord.File(io.BytesIO(payload_bytes), filename=filename),
+			)
+			return
+
+		try:
+			await interaction.user.send(
+				"📩 I generated this in DMs because I'm not in that server, so I can't post the full output there.",
+				file=discord.File(io.BytesIO(payload_bytes), filename=filename),
+			)
+			await interaction.followup.send(
+				"📩 I generated your result, but since I'm not in this server I sent the full output to your DMs."
+			)
+		except discord.Forbidden:
+			await interaction.followup.send(
+				"⚠️ I generated your result but couldn't DM you (DMs are closed). Please enable DMs and try again."
+			)
+
 	@app_commands.command(name="funmode", description="😎 Activate Fun Mode - jokes, memes & chill vibes")
 	async def funmode_slash(self, interaction: discord.Interaction):
 		is_dm = isinstance(interaction.channel, discord.DMChannel)
@@ -485,6 +532,7 @@ class Codunot(commands.Cog):
 	@app_commands.command(name="generate_image", description="🖼️ Generate an AI image from a text prompt")
 	@app_commands.describe(prompt="Describe the image you want to generate")
 	async def generate_image_slash(self, interaction: discord.Interaction, prompt: str):
+		usage_key = self._paid_usage_key(interaction)
 		await interaction.response.defer()
 		await interaction.edit_original_response(content="🗳️ **Checking your vote status...**")
 
@@ -493,13 +541,13 @@ class Codunot(commands.Cog):
 
 		await interaction.edit_original_response(content="✅ **Vote verified! You're good to go.**")
 
-		if not check_limit(interaction, "attachments"):
+		if not check_limit(interaction, "attachments", usage_key=usage_key):
 			await interaction.followup.send(
 				"🚫 You've hit your **daily image generation limit**.\nTry again tomorrow or contact aarav_2022 for an upgrade."
 			)
 			return
 
-		if not check_total_limit(interaction, "attachments"):
+		if not check_total_limit(interaction, "attachments", usage_key=usage_key):
 			await interaction.followup.send(
 				"🚫 You've hit your **2 months' image generation limit**.\nContact aarav_2022 for an upgrade."
 			)
@@ -511,13 +559,20 @@ class Codunot(commands.Cog):
 			boosted_prompt = await boost_image_prompt(prompt)
 			image_bytes = await generate_image(boosted_prompt, aspect_ratio="1:1", steps=15)
 
-			await interaction.followup.send(
-				content=f"{interaction.user.mention} 🖼️ Generated: `{prompt[:150]}...`" if len(prompt) > 150 else f"{interaction.user.mention} 🖼️ Generated: `{prompt}`",
-				file=discord.File(io.BytesIO(image_bytes), filename="generated_image.png")
+			output_text = (
+				f"{interaction.user.mention} 🖼️ Generated: `{prompt[:150]}...`"
+				if len(prompt) > 150
+				else f"{interaction.user.mention} 🖼️ Generated: `{prompt}`"
+			)
+			await self._deliver_paid_attachment(
+				interaction,
+				output_text,
+				"generated_image.png",
+				image_bytes,
 			)
 
-			consume(interaction, "attachments")
-			consume_total(interaction, "attachments")
+			consume(interaction, "attachments", usage_key=usage_key)
+			consume_total(interaction, "attachments", usage_key=usage_key)
 			save_usage()
 
 		except Exception as e:
@@ -530,6 +585,7 @@ class Codunot(commands.Cog):
 	@app_commands.command(name="generate_video", description="🎬 Generate an AI video from a text prompt")
 	@app_commands.describe(prompt="Describe the video you want to generate")
 	async def generate_video_slash(self, interaction: discord.Interaction, prompt: str):
+		usage_key = self._paid_usage_key(interaction)
 		await interaction.response.defer()
 		await interaction.edit_original_response(content="🗳️ **Checking your vote status...**")
 
@@ -538,13 +594,13 @@ class Codunot(commands.Cog):
 
 		await interaction.edit_original_response(content="✅ **Vote verified! You're good to go.**")
 
-		if not check_limit(interaction, "attachments"):
+		if not check_limit(interaction, "attachments", usage_key=usage_key):
 			await interaction.followup.send(
 				"🚫 You've hit your **daily video generation limit**.\nTry again tomorrow or contact aarav_2022 for an upgrade."
 			)
 			return
 
-		if not check_total_limit(interaction, "attachments"):
+		if not check_total_limit(interaction, "attachments", usage_key=usage_key):
 			await interaction.followup.send(
 				"🚫 You've hit your **2 months' video generation limit**.\nContact aarav_2022 for an upgrade."
 			)
@@ -556,17 +612,20 @@ class Codunot(commands.Cog):
 			boosted_prompt = await boost_video_prompt(prompt)
 			video_bytes = await text_to_video_512(prompt=boosted_prompt)
 
-			await interaction.followup.send(
-				content=(
-					f"{interaction.user.mention} 🎬 Generated: `{prompt[:150]}...`"
-					if len(prompt) > 150
-					else f"{interaction.user.mention} 🎬 Generated: `{prompt}`"
-				),
-				file=discord.File(io.BytesIO(video_bytes), filename="generated_video.mp4")
+			output_text = (
+				f"{interaction.user.mention} 🎬 Generated: `{prompt[:150]}...`"
+				if len(prompt) > 150
+				else f"{interaction.user.mention} 🎬 Generated: `{prompt}`"
+			)
+			await self._deliver_paid_attachment(
+				interaction,
+				output_text,
+				"generated_video.mp4",
+				video_bytes,
 			)
 
-			consume(interaction, "attachments")
-			consume_total(interaction, "attachments")
+			consume(interaction, "attachments", usage_key=usage_key)
+			consume_total(interaction, "attachments", usage_key=usage_key)
 			save_usage()
 
 		except Exception as e:
@@ -579,6 +638,7 @@ class Codunot(commands.Cog):
 	@app_commands.command(name="generate_tts", description="🔊 Generate text-to-speech audio")
 	@app_commands.describe(text="The text you want to convert to speech")
 	async def generate_tts_slash(self, interaction: discord.Interaction, text: str):
+		usage_key = self._paid_usage_key(interaction)
 		await interaction.response.defer()
 		await interaction.edit_original_response(content="🗳️ **Checking your vote status...**")
 
@@ -593,13 +653,13 @@ class Codunot(commands.Cog):
 			)
 			return
 
-		if not check_limit(interaction, "attachments"):
+		if not check_limit(interaction, "attachments", usage_key=usage_key):
 			await interaction.followup.send(
 				"🚫 You've hit your **daily TTS generation limit**.\nTry again tomorrow or contact aarav_2022 for an upgrade."
 			)
 			return
 
-		if not check_total_limit(interaction, "attachments"):
+		if not check_total_limit(interaction, "attachments", usage_key=usage_key):
 			await interaction.followup.send(
 				"🚫 You've hit your **2 months' TTS generation limit**.\nContact aarav_2022 for an upgrade."
 			)
@@ -616,13 +676,20 @@ class Codunot(commands.Cog):
 						raise Exception("Failed to download TTS audio")
 					audio_bytes = await resp.read()
 
-			await interaction.followup.send(
-				content=f"{interaction.user.mention} 🔊 TTS: `{text[:150]}...`" if len(text) > 150 else f"{interaction.user.mention} 🔊 TTS: `{text}`",
-				file=discord.File(io.BytesIO(audio_bytes), filename="speech.mp3")
+			output_text = (
+				f"{interaction.user.mention} 🔊 TTS: `{text[:150]}...`"
+				if len(text) > 150
+				else f"{interaction.user.mention} 🔊 TTS: `{text}`"
+			)
+			await self._deliver_paid_attachment(
+				interaction,
+				output_text,
+				"speech.mp3",
+				audio_bytes,
 			)
 
-			consume(interaction, "attachments")
-			consume_total(interaction, "attachments")
+			consume(interaction, "attachments", usage_key=usage_key)
+			consume_total(interaction, "attachments", usage_key=usage_key)
 			save_usage()
 
 		except Exception as e:
@@ -866,6 +933,7 @@ class Codunot(commands.Cog):
 	@app_commands.command(name="transcribe", description="📝 Transcribe a supported video URL (max 30 mins)")
 	@app_commands.describe(video_url="Supported: YouTube, Twitch VOD, X, Kick")
 	async def transcribe_slash(self, interaction: discord.Interaction, video_url: str):
+		usage_key = self._paid_usage_key(interaction)
 		if not self._is_allowed_video_url(video_url):
 			await interaction.response.send_message(
 				"❌ Only YouTube, Twitch VODs, X, and Kick video URLs are allowed.",
@@ -878,8 +946,21 @@ class Codunot(commands.Cog):
 	
 		if not await require_vote_deferred(interaction):
 			return
-	
+
+		if not check_limit(interaction, "attachments", usage_key=usage_key):
+			await interaction.edit_original_response(
+				content="🚫 You've hit your **daily transcription limit**.\nTry again tomorrow or contact aarav_2022 for an upgrade."
+			)
+			return
+
+		if not check_total_limit(interaction, "attachments", usage_key=usage_key):
+			await interaction.edit_original_response(
+				content="🚫 You've hit your **2 months' transcription limit**.\nContact aarav_2022 for an upgrade."
+			)
+			return
+
 		await interaction.edit_original_response(content="✅ **Vote verified! Submitting transcription...**")
+		deliver_in_dm = self._should_deliver_paid_output_in_dm(interaction)
 	
 		try:
 			request_id = await transcribe_video(video_url=video_url, max_minutes=30)
@@ -889,8 +970,17 @@ class Codunot(commands.Cog):
 				async with aiohttp.ClientSession() as session:
 					await session.post(
 						f"{railway_base}/register-transcription",
-						json={"request_id": request_id, "channel_id": interaction.channel.id},
+						json={
+							"request_id": request_id,
+							"channel_id": interaction.channel.id,
+							"user_id": interaction.user.id,
+							"deliver_in_dm": deliver_in_dm,
+						},
 					)
+
+			consume(interaction, "attachments", usage_key=usage_key)
+			consume_total(interaction, "attachments", usage_key=usage_key)
+			save_usage()
 	
 		except VideoToTextError as e:
 			await interaction.edit_original_response(content=f"❌ {e}")
@@ -900,9 +990,14 @@ class Codunot(commands.Cog):
 			await interaction.edit_original_response(content="🤔 Couldn't transcribe this video right now.")
 			return
 	
-		await interaction.edit_original_response(
-			content="📝 Transcription submitted! I'll post the result here when it's ready."
-		)
+		if deliver_in_dm:
+			await interaction.edit_original_response(
+				content="📝 Transcription submitted! I'm not in this server, so I'll send the final transcript to your DMs."
+			)
+		else:
+			await interaction.edit_original_response(
+				content="📝 Transcription submitted! I'll post the result here when it's ready."
+			)
 
 	async def _send_action_gif(self, interaction: discord.Interaction, action: str, target_user: discord.User):
 		if target_user.id == interaction.user.id:
