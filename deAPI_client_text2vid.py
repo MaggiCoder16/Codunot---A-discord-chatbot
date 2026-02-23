@@ -23,7 +23,6 @@ async def warm_webhook_server():
 
 async def _submit_job(session: aiohttp.ClientSession, *, prompt: str, model: str) -> tuple[str, int]:
     seed = random.randint(0, 2**32 - 1)
-
     form = aiohttp.FormData()
     form.add_field("prompt", prompt)
     form.add_field("width", "512")
@@ -41,22 +40,12 @@ async def _submit_job(session: aiohttp.ClientSession, *, prompt: str, model: str
     form.add_field("webhook_url", webhook_url)
 
     async with session.post(TXT2VID_ENDPOINT, data=form, timeout=aiohttp.ClientTimeout(total=120)) as resp:
-        print(
-            "[VIDEO GEN] "
-            f"RPM limit: {resp.headers.get('x-ratelimit-limit')}, "
-            f"RPM remaining: {resp.headers.get('x-ratelimit-remaining')} | "
-            f"RPD limit: {resp.headers.get('x-ratelimit-daily-limit')}, "
-            f"RPD remaining: {resp.headers.get('x-ratelimit-daily-remaining')}"
-        )
-
         if resp.status != 200:
             raise Text2VidError(f"txt2video submit failed ({resp.status}): {await resp.text()}")
-
         payload = await resp.json()
         request_id = payload.get("data", {}).get("request_id")
         if not request_id:
             raise Text2VidError("No request_id returned from txt2video")
-
         print(f"[VIDEO GEN] Submitted | request_id={request_id} | seed={seed}")
         return request_id, seed
 
@@ -69,46 +58,40 @@ async def generate_video(*, prompt: str, model: str = "Ltx2_19B_Dist_FP8", wait_
     headers = {"Authorization": f"Bearer {DEAPI_API_KEY}", "Accept": "application/json"}
 
     async with aiohttp.ClientSession(headers=headers) as session:
-        await warm_webhook_server()  # <--- new
+        await warm_webhook_server()
         request_id, seed = await _submit_job(session, prompt=prompt, model=model)
 
     print(f"[VIDEO GEN] request_id={request_id} submitted.")
 
     if wait_for_result and RESULT_URL_BASE:
         poll_url = f"{RESULT_URL_BASE}/result/{request_id}"
-        print(f"[VIDEO GEN] Polling at: {poll_url}")
+        max_attempts = 60
+        delay = 5
 
         async with aiohttp.ClientSession() as session:
-            max_attempts = 60
-            delay = 5
             for attempt in range(max_attempts):
+                await asyncio.sleep(delay)
                 try:
-                    async with session.get(poll_url) as r:
-                        if r.status != 200:
-                            await asyncio.sleep(delay)
+                    async with session.get(poll_url) as res:
+                        if res.status != 200:
                             continue
+                        status_data = await res.json()
 
-                        status_data = await r.json()
-                        status = status_data.get("status")
+                        result_url = (
+                            status_data.get("result_url")
+                            or status_data.get("data", {}).get("result_url")
+                            or status_data.get("raw", {}).get("result_url")
+                        )
 
-                        if status == "done":
-                            result_url = status_data.get("result_url") or status_data.get("data", {}).get("result_url")
-                            if not result_url:
-                                raise Text2VidError("Job done but no result_url returned")
-
-                            print(f"[VIDEO GEN] Video ready! Downloading from: {result_url}")
+                        if result_url:
+                            print("[VIDEO GEN] Result received:", result_url)
                             async with session.get(result_url) as vresp:
                                 if vresp.status != 200:
                                     raise Text2VidError(f"Failed to download video (status {vresp.status})")
                                 return await vresp.read()
 
-                        elif status == "pending":
-                            await asyncio.sleep(delay)
-                        else:
-                            raise Text2VidError(f"Unexpected status response: {status_data}")
-
-                except aiohttp.ClientError:
-                    await asyncio.sleep(delay)
+                except Exception:
+                    continue
 
         raise Text2VidError("Video not ready after polling timeout. Check your webhook server.")
 
