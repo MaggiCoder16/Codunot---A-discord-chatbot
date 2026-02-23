@@ -677,7 +677,6 @@ class Codunot(commands.Cog):
 		if not clean:
 			return ""
 
-		# Compress repeated tokens like: XD XD XD XD ...
 		tokens = clean.split(" ")
 		compacted: list[str] = []
 		last = None
@@ -881,8 +880,15 @@ class Codunot(commands.Cog):
 	
 		try:
 			request_id = await transcribe_video(video_url=video_url, max_minutes=30)
-			pending_transcriptions[request_id] = interaction.channel.id
-
+	
+			webhook_base = os.getenv("DEAPI_WEBHOOK_BASE_URL", "").strip().rstrip("/")
+			if webhook_base:
+				async with aiohttp.ClientSession() as session:
+					await session.post(
+						f"{webhook_base}/register-transcription",
+						json={"request_id": request_id, "channel_id": interaction.channel.id},
+					)
+	
 		except VideoToTextError as e:
 			await interaction.edit_original_response(content=f"❌ {e}")
 			return
@@ -892,7 +898,7 @@ class Codunot(commands.Cog):
 			return
 	
 		await interaction.edit_original_response(
-			content=f"📝 Transcription submitted! I'll post the result here when it's ready."
+			content="📝 Transcription submitted! I'll post the result here when it's ready."
 		)
 
 	async def _send_action_gif(self, interaction: discord.Interaction, action: str, target_user: discord.User):
