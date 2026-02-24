@@ -13,11 +13,9 @@ Donations directly support development ❤️
 ## 🔗 Add Codunot
 
 ➕ **Add to Server**  
-https://discord.com/oauth2/authorize?client_id=1435987186502733878&permissions=252928&integration_type=0&scope=bot+applications.commands
-
+https://discord.com/oauth2/authorize?client_id=1435987186502733878&permissions=277025643520&integration_type=0&scope=applications.commands+bot
 💬 **Add to DMs / Apps**  
 https://discord.com/oauth2/authorize?client_id=1435987186502733878&integration_type=1&scope=applications.commands
-
 🌍 **Official Server**  
 https://discord.gg/GVuFk5gxtW
 
