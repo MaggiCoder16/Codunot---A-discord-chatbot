@@ -435,16 +435,13 @@ class Codunot(commands.Cog):
 	def _bot_missing_from_guild(self, interaction: discord.Interaction) -> bool:
 		if interaction.guild_id is None:
 			return False
-	
-		print(f"[DEBUG] guild={interaction.guild} guild_id={interaction.guild_id} is_user_integration={getattr(interaction, 'is_user_integration', lambda: 'N/A')()}")
-	
-		if interaction.guild is not None:
-			return False
-	
-		if hasattr(interaction, "is_user_integration") and interaction.is_user_integration():
+		
+		guild = self.bot.get_guild(interaction.guild_id)
+		if guild is None:
 			return True
-	
-		return False
+		
+		bot_member = guild.get_member(self.bot.user.id)
+		return bot_member is None
 
 	async def _resolve_paid_usage_key(self, interaction: discord.Interaction) -> str | None:
 		if not self._bot_missing_from_guild(interaction):
