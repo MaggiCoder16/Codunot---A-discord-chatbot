@@ -54,17 +54,17 @@ jobs:
           ${{ secrets.YTDL_COOKIES_TXT }}
           EOF
       
-      - name: Initialize usage files if missing
+      - name: Write cookies.txt (plain)
+        env:
+          YTDL_COOKIES_TXT: ${{ secrets.YTDL_COOKIES_TXT }}
         run: |
-          [ -f daily_usage.json ] || echo '{}' > daily_usage.json
-          [ -f total_usage.json ] || echo '{"attachments":{}}' > total_usage.json
-          [ -f vote_unlocks.json ] || echo '{}' > vote_unlocks.json
-          [ -f guild_chat_config.json ] || echo '{}' > guild_chat_config.json
-          echo "=== Current usage data ==="
-          cat daily_usage.json
-          cat total_usage.json
-          echo "=== Current guild chat config ==="
-          cat guild_chat_config.json
+          mkdir -p .secrets
+          printf '%s' "$YTDL_COOKIES_TXT" > .secrets/cookies.txt
+          if [ ! -s .secrets/cookies.txt ]; then
+            echo "cookies.txt missing or empty"
+            exit 1
+          fi
+          echo "cookies.txt saved"
       
       - name: Run Codunot Bot
         env:
@@ -80,7 +80,6 @@ jobs:
           REPLICATE_API_TOKEN: ${{ secrets.REPLICATE_API_TOKEN }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           YTDL_COOKIES: .secrets/cookies.txt
-          
         run: |
           timeout 3h python -u groq_bot.py || true
       
