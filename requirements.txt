@@ -12,3 +12,5 @@ requests
 fastapi
 uvicorn
 replicate
+yt-dlp
+PyNaCl
