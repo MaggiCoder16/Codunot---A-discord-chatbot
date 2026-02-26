@@ -10,7 +10,7 @@ import asyncio
 import random
 import traceback
 from typing import Optional
-from urllib.parse import urlparse
+from urllib.parse import urlparse, quote_plus
 
 import yt_dlp
 
@@ -270,15 +270,21 @@ def _looks_like_url(value: str) -> bool:
 		return False
 
 
-def _normalize_song_query(song: str) -> str:
+def _build_query_candidates(song: str) -> list[str]:
 	query = (song or "").strip()
 	if _looks_like_url(query):
-		return query
+		return [query]
 	if query.startswith("www."):
-		return f"https://{query}"
-	if "youtube.com/" in query or "youtu.be/" in query:
-		return f"https://{query}"
-	return f"ytsearch1:{query}"
+		return [f"https://{query}"]
+	if "youtube.com/" in query or "youtu.be/" in query or "soundcloud.com/" in query:
+		return [f"https://{query}"]
+
+	encoded = quote_plus(query)
+	return [
+		f"ytsearch1:{query}",
+		f"scsearch1:{query}",
+		f"https://soundcloud.com/search?q={encoded}",
+	]
 
 
 def _get_ytdl_options(tier: str) -> dict:
@@ -304,22 +310,30 @@ def _get_ffmpeg_options() -> dict:
 	}
 
 
-async def _extract_song_info(query: str, tier: str) -> dict:
+async def _extract_song_info(queries: list[str], tier: str) -> dict:
 	loop = asyncio.get_running_loop()
+	last_error: Exception | None = None
 
-	def _extract():
-		with yt_dlp.YoutubeDL(_get_ytdl_options(tier)) as ytdl:
-			return ytdl.extract_info(query, download=False)
+	for query in queries:
+		def _extract():
+			with yt_dlp.YoutubeDL(_get_ytdl_options(tier)) as ytdl:
+				return ytdl.extract_info(query, download=False)
 
-	data = await loop.run_in_executor(None, _extract)
-	if not data:
-		raise Exception("No data returned from extractor.")
-	if "entries" in data:
-		entries = [entry for entry in data.get("entries", []) if entry]
-		if not entries:
-			raise Exception("No results found.")
-		data = entries[0]
-	return data
+		try:
+			data = await loop.run_in_executor(None, _extract)
+			if not data:
+				raise Exception("No data returned from extractor.")
+			if "entries" in data:
+				entries = [entry for entry in data.get("entries", []) if entry]
+				if not entries:
+					raise Exception("No results found.")
+				data = entries[0]
+			return data
+		except Exception as e:
+			last_error = e
+			continue
+
+	raise last_error or Exception("No results found.")
 
 
 def _build_track_from_info(info: dict, requested_by: str, tier: str) -> dict:
@@ -1133,9 +1147,9 @@ class Codunot(commands.Cog):
 			return
 
 		tier = get_tier_from_message(interaction)
-		query = _normalize_song_query(song)
+		queries = _build_query_candidates(song)
 		try:
-			info = await _extract_song_info(query, tier)
+			info = await _extract_song_info(queries, tier)
 		except Exception as e:
 			print(f"[PLAY] Extraction error: {e}")
 			await interaction.followup.send(
