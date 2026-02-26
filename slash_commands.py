@@ -119,17 +119,20 @@ _YT_PLAYLIST_HOSTS = {"youtube.com", "www.youtube.com", "m.youtube.com", "youtu.
 _SC_PLAYLIST_HOSTS = {"soundcloud.com", "www.soundcloud.com"}
 
 def _is_playlist_url(url: str) -> bool:
-	try:
-		parsed = urlparse(url)
-	except Exception:
-		return False
-	host = (parsed.hostname or "").lower()
-	if host in _YT_PLAYLIST_HOSTS:
-		return "list=" in (parsed.query or "")
-	if host in _SC_PLAYLIST_HOSTS:
-		return "/sets/" in parsed.path
-	return False
-
+    try:
+        parsed = urlparse(url)
+    except Exception:
+        return False
+    host = (parsed.hostname or "").lower()
+    query = parsed.query or ""
+    
+    if host in _YT_PLAYLIST_HOSTS:
+        if "v=" in query and "list=" in query:
+            return False 
+        return "list=" in query
+    if host in _SC_PLAYLIST_HOSTS:
+        return "/sets/" in parsed.path
+    return False
 
 ACTION_GIF_SOURCES = {
 	"hug": [
@@ -282,16 +285,14 @@ async def fetch_bytes(url: str) -> bytes:
 
 
 YTDL_OPTIONS = {
-	"format": "bestaudio/best",
-	"noplaylist": True,
-	"quiet": True,
-	"nocheckcertificate": True,
-	"default_search": "ytsearch",
-	"source_address": "0.0.0.0",
-	"user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-	"add_header": [
-		"Accept-Language: en-US,en;q=0.9",
-	],
+    "format": "bestaudio/best",
+    "noplaylist": True,
+    "quiet": True,
+    "nocheckcertificate": True,
+    "default_search": "ytsearch",
+    "source_address": "0.0.0.0",
+    "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    "extractor_args": {'youtube': {'player_client': ['android', 'web']}},
 }
 
 FFMPEG_BEFORE_OPTIONS = "-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5"
