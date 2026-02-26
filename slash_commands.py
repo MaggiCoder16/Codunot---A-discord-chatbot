@@ -57,7 +57,7 @@ guild_now_message: dict[int, dict] = {}
 guild_queue_messages: dict[int, list[dict]] = {}
 guild_last_text_channel: dict[int, int] = {}
 guild_last_activity = {}
-_COOKIE_TEMP_FILE: tempfile.NamedTemporaryFile | None = None
+_COOKIE_TEMP_FILE = None
 _COOKIE_TEMP_PATH: str = ""
 
 def _init_cookie_file() -> str:
