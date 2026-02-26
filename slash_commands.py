@@ -9,6 +9,7 @@ import aiohttp
 import asyncio
 import random
 import traceback
+import tempfile
 from typing import Optional
 from urllib.parse import urlparse, quote_plus
 
@@ -53,9 +54,32 @@ guild_queues: dict[int, list[dict]] = {}
 guild_history: dict[int, list[dict]] = {}
 guild_now_playing: dict[int, dict] = {}
 guild_now_message: dict[int, dict] = {}
-guild_queue_messages: dict[int, list[dict]] = {}  # tracks queued song messages per guild
+guild_queue_messages: dict[int, list[dict]] = {}
 guild_last_text_channel: dict[int, int] = {}
 guild_last_activity = {}
+_COOKIE_TEMP_FILE: tempfile.NamedTemporaryFile | None = None
+_COOKIE_TEMP_PATH: str = ""
+
+def _init_cookie_file() -> str:
+	"""Write YTDL_COOKIE_CONTENT to a temp file and return its path."""
+	global _COOKIE_TEMP_FILE, _COOKIE_TEMP_PATH
+	content = os.getenv("YTDL_COOKIE_CONTENT", "").strip()
+	if not content:
+		return os.getenv("YTDL_COOKIES_TXT", "").strip()
+	if _COOKIE_TEMP_PATH:
+		return _COOKIE_TEMP_PATH
+	tmp = tempfile.NamedTemporaryFile(
+		mode="w", suffix=".txt", delete=False, encoding="utf-8"
+	)
+	tmp.write(content)
+	tmp.flush()
+	tmp.close()
+	_COOKIE_TEMP_FILE = tmp
+	_COOKIE_TEMP_PATH = tmp.name
+	return _COOKIE_TEMP_PATH
+
+COOKIE_PATH: str = _init_cookie_file()
+
 
 ALLOWED_TRANSCRIBE_HOSTS = (
 	"youtube.com",
@@ -90,6 +114,22 @@ TRANSCRIBE_HOST_NORMALIZATION = {
 	"mobile.twitter.com": "twitter.com",
 	"m.kick.com": "www.kick.com",
 }
+
+_YT_PLAYLIST_HOSTS = {"youtube.com", "www.youtube.com", "m.youtube.com", "youtu.be"}
+_SC_PLAYLIST_HOSTS = {"soundcloud.com", "www.soundcloud.com"}
+
+def _is_playlist_url(url: str) -> bool:
+	try:
+		parsed = urlparse(url)
+	except Exception:
+		return False
+	host = (parsed.hostname or "").lower()
+	if host in _YT_PLAYLIST_HOSTS:
+		return "list=" in (parsed.query or "")
+	if host in _SC_PLAYLIST_HOSTS:
+		return "/sets/" in parsed.path
+	return False
+
 
 ACTION_GIF_SOURCES = {
 	"hug": [
@@ -273,6 +313,10 @@ def _looks_like_url(value: str) -> bool:
 
 
 def _build_query_candidates(song: str) -> list[str]:
+	"""
+	YouTube first, SoundCloud as fallback for text queries.
+	For URLs (including playlists) pass through directly.
+	"""
 	query = (song or "").strip()
 	if _looks_like_url(query):
 		return [query]
@@ -284,15 +328,16 @@ def _build_query_candidates(song: str) -> list[str]:
 	]
 
 
-def _get_ytdl_options(tier: str) -> dict:
+def _get_ytdl_options(tier: str, allow_playlist: bool = False) -> dict:
 	options = dict(YTDL_OPTIONS)
 	if tier in {"premium", "gold"}:
 		options["format"] = "bestaudio/best"
 	else:
 		options["format"] = "bestaudio[abr<=192]/bestaudio/best"
-	cookie_path = os.getenv("YTDL_COOKIES_TXT", "").strip()
-	if cookie_path:
-		options["cookiefile"] = cookie_path
+	if allow_playlist:
+		options["noplaylist"] = False
+	if COOKIE_PATH:
+		options["cookiefile"] = COOKIE_PATH
 	return options
 
 
@@ -308,13 +353,14 @@ def _get_ffmpeg_options() -> dict:
 
 
 async def _extract_song_info(queries: list[str], tier: str) -> dict:
+	"""Extract a single track. Tries each query in order (YT → SC)."""
 	loop = asyncio.get_running_loop()
 	last_error: Exception | None = None
 
 	for query in queries:
-		def _extract():
+		def _extract(q=query):
 			with yt_dlp.YoutubeDL(_get_ytdl_options(tier)) as ytdl:
-				return ytdl.extract_info(query, download=False)
+				return ytdl.extract_info(q, download=False)
 
 		try:
 			data = await loop.run_in_executor(None, _extract)
@@ -333,10 +379,49 @@ async def _extract_song_info(queries: list[str], tier: str) -> dict:
 	raise last_error or Exception("No results found.")
 
 
+async def _extract_playlist_info(url: str, tier: str) -> list[dict]:
+	"""
+	Extract all entries from a playlist URL.
+	Returns a list of raw yt-dlp info dicts (one per track).
+	Raises on total failure.
+	"""
+	loop = asyncio.get_running_loop()
+
+	def _extract():
+		opts = _get_ytdl_options(tier, allow_playlist=True)
+		opts["extract_flat"] = "in_playlist"
+		with yt_dlp.YoutubeDL(opts) as ytdl:
+			return ytdl.extract_info(url, download=False)
+
+	data = await loop.run_in_executor(None, _extract)
+	if not data:
+		raise Exception("No data returned from playlist extractor.")
+
+	entries = [e for e in data.get("entries", []) if e]
+	if not entries:
+		raise Exception("Playlist appears to be empty.")
+	return entries
+
+
+async def _resolve_flat_entry(entry: dict, tier: str) -> dict | None:
+	url = entry.get("webpage_url") or entry.get("url")
+	if not url:
+		vid_id = entry.get("id")
+		if not vid_id:
+			return None
+		url = f"https://www.youtube.com/watch?v={vid_id}"
+
+	try:
+		return await _extract_song_info([url], tier)
+	except Exception as e:
+		print(f"[PLAYLIST RESOLVE] Failed for {url}: {e}")
+		return None
+
+
 def _build_track_from_info(info: dict, requested_by: str, tier: str) -> dict:
 	return {
 		"title": info.get("title") or "Unknown title",
-		"web_url": info.get("webpage_url"),
+		"web_url": info.get("webpage_url") or info.get("url"),
 		"uploader": info.get("uploader") or info.get("channel") or "Unknown",
 		"duration": info.get("duration"),
 		"thumbnail": info.get("thumbnail"),
@@ -344,7 +429,55 @@ def _build_track_from_info(info: dict, requested_by: str, tier: str) -> dict:
 		"requested_by": requested_by,
 		"tier": tier,
 		"quality": _get_quality_label(tier),
+		"_raw_info": info if not info.get("url") else None,
 	}
+
+
+def _build_track_from_flat_entry(entry: dict, requested_by: str, tier: str) -> dict:
+	"""Build a track stub from a flat playlist entry (no stream_url yet)."""
+	title = entry.get("title") or entry.get("id") or "Unknown title"
+	vid_id = entry.get("id", "")
+	webpage_url = entry.get("url") or (
+		f"https://www.youtube.com/watch?v={vid_id}" if vid_id else None
+	)
+	return {
+		"title": title,
+		"web_url": webpage_url,
+		"uploader": entry.get("uploader") or entry.get("channel") or "Unknown",
+		"duration": entry.get("duration"),
+		"thumbnail": entry.get("thumbnail"),
+		"stream_url": None,
+		"_flat_url": webpage_url,
+		"requested_by": requested_by,
+		"tier": tier,
+		"quality": _get_quality_label(tier),
+	}
+
+
+async def _ensure_stream_url(track: dict) -> dict:
+	"""
+	If the track has no stream_url, resolve it now.
+	Mutates and returns the track dict.
+	"""
+	if track.get("stream_url"):
+		return track
+
+	flat_url = track.get("_flat_url") or track.get("web_url")
+	if not flat_url:
+		raise Exception(f"Cannot resolve stream for track: {track.get('title')}")
+
+	tier = track.get("tier", "free")
+	info = await _extract_song_info([flat_url], tier)
+	track["stream_url"] = info.get("url")
+	if not track["stream_url"]:
+		raise Exception(f"No stream URL after resolve for: {track.get('title')}")
+	if not track.get("thumbnail"):
+		track["thumbnail"] = info.get("thumbnail")
+	if not track.get("duration"):
+		track["duration"] = info.get("duration")
+	if track.get("uploader") in (None, "Unknown"):
+		track["uploader"] = info.get("uploader") or info.get("channel") or "Unknown"
+	return track
 
 
 class MusicControls(discord.ui.View):
@@ -664,6 +797,44 @@ class Codunot(commands.Cog):
 
 		return True
 
+	@app_commands.command(name="queue", description="📋 Show the current music queue")
+	async def queue_slash(self, interaction: discord.Interaction):
+		if interaction.guild is None:
+			await interaction.response.send_message("❌ This can only be used in a server.", ephemeral=True)
+			return
+	
+		queue = self._queue_for_guild(interaction.guild.id)
+		current = guild_now_playing.get(interaction.guild.id)
+	
+		if not current and not queue:
+			await interaction.response.send_message("❌ The queue is empty and nothing is playing.", ephemeral=False)
+			return
+	
+		embed = discord.Embed(title="📋 Music Queue", color=0x1DB954)
+	
+		if current:
+			title = current.get("title") or "Unknown"
+			web_url = current.get("web_url")
+			duration = _format_duration_seconds(current.get("duration"))
+			display = f"[{title}]({web_url})" if web_url else title
+			embed.add_field(name="🎵 Now Playing", value=f"{display} `{duration}`", inline=False)
+	
+		if queue:
+			lines = []
+			for i, track in enumerate(queue[:15], start=1):
+				title = track.get("title") or "Unknown"
+				web_url = track.get("web_url")
+				duration = _format_duration_seconds(track.get("duration"))
+				display = f"[{title}]({web_url})" if web_url else title
+				lines.append(f"`{i}.` {display} `{duration}`")
+			if len(queue) > 15:
+				lines.append(f"*...and {len(queue) - 15} more*")
+			embed.add_field(name=f"⏳ Up Next ({len(queue)} tracks)", value="\n".join(lines), inline=False)
+		else:
+			embed.add_field(name="⏳ Up Next", value="Queue is empty.", inline=False)
+	
+		await interaction.response.send_message(embed=embed, ephemeral=False)
+
 	def _build_now_playing_embed(self, track: dict) -> discord.Embed:
 		title = track.get("title") or "Unknown title"
 		web_url = track.get("web_url")
@@ -702,7 +873,7 @@ class Codunot(commands.Cog):
 		embed = discord.Embed(
 			title="⏹️ Ended",
 			description=description,
-			color=0x5C5C5C  # grey
+			color=0x5C5C5C
 		)
 		if thumbnail:
 			embed.set_thumbnail(url=thumbnail)
@@ -779,6 +950,8 @@ class Codunot(commands.Cog):
 				if len(history) > 25:
 					history.pop(0)
 
+		track = await _ensure_stream_url(track)
+
 		guild_now_playing[guild.id] = track
 		guild_last_activity[guild.id] = asyncio.get_event_loop().time()
 
@@ -803,7 +976,6 @@ class Codunot(commands.Cog):
 		return self._build_now_playing_embed(track)
 
 	async def _auto_advance(self, guild_id: int):
-		# Step 1: Mark the old now-playing message as ended (greyed out, no buttons)
 		await self._mark_now_playing_as_ended(guild_id)
 
 		queue = self._queue_for_guild(guild_id)
@@ -830,7 +1002,6 @@ class Codunot(commands.Cog):
 
 		view = MusicControls(self, guild_id)
 
-		# Step 2: Promote the first queued song message → becomes the new Now Playing message
 		queue_messages = self._queue_messages_for_guild(guild_id)
 		promoted = False
 		if queue_messages:
@@ -850,7 +1021,6 @@ class Codunot(commands.Cog):
 				print(f"[PLAY] Failed to promote queued message to now-playing: {e}")
 
 		if not promoted:
-			# Fallback: send a brand new now-playing message
 			channel_id = guild_last_text_channel.get(guild_id)
 			if channel_id:
 				try:
@@ -892,7 +1062,6 @@ class Codunot(commands.Cog):
 			voice_client.stop()
 		await voice_client.disconnect()
 
-		# Show the stopped song as ended
 		if current_track:
 			ended_embed = self._build_ended_embed(current_track)
 			ended_embed.set_footer(text="Playback stopped • Queue cleared")
@@ -1196,14 +1365,19 @@ class Codunot(commands.Cog):
 				f"{interaction.user.mention} 🤔 Couldn't generate speech right now. Please try again later."
 			)
 
-	@app_commands.command(name="play", description="🎵 Play a song in your voice channel (HD free, 320kbps Premium/Gold)")
-	@app_commands.describe(song="Song name or URL")
+	@app_commands.command(
+		name="play",
+		description="🎵 Play a song or playlist in your voice channel (HD free, 320kbps Premium/Gold)"
+	)
+	@app_commands.describe(song="Song name, URL, or playlist URL (YouTube/SoundCloud)")
 	async def play_slash(self, interaction: discord.Interaction, song: str):
 
 		if interaction.guild is None:
+			await interaction.response.send_message("❌ This command can only be used in a server.", ephemeral=True)
 			return
 
 		if not interaction.user.voice or not interaction.user.voice.channel:
+			await interaction.response.send_message("❌ Join a voice channel first!", ephemeral=True)
 			return
 
 		await interaction.response.defer()
@@ -1219,36 +1393,108 @@ class Codunot(commands.Cog):
 
 		try:
 			if voice_client and voice_client.is_connected():
+				# Already in a different channel — refuse
 				if voice_client.channel.id != channel.id:
+					await interaction.edit_original_response(
+						content=f"❌ I'm already in {voice_client.channel.mention}. Join that channel or stop me first."
+					)
 					return
 			else:
+				if voice_client:
+					try:
+						await voice_client.disconnect(force=True)
+					except Exception:
+						pass
 				voice_client = await channel.connect()
 		except Exception as e:
 			print(f"[PLAY] Voice connect error: {e}")
+			await interaction.edit_original_response(content="❌ Couldn't connect to your voice channel.")
 			return
 
 		tier = get_tier_from_message(interaction)
+		guild_last_text_channel[interaction.guild.id] = interaction.channel.id
+
+		if _looks_like_url(song) and _is_playlist_url(song):
+			await interaction.edit_original_response(content="📋 Detected a playlist — loading tracks...")
+			try:
+				entries = await _extract_playlist_info(song, tier)
+			except Exception as e:
+				print(f"[PLAY] Playlist extract error: {e}")
+				await interaction.edit_original_response(content="❌ Couldn't load that playlist. Is it public?")
+				return
+
+			if not entries:
+				await interaction.edit_original_response(content="❌ That playlist appears to be empty.")
+				return
+
+			stub_tracks = [
+				_build_track_from_flat_entry(e, interaction.user.mention, tier)
+				for e in entries
+			]
+
+			queue = self._queue_for_guild(interaction.guild.id)
+
+			if voice_client.is_playing() or voice_client.is_paused():
+				for t in stub_tracks:
+					queue.append(t)
+				await interaction.edit_original_response(
+					content=f"✅ Added **{len(stub_tracks)}** tracks from the playlist to the queue."
+				)
+				return
+
+			first_track = stub_tracks[0]
+			rest_tracks = stub_tracks[1:]
+
+			await interaction.edit_original_response(
+				content=f"🎵 Starting playlist ({len(stub_tracks)} tracks)..."
+			)
+
+			try:
+				embed = await self._start_track(interaction.guild, voice_client, first_track)
+			except Exception as e:
+				print(f"[PLAY] Playlist first-track error: {e}")
+				await interaction.edit_original_response(content="❌ Couldn't play the first track in the playlist.")
+				return
+
+			for t in rest_tracks:
+				queue.append(t)
+
+			view = MusicControls(self, interaction.guild.id)
+			message = await interaction.followup.send(
+				content=f"📋 Playlist loaded — **{len(rest_tracks)}** more tracks queued.",
+				embed=embed,
+				view=view,
+				wait=True,
+			)
+			guild_now_message[interaction.guild.id] = {
+				"channel_id": message.channel.id,
+				"message_id": message.id,
+			}
+			return
+
 		queries = _build_query_candidates(song)
+
+		await interaction.edit_original_response(content="🔍 Searching for your song...")
 
 		try:
 			info = await _extract_song_info(queries, tier)
 		except Exception as e:
 			print(f"[PLAY] Extraction error: {e}")
+			await interaction.edit_original_response(content="❌ Couldn't find that song. Try a different query.")
 			return
 
 		track = _build_track_from_info(info, interaction.user.mention, tier)
 
 		if not track.get("stream_url"):
 			print("[PLAY] No stream_url in track")
+			await interaction.edit_original_response(content="❌ Found the song but couldn't get a stream URL.")
 			return
 
-		guild_last_text_channel[interaction.guild.id] = interaction.channel.id
 		queue = self._queue_for_guild(interaction.guild.id)
 
 		if voice_client.is_playing() or voice_client.is_paused():
 			queue.append(track)
 			position = len(queue)
-			# Send queued message and save a reference to it for later promotion
 			queued_msg = await interaction.followup.send(
 				f"✅ Queued **{track['title']}** at position {position}.",
 				wait=True,
@@ -1260,13 +1506,6 @@ class Codunot(commands.Cog):
 			})
 			return
 
-		if not voice_client or not voice_client.is_connected():
-			try:
-				voice_client = await channel.connect()
-			except Exception as e:
-				print(f"[PLAY] Reconnect failed: {e}")
-				return
-
 		try:
 			embed = await self._start_track(interaction.guild, voice_client, track)
 		except Exception as e:
@@ -1276,10 +1515,11 @@ class Codunot(commands.Cog):
 					voice_client.stop()
 			except Exception:
 				pass
+			await interaction.edit_original_response(content="❌ Failed to start playback.")
 			return
 
 		view = MusicControls(self, interaction.guild.id)
-		message = await interaction.followup.send(embed=embed, view=view)
+		message = await interaction.followup.send(embed=embed, view=view, wait=True)
 
 		guild_now_message[interaction.guild.id] = {
 			"channel_id": message.channel.id,
