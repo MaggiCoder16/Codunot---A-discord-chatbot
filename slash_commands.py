@@ -346,8 +346,7 @@ def _get_ytdl_options(tier: str, allow_playlist: bool = False) -> dict:
 		options["format"] = "bestaudio[abr<=192]/bestaudio/best"
 	if allow_playlist:
 		options["noplaylist"] = False
-	if COOKIE_PATH:
-		options["cookiefile"] = COOKIE_PATH
+	
 	return options
 
 
