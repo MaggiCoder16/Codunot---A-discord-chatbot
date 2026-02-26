@@ -1080,7 +1080,6 @@ class Codunot(commands.Cog):
 		voice_client = guild.voice_client
 		next_track = queue.pop(0)
 
-		# Remove the corresponding queued message entry too
 		queue_messages = self._queue_messages_for_guild(guild.id)
 		if queue_messages:
 			queue_messages.pop(0)
@@ -1423,9 +1422,9 @@ class Codunot(commands.Cog):
 				await interaction.edit_original_response(content="❌ That playlist appears to be empty.")
 				return
 
-			stub_tracks =[
-							_build_track_from_flat_entry(e, interaction.user.mention, tier)
-							for e in entries
+			stub_tracks = [
+				_build_track_from_flat_entry(e, interaction.user.mention, tier)
+				for e in entries
 			]
 			queue = self._queue_for_guild(interaction.guild.id)
 
@@ -1437,27 +1436,36 @@ class Codunot(commands.Cog):
 				)
 				return
 
-			first_track = stub_tracks[0]
-			rest_tracks = stub_tracks[1:]
+			await interaction.edit_original_response(content="🎵 Finding a playable track in playlist...")
+			
+			first_embed = None
+			playable_index = -1
 
-			await interaction.edit_original_response(
-				content=f"🎵 Starting playlist ({len(stub_tracks)} tracks)..."
-			)
+			for i, track in enumerate(stub_tracks):
+				try:
+					first_embed = await self._start_track(interaction.guild, voice_client, track)
+					playable_index = i
+					break
+				except Exception as e:
+					print(f"[PLAY] Skipping unavailable track {i} ({track.get('title')}): {e}")
+					continue
 
-			try:
-				embed = await self._start_track(interaction.guild, voice_client, first_track)
-			except Exception as e:
-				print(f"[PLAY] Playlist first-track error: {e}")
-				await interaction.edit_original_response(content="❌ Couldn't play the first track in the playlist.")
+			if playable_index == -1:
+				await interaction.edit_original_response(content="❌ None of the tracks in this playlist are available for playback.")
 				return
 
+			rest_tracks = stub_tracks[playable_index + 1:]
 			for t in rest_tracks:
 				queue.append(t)
 
 			view = MusicControls(self, interaction.guild.id)
+			status_msg = f"📋 Playlist started!"
+			if rest_tracks:
+				status_msg += f" **{len(rest_tracks)}** more tracks queued."
+			
 			message = await interaction.followup.send(
-				content=f"📋 Playlist loaded — **{len(rest_tracks)}** more tracks queued.",
-				embed=embed,
+				content=status_msg,
+				embed=first_embed,
 				view=view,
 				wait=True,
 			)
@@ -1468,7 +1476,6 @@ class Codunot(commands.Cog):
 			return
 
 		queries = _build_query_candidates(song)
-
 		await interaction.edit_original_response(content="🔍 Searching for your song...")
 
 		try:
@@ -1481,7 +1488,6 @@ class Codunot(commands.Cog):
 		track = _build_track_from_info(info, interaction.user.mention, tier)
 
 		if not track.get("stream_url"):
-			print("[PLAY] No stream_url in track")
 			await interaction.edit_original_response(content="❌ Found the song but couldn't get a stream URL.")
 			return
 
@@ -1505,11 +1511,6 @@ class Codunot(commands.Cog):
 			embed = await self._start_track(interaction.guild, voice_client, track)
 		except Exception as e:
 			print(f"[PLAY] Voice play error: {e}")
-			try:
-				if voice_client and voice_client.is_connected():
-					voice_client.stop()
-			except Exception:
-				pass
 			await interaction.edit_original_response(content="❌ Failed to start playback.")
 			return
 
