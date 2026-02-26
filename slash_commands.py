@@ -384,22 +384,17 @@ async def _extract_playlist_info(url: str, tier: str) -> list[dict]:
 
 	def _extract():
 		opts = _get_ytdl_options(tier, allow_playlist=True)
-		opts.pop("extract_flat", None)
+		opts["extract_flat"] = "in_playlist"
 		opts["playlistend"] = 50
 		opts["ignoreerrors"] = True
-		try:
-			with yt_dlp.YoutubeDL(opts) as ytdl:
-				return ytdl.extract_info(url, download=False)
-		except Exception:
-			opts["extract_flat"] = "in_playlist"
-			with yt_dlp.YoutubeDL(opts) as ytdl:
-				return ytdl.extract_info(url, download=False)
+		with yt_dlp.YoutubeDL(opts) as ytdl:
+			return ytdl.extract_info(url, download=False)
 
 	data = await loop.run_in_executor(None, _extract)
 	if not data:
 		raise Exception("No data returned from playlist extractor.")
 
-	entries = [e for e in data.get("entries", []) if e and e.get("url")]
+	entries = [e for e in data.get("entries", []) if e and (e.get("url") or e.get("id"))]
 	if not entries:
 		raise Exception("Playlist appears to be empty.")
 	return entries
@@ -1428,11 +1423,9 @@ class Codunot(commands.Cog):
 				await interaction.edit_original_response(content="❌ That playlist appears to be empty.")
 				return
 
-			stub_tracks = [
-				_build_track_from_info(e, interaction.user.mention, tier)
-				if e.get("url") and e.get("duration")
-				else _build_track_from_flat_entry(e, interaction.user.mention, tier)
-				for e in entries
+			stub_tracks =[
+							_build_track_from_flat_entry(e, interaction.user.mention, tier)
+							for e in entries
 			]
 			queue = self._queue_for_guild(interaction.guild.id)
 
