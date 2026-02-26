@@ -248,10 +248,7 @@ YTDL_OPTIONS = {
 	"source_address": "0.0.0.0",
 }
 
-FFMPEG_OPTIONS = {
-	"before_options": "-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5",
-	"options": "-vn",
-}
+FFMPEG_BEFORE_OPTIONS = "-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5"
 
 
 def _format_duration_seconds(seconds: int | None) -> str:
@@ -284,11 +281,34 @@ def _normalize_song_query(song: str) -> str:
 	return f"ytsearch1:{query}"
 
 
-async def _extract_song_info(query: str) -> dict:
+def _get_ytdl_options(tier: str) -> dict:
+	options = dict(YTDL_OPTIONS)
+	if tier in {"premium", "gold"}:
+		options["format"] = "bestaudio/best"
+	else:
+		options["format"] = "bestaudio[abr<=192]/bestaudio/best"
+	cookie_path = os.getenv("YTDL_COOKIES", "").strip()
+	if cookie_path:
+		options["cookiefile"] = cookie_path
+	return options
+
+
+def _get_quality_label(tier: str) -> str:
+	return "320kbps" if tier in {"premium", "gold"} else "HD"
+
+
+def _get_ffmpeg_options() -> dict:
+	return {
+		"before_options": FFMPEG_BEFORE_OPTIONS,
+		"options": "-vn",
+	}
+
+
+async def _extract_song_info(query: str, tier: str) -> dict:
 	loop = asyncio.get_running_loop()
 
 	def _extract():
-		with yt_dlp.YoutubeDL(YTDL_OPTIONS) as ytdl:
+		with yt_dlp.YoutubeDL(_get_ytdl_options(tier)) as ytdl:
 			return ytdl.extract_info(query, download=False)
 
 	data = await loop.run_in_executor(None, _extract)
@@ -302,7 +322,7 @@ async def _extract_song_info(query: str) -> dict:
 	return data
 
 
-def _build_track_from_info(info: dict, requested_by: str) -> dict:
+def _build_track_from_info(info: dict, requested_by: str, tier: str) -> dict:
 	return {
 		"title": info.get("title") or "Unknown title",
 		"web_url": info.get("webpage_url"),
@@ -311,6 +331,8 @@ def _build_track_from_info(info: dict, requested_by: str) -> dict:
 		"thumbnail": info.get("thumbnail"),
 		"stream_url": info.get("url"),
 		"requested_by": requested_by,
+		"tier": tier,
+		"quality": _get_quality_label(tier),
 	}
 
 
@@ -618,26 +640,26 @@ class Codunot(commands.Cog):
 	async def _ensure_music_control(self, interaction: discord.Interaction) -> bool:
 		if interaction.guild is None:
 			if interaction.response.is_done():
-				await interaction.followup.send("❌ This can only be used in a server.", ephemeral=True)
+				await interaction.followup.send("❌ This can only be used in a server.", ephemeral=False)
 			else:
-				await interaction.response.send_message("❌ This can only be used in a server.", ephemeral=True)
+				await interaction.response.send_message("❌ This can only be used in a server.", ephemeral=False)
 			return False
 
 		voice_client = interaction.guild.voice_client
 		if not voice_client or not voice_client.is_connected():
 			if interaction.response.is_done():
-				await interaction.followup.send("❌ I'm not connected to a voice channel.", ephemeral=True)
+				await interaction.followup.send("❌ I'm not connected to a voice channel.", ephemeral=False)
 			else:
-				await interaction.response.send_message("❌ I'm not connected to a voice channel.", ephemeral=True)
+				await interaction.response.send_message("❌ I'm not connected to a voice channel.", ephemeral=False)
 			return False
 
 		user_voice = interaction.user.voice
 		if not user_voice or user_voice.channel.id != voice_client.channel.id:
 			msg = f"🎧 Join {voice_client.channel.mention} to control playback."
 			if interaction.response.is_done():
-				await interaction.followup.send(msg, ephemeral=True)
+				await interaction.followup.send(msg, ephemeral=False)
 			else:
-				await interaction.response.send_message(msg, ephemeral=True)
+				await interaction.response.send_message(msg, ephemeral=False)
 			return False
 
 		return True
@@ -649,6 +671,7 @@ class Codunot(commands.Cog):
 		duration = _format_duration_seconds(track.get("duration"))
 		thumbnail = track.get("thumbnail")
 		requested_by = track.get("requested_by") or "Unknown"
+		quality = track.get("quality") or "HD"
 
 		description = f"[{title}]({web_url})" if web_url else title
 		embed = discord.Embed(
@@ -661,7 +684,8 @@ class Codunot(commands.Cog):
 		embed.add_field(name="Artist/Channel", value=uploader, inline=True)
 		embed.add_field(name="Duration", value=duration, inline=True)
 		embed.add_field(name="Requested By", value=requested_by, inline=True)
-		embed.set_footer(text="Premium/Gold")
+		embed.add_field(name="Quality", value=quality, inline=True)
+		embed.set_footer(text="HD free • 320kbps for Premium/Gold")
 		return embed
 
 	def _queue_for_guild(self, guild_id: int) -> list[dict]:
@@ -698,7 +722,8 @@ class Codunot(commands.Cog):
 				self.bot.loop
 			)
 
-		source = discord.FFmpegPCMAudio(track["stream_url"], **FFMPEG_OPTIONS)
+		tier = track.get("tier") or "basic"
+		source = discord.FFmpegPCMAudio(track["stream_url"], **_get_ffmpeg_options())
 		voice_client.play(source, after=_after_playback)
 
 		return self._build_now_playing_embed(track)
@@ -1068,27 +1093,20 @@ class Codunot(commands.Cog):
 				f"{interaction.user.mention} 🤔 Couldn't generate speech right now. Please try again later."
 			)
 
-	@app_commands.command(name="play", description="🎵 Play a song in your voice channel (Premium/Gold)")
+	@app_commands.command(name="play", description="🎵 Play a song in your voice channel (HD free, 320kbps Premium/Gold)")
 	@app_commands.describe(song="Song name or URL")
 	async def play_slash(self, interaction: discord.Interaction, song: str):
 		if interaction.guild is None:
 			await interaction.response.send_message(
 				"❌ This command can only be used inside a server.",
-				ephemeral=True
-			)
-			return
-
-		if not self._is_premium_or_gold(interaction):
-			await interaction.response.send_message(
-				"🔒 `/play` is a **Premium/Gold** feature for servers listed in `tiers_premium.txt` or `tiers_gold.txt`.",
-				ephemeral=True
+				ephemeral=False
 			)
 			return
 
 		if not interaction.user.voice or not interaction.user.voice.channel:
 			await interaction.response.send_message(
 				"🎧 Join a voice channel first, then try `/play` again.",
-				ephemeral=True
+				ephemeral=False
 			)
 			return
 
@@ -1102,7 +1120,7 @@ class Codunot(commands.Cog):
 				if voice_client.channel.id != channel.id:
 					await interaction.followup.send(
 						f"🎧 I'm already playing in {voice_client.channel.mention}. Join there to control playback.",
-						ephemeral=True
+						ephemeral=False
 					)
 					return
 			else:
@@ -1114,17 +1132,19 @@ class Codunot(commands.Cog):
 			)
 			return
 
+		tier = get_tier_from_message(interaction)
 		query = _normalize_song_query(song)
 		try:
-			info = await _extract_song_info(query)
+			info = await _extract_song_info(query, tier)
 		except Exception as e:
 			print(f"[PLAY] Extraction error: {e}")
 			await interaction.followup.send(
-				"❌ I couldn't find that song. Try a different search or URL."
+				"❌ I couldn't fetch that song. Try a different search or URL.\n"
+				"If YouTube blocks the bot, set `YTDL_COOKIES` to a cookies.txt export."
 			)
 			return
 
-		track = _build_track_from_info(info, interaction.user.mention)
+		track = _build_track_from_info(info, interaction.user.mention, tier)
 		if not track.get("stream_url"):
 			await interaction.followup.send(
 				"❌ I couldn't get a playable audio stream for that song."
