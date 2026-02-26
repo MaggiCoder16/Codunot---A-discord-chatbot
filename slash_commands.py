@@ -54,6 +54,7 @@ guild_history: dict[int, list[dict]] = {}
 guild_now_playing: dict[int, dict] = {}
 guild_now_message: dict[int, dict] = {}
 guild_last_text_channel: dict[int, int] = {}
+guild_last_activity = {}
 
 ALLOWED_TRANSCRIBE_HOSTS = (
 	"youtube.com",
@@ -276,14 +277,9 @@ def _build_query_candidates(song: str) -> list[str]:
 		return [query]
 	if query.startswith("www."):
 		return [f"https://{query}"]
-	if "youtube.com/" in query or "youtu.be/" in query or "soundcloud.com/" in query:
-		return [f"https://{query}"]
-
-	encoded = quote_plus(query)
 	return [
 		f"ytsearch1:{query}",
 		f"scsearch1:{query}",
-		f"https://soundcloud.com/search?q={encoded}",
 	]
 
 
@@ -488,8 +484,6 @@ async def require_vote_slash(interaction: discord.Interaction) -> bool:
 	return voted
 
 
-
-
 class ConfigureGroup(app_commands.Group):
 	def __init__(self):
 		super().__init__(name="configure", description="Configure where the bot can chat in this server")
@@ -585,11 +579,11 @@ class Codunot(commands.Cog):
 	def _bot_missing_from_guild(self, interaction: discord.Interaction) -> bool:
 		if interaction.guild_id is None:
 			return False
-		
+
 		guild = self.bot.get_guild(interaction.guild_id)
 		if guild is None:
 			return True
-		
+
 		bot_member = guild.get_member(self.bot.user.id)
 		return bot_member is None
 
@@ -641,15 +635,6 @@ class Codunot(commands.Cog):
 			return True
 		tier = get_tier_from_message(interaction)
 		return tier in {"premium", "gold"}
-
-	async def _disconnect_if_idle(self, guild_id: int, delay_seconds: int = 30):
-		await asyncio.sleep(delay_seconds)
-		guild = self.bot.get_guild(guild_id)
-		if guild is None:
-			return
-		voice_client = guild.voice_client
-		if voice_client and not voice_client.is_playing() and not voice_client.is_paused():
-			await voice_client.disconnect()
 
 	async def _ensure_music_control(self, interaction: discord.Interaction) -> bool:
 		if interaction.guild is None:
@@ -708,6 +693,29 @@ class Codunot(commands.Cog):
 	def _history_for_guild(self, guild_id: int) -> list[dict]:
 		return guild_history.setdefault(guild_id, [])
 
+	async def _start_idle_timer(self, guild_id: int):
+		await asyncio.sleep(600)
+
+		guild = self.bot.get_guild(guild_id)
+		if guild is None:
+			return
+
+		voice_client = guild.voice_client
+		if not voice_client:
+			return
+
+		if voice_client.is_playing() or voice_client.is_paused():
+			return
+
+		last = guild_last_activity.get(guild_id, 0)
+		now = asyncio.get_event_loop().time()
+		if now - last >= 600:
+			try:
+				await voice_client.disconnect()
+				print(f"[MUSIC] Disconnected due to 10m inactivity {guild_id}")
+			except Exception as e:
+				print(f"[MUSIC] Disconnect error: {e}")
+
 	async def _start_track(
 		self,
 		guild: discord.Guild,
@@ -724,6 +732,7 @@ class Codunot(commands.Cog):
 					history.pop(0)
 
 		guild_now_playing[guild.id] = track
+		guild_last_activity[guild.id] = asyncio.get_event_loop().time()
 
 		if voice_client.is_playing() or voice_client.is_paused():
 			voice_client.stop()
@@ -731,12 +740,15 @@ class Codunot(commands.Cog):
 		def _after_playback(error: Exception | None):
 			if error:
 				print(f"[PLAY] Playback error: {error}")
-			asyncio.run_coroutine_threadsafe(
+			future = asyncio.run_coroutine_threadsafe(
 				self._auto_advance(guild.id),
 				self.bot.loop
 			)
+			try:
+				future.result()
+			except Exception as e:
+				print(f"[AUTO ADVANCE ERROR] {e}")
 
-		tier = track.get("tier") or "basic"
 		source = discord.FFmpegPCMAudio(track["stream_url"], **_get_ffmpeg_options())
 		voice_client.play(source, after=_after_playback)
 
@@ -745,7 +757,7 @@ class Codunot(commands.Cog):
 	async def _auto_advance(self, guild_id: int):
 		queue = self._queue_for_guild(guild_id)
 		if not queue:
-			await self._disconnect_if_idle(guild_id)
+			asyncio.create_task(self._start_idle_timer(guild_id))
 			return
 
 		guild = self.bot.get_guild(guild_id)
@@ -792,17 +804,17 @@ class Codunot(commands.Cog):
 		voice_client = interaction.guild.voice_client
 		if voice_client.is_playing():
 			voice_client.pause()
-			await interaction.response.send_message("⏸️ Paused.", ephemeral=True)
+			await interaction.response.send_message("⏸️ Paused.", ephemeral=False)
 		else:
-			await interaction.response.send_message("❌ Nothing is playing.", ephemeral=True)
+			await interaction.response.send_message("❌ Nothing is playing.", ephemeral=False)
 
 	async def _music_resume(self, interaction: discord.Interaction):
 		voice_client = interaction.guild.voice_client
 		if voice_client.is_paused():
 			voice_client.resume()
-			await interaction.response.send_message("▶️ Resumed.", ephemeral=True)
+			await interaction.response.send_message("▶️ Resumed.", ephemeral=False)
 		else:
-			await interaction.response.send_message("❌ Nothing is paused.", ephemeral=True)
+			await interaction.response.send_message("❌ Nothing is paused.", ephemeral=False)
 
 	async def _music_stop(self, interaction: discord.Interaction):
 		voice_client = interaction.guild.voice_client
@@ -824,7 +836,7 @@ class Codunot(commands.Cog):
 	async def _music_next(self, interaction: discord.Interaction):
 		queue = self._queue_for_guild(interaction.guild.id)
 		if not queue:
-			await interaction.response.send_message("❌ Queue is empty.", ephemeral=True)
+			await interaction.response.send_message("❌ Queue is empty.", ephemeral=False)
 			return
 
 		guild = interaction.guild
@@ -834,7 +846,7 @@ class Codunot(commands.Cog):
 			embed = await self._start_track(guild, voice_client, next_track)
 		except Exception as e:
 			print(f"[PLAY] Next error: {e}")
-			await interaction.response.send_message("❌ Couldn't start the next track.", ephemeral=True)
+			await interaction.response.send_message("❌ Couldn't start the next track.", ephemeral=False)
 			return
 
 		view = MusicControls(self, guild.id)
@@ -848,7 +860,7 @@ class Codunot(commands.Cog):
 	async def _music_previous(self, interaction: discord.Interaction):
 		history = self._history_for_guild(interaction.guild.id)
 		if not history:
-			await interaction.response.send_message("❌ No previous tracks.", ephemeral=True)
+			await interaction.response.send_message("❌ No previous tracks.", ephemeral=False)
 			return
 
 		queue = self._queue_for_guild(interaction.guild.id)
@@ -863,7 +875,7 @@ class Codunot(commands.Cog):
 			embed = await self._start_track(guild, voice_client, previous_track, push_history=False)
 		except Exception as e:
 			print(f"[PLAY] Previous error: {e}")
-			await interaction.response.send_message("❌ Couldn't start the previous track.", ephemeral=True)
+			await interaction.response.send_message("❌ Couldn't start the previous track.", ephemeral=False)
 			return
 
 		view = MusicControls(self, guild.id)
@@ -910,7 +922,7 @@ class Codunot(commands.Cog):
 	async def teachmerizz_slash(self, interaction: discord.Interaction, mode: app_commands.Choice[str]):
 		is_dm = isinstance(interaction.channel, discord.DMChannel)
 		chan_id = f"dm_{interaction.user.id}" if is_dm else str(interaction.channel.id)
-	
+
 		if mode.value == "online":
 			channel_modes[chan_id] = "rizz_online"
 			memory.save_channel_mode(chan_id, "rizz_online")
@@ -919,7 +931,7 @@ class Codunot(commands.Cog):
 				"💬 **Rizz Coach (Online) activated!**\n"
 				"Send your situation, paste a convo, or just ask anything 👇"
 			)
-	
+
 		elif mode.value == "irl":
 			channel_modes[chan_id] = "rizz_irl"
 			memory.save_channel_mode(chan_id, "rizz_irl")
@@ -1110,25 +1122,25 @@ class Codunot(commands.Cog):
 	@app_commands.command(name="play", description="🎵 Play a song in your voice channel (HD free, 320kbps Premium/Gold)")
 	@app_commands.describe(song="Song name or URL")
 	async def play_slash(self, interaction: discord.Interaction, song: str):
-	
+
 		if interaction.guild is None:
 			return
-	
+
 		if not interaction.user.voice or not interaction.user.voice.channel:
 			return
-	
+
 		await interaction.response.defer()
-	
+
 		await interaction.edit_original_response(content="🗳️ Checking your vote status...")
-	
+
 		if not await require_vote_deferred(interaction):
 			return
-	
+
 		await interaction.edit_original_response(content="🎵 Joining voice channel...")
-	
+
 		channel = interaction.user.voice.channel
 		voice_client = interaction.guild.voice_client
-	
+
 		try:
 			if voice_client and voice_client.is_connected():
 				if voice_client.channel.id != channel.id:
@@ -1138,55 +1150,55 @@ class Codunot(commands.Cog):
 		except Exception as e:
 			print(f"[PLAY] Voice connect error: {e}")
 			return
-	
+
 		tier = get_tier_from_message(interaction)
 		queries = _build_query_candidates(song)
-	
+
 		try:
 			info = await _extract_song_info(queries, tier)
 		except Exception as e:
 			print(f"[PLAY] Extraction error: {e}")
 			return
-	
+
 		track = _build_track_from_info(info, interaction.user.mention, tier)
-	
+
 		if not track.get("stream_url"):
 			print("[PLAY] No stream_url in track")
 			return
-	
+
 		guild_last_text_channel[interaction.guild.id] = interaction.channel.id
 		queue = self._queue_for_guild(interaction.guild.id)
-	
+
 		if voice_client.is_playing() or voice_client.is_paused():
 			queue.append(track)
 			await interaction.followup.send(
 				f"✅ Queued **{track['title']}** at position {len(queue)}."
 			)
 			return
-	
+
 		if not voice_client or not voice_client.is_connected():
 			try:
 				voice_client = await channel.connect()
 			except Exception as e:
 				print(f"[PLAY] Reconnect failed: {e}")
 				return
-	
+
 		try:
 			embed = await self._start_track(interaction.guild, voice_client, track)
 		except Exception as e:
 			print(f"[PLAY] Voice play error: {e}")
-	
+
 			try:
 				if voice_client and voice_client.is_connected():
 					voice_client.stop()
-			except:
+			except Exception:
 				pass
-	
+
 			return
-	
+
 		view = MusicControls(self, interaction.guild.id)
 		message = await interaction.followup.send(embed=embed, view=view)
-	
+
 		guild_now_message[interaction.guild.id] = {
 			"channel_id": message.channel.id,
 			"message_id": message.id,
@@ -1587,10 +1599,10 @@ class Codunot(commands.Cog):
 				ephemeral=False,
 			)
 			return
-	
+
 		await interaction.response.defer(ephemeral=False)
 		await interaction.edit_original_response(content="🗳️ **Checking your vote status...**")
-	
+
 		if not await require_vote_deferred(interaction):
 			return
 
@@ -1608,10 +1620,10 @@ class Codunot(commands.Cog):
 
 		await interaction.edit_original_response(content="✅ **Vote verified! Submitting transcription...**")
 		deliver_in_dm = self._should_deliver_paid_output_in_dm(interaction)
-	
+
 		try:
 			request_id = await transcribe_video(video_url=normalized_video_url, max_minutes=30)
-	
+
 			register_base = self._transcribe_register_base()
 
 			register_channel_id = interaction.channel.id
@@ -1658,7 +1670,7 @@ class Codunot(commands.Cog):
 					deliver_in_dm=deliver_in_dm,
 				)
 			)
-	
+
 		except VideoToTextError as e:
 			await interaction.edit_original_response(content=f"❌ {e}")
 			return
@@ -1666,7 +1678,7 @@ class Codunot(commands.Cog):
 			print(f"[SLASH TRANSCRIBE ERROR] {e}")
 			await interaction.edit_original_response(content="🤔 Couldn't transcribe this video right now.")
 			return
-	
+
 		if deliver_in_dm:
 			await interaction.edit_original_response(
 				content="📝 Transcription submitted! I'm not in this server, so I'll send the final transcript to your DMs."
