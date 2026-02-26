@@ -53,6 +53,7 @@ guild_queues: dict[int, list[dict]] = {}
 guild_history: dict[int, list[dict]] = {}
 guild_now_playing: dict[int, dict] = {}
 guild_now_message: dict[int, dict] = {}
+guild_queue_messages: dict[int, list[dict]] = {}  # tracks queued song messages per guild
 guild_last_text_channel: dict[int, int] = {}
 guild_last_activity = {}
 
@@ -674,7 +675,7 @@ class Codunot(commands.Cog):
 
 		description = f"[{title}]({web_url})" if web_url else title
 		embed = discord.Embed(
-			title="Now Playing",
+			title="🎵 Now Playing",
 			description=description,
 			color=0x1DB954
 		)
@@ -687,11 +688,39 @@ class Codunot(commands.Cog):
 		embed.set_footer(text="HD free • 320kbps for Premium/Gold")
 		return embed
 
+	def _build_ended_embed(self, track: dict) -> discord.Embed:
+		"""Returns a greyed-out 'Ended' version of a now-playing embed."""
+		title = track.get("title") or "Unknown title"
+		web_url = track.get("web_url")
+		uploader = track.get("uploader") or "Unknown"
+		duration = _format_duration_seconds(track.get("duration"))
+		requested_by = track.get("requested_by") or "Unknown"
+		quality = track.get("quality") or "HD"
+		thumbnail = track.get("thumbnail")
+
+		description = f"[{title}]({web_url})" if web_url else title
+		embed = discord.Embed(
+			title="⏹️ Ended",
+			description=description,
+			color=0x5C5C5C  # grey
+		)
+		if thumbnail:
+			embed.set_thumbnail(url=thumbnail)
+		embed.add_field(name="Artist/Channel", value=uploader, inline=True)
+		embed.add_field(name="Duration", value=duration, inline=True)
+		embed.add_field(name="Requested By", value=requested_by, inline=True)
+		embed.add_field(name="Quality", value=quality, inline=True)
+		embed.set_footer(text="Song finished playing")
+		return embed
+
 	def _queue_for_guild(self, guild_id: int) -> list[dict]:
 		return guild_queues.setdefault(guild_id, [])
 
 	def _history_for_guild(self, guild_id: int) -> list[dict]:
 		return guild_history.setdefault(guild_id, [])
+
+	def _queue_messages_for_guild(self, guild_id: int) -> list[dict]:
+		return guild_queue_messages.setdefault(guild_id, [])
 
 	async def _start_idle_timer(self, guild_id: int):
 		await asyncio.sleep(600)
@@ -715,6 +744,25 @@ class Codunot(commands.Cog):
 				print(f"[MUSIC] Disconnected due to 10m inactivity {guild_id}")
 			except Exception as e:
 				print(f"[MUSIC] Disconnect error: {e}")
+
+	async def _mark_now_playing_as_ended(self, guild_id: int):
+		"""Edit the current now-playing message to show it has ended (greyed out, no buttons)."""
+		message_info = guild_now_message.get(guild_id)
+		track = guild_now_playing.get(guild_id)
+		if not message_info or not track:
+			return
+		channel_id = message_info.get("channel_id")
+		message_id = message_info.get("message_id")
+		try:
+			guild = self.bot.get_guild(guild_id)
+			if guild is None:
+				return
+			channel = guild.get_channel(channel_id) or await self.bot.fetch_channel(channel_id)
+			message = await channel.fetch_message(message_id)
+			ended_embed = self._build_ended_embed(track)
+			await message.edit(embed=ended_embed, view=None)
+		except Exception as e:
+			print(f"[MUSIC] Failed to mark now-playing as ended: {e}")
 
 	async def _start_track(
 		self,
@@ -755,8 +803,13 @@ class Codunot(commands.Cog):
 		return self._build_now_playing_embed(track)
 
 	async def _auto_advance(self, guild_id: int):
+		# Step 1: Mark the old now-playing message as ended (greyed out, no buttons)
+		await self._mark_now_playing_as_ended(guild_id)
+
 		queue = self._queue_for_guild(guild_id)
 		if not queue:
+			guild_now_playing.pop(guild_id, None)
+			guild_now_message.pop(guild_id, None)
 			asyncio.create_task(self._start_idle_timer(guild_id))
 			return
 
@@ -776,29 +829,39 @@ class Codunot(commands.Cog):
 			return
 
 		view = MusicControls(self, guild_id)
-		message_info = guild_now_message.get(guild_id)
-		if message_info:
-			channel_id = message_info.get("channel_id")
-			message_id = message_info.get("message_id")
-			try:
-				channel = guild.get_channel(channel_id) or await self.bot.fetch_channel(channel_id)
-				message = await channel.fetch_message(message_id)
-				await message.edit(embed=embed, view=view)
-				return
-			except Exception as e:
-				print(f"[PLAY] Failed to edit now-playing message: {e}")
 
-		channel_id = guild_last_text_channel.get(guild_id)
-		if channel_id:
+		# Step 2: Promote the first queued song message → becomes the new Now Playing message
+		queue_messages = self._queue_messages_for_guild(guild_id)
+		promoted = False
+		if queue_messages:
+			queued_msg_info = queue_messages.pop(0)
+			q_channel_id = queued_msg_info.get("channel_id")
+			q_message_id = queued_msg_info.get("message_id")
 			try:
-				channel = guild.get_channel(channel_id) or await self.bot.fetch_channel(channel_id)
-				message = await channel.send(embed=embed, view=view)
+				channel = guild.get_channel(q_channel_id) or await self.bot.fetch_channel(q_channel_id)
+				message = await channel.fetch_message(q_message_id)
+				await message.edit(content=None, embed=embed, view=view)
 				guild_now_message[guild_id] = {
-					"channel_id": channel.id,
-					"message_id": message.id,
+					"channel_id": q_channel_id,
+					"message_id": q_message_id,
 				}
+				promoted = True
 			except Exception as e:
-				print(f"[PLAY] Failed to send now-playing message: {e}")
+				print(f"[PLAY] Failed to promote queued message to now-playing: {e}")
+
+		if not promoted:
+			# Fallback: send a brand new now-playing message
+			channel_id = guild_last_text_channel.get(guild_id)
+			if channel_id:
+				try:
+					channel = guild.get_channel(channel_id) or await self.bot.fetch_channel(channel_id)
+					message = await channel.send(embed=embed, view=view)
+					guild_now_message[guild_id] = {
+						"channel_id": channel.id,
+						"message_id": message.id,
+					}
+				except Exception as e:
+					print(f"[PLAY] Failed to send now-playing message: {e}")
 
 	async def _music_pause(self, interaction: discord.Interaction):
 		voice_client = interaction.guild.voice_client
@@ -820,18 +883,26 @@ class Codunot(commands.Cog):
 		voice_client = interaction.guild.voice_client
 		queue = self._queue_for_guild(interaction.guild.id)
 		queue.clear()
+		guild_queue_messages.pop(interaction.guild.id, None)
+
+		current_track = guild_now_playing.get(interaction.guild.id)
 		guild_now_playing.pop(interaction.guild.id, None)
 
 		if voice_client.is_playing() or voice_client.is_paused():
 			voice_client.stop()
 		await voice_client.disconnect()
 
-		embed = discord.Embed(
-			title="Playback Stopped",
-			description="Queue cleared.",
-			color=0xFF5555
-		)
-		await interaction.response.edit_message(embed=embed, view=None)
+		# Show the stopped song as ended
+		if current_track:
+			ended_embed = self._build_ended_embed(current_track)
+			ended_embed.set_footer(text="Playback stopped • Queue cleared")
+		else:
+			ended_embed = discord.Embed(
+				title="⏹️ Ended",
+				description="Playback stopped.",
+				color=0x5C5C5C
+			)
+		await interaction.response.edit_message(embed=ended_embed, view=None)
 
 	async def _music_next(self, interaction: discord.Interaction):
 		queue = self._queue_for_guild(interaction.guild.id)
@@ -842,6 +913,12 @@ class Codunot(commands.Cog):
 		guild = interaction.guild
 		voice_client = guild.voice_client
 		next_track = queue.pop(0)
+
+		# Remove the corresponding queued message entry too
+		queue_messages = self._queue_messages_for_guild(guild.id)
+		if queue_messages:
+			queue_messages.pop(0)
+
 		try:
 			embed = await self._start_track(guild, voice_client, next_track)
 		except Exception as e:
@@ -1130,7 +1207,6 @@ class Codunot(commands.Cog):
 			return
 
 		await interaction.response.defer()
-
 		await interaction.edit_original_response(content="🗳️ Checking your vote status...")
 
 		if not await require_vote_deferred(interaction):
@@ -1171,9 +1247,17 @@ class Codunot(commands.Cog):
 
 		if voice_client.is_playing() or voice_client.is_paused():
 			queue.append(track)
-			await interaction.followup.send(
-				f"✅ Queued **{track['title']}** at position {len(queue)}."
+			position = len(queue)
+			# Send queued message and save a reference to it for later promotion
+			queued_msg = await interaction.followup.send(
+				f"✅ Queued **{track['title']}** at position {position}.",
+				wait=True,
 			)
+			queue_messages = self._queue_messages_for_guild(interaction.guild.id)
+			queue_messages.append({
+				"channel_id": queued_msg.channel.id,
+				"message_id": queued_msg.id,
+			})
 			return
 
 		if not voice_client or not voice_client.is_connected():
@@ -1187,13 +1271,11 @@ class Codunot(commands.Cog):
 			embed = await self._start_track(interaction.guild, voice_client, track)
 		except Exception as e:
 			print(f"[PLAY] Voice play error: {e}")
-
 			try:
 				if voice_client and voice_client.is_connected():
 					voice_client.stop()
 			except Exception:
 				pass
-
 			return
 
 		view = MusicControls(self, interaction.guild.id)
