@@ -1067,45 +1067,45 @@ class Codunot(commands.Cog):
 		except Exception:
 			await interaction.followup.send("⏹️ Stopped and disconnected.", ephemeral=False)
 
-async def _music_next(self, interaction: discord.Interaction):
-	queue = self._queue_for_guild(interaction.guild.id)
-	if not queue:
-		await interaction.followup.send("❌ Queue is empty.", ephemeral=False)
-		return
+	async def _music_next(self, interaction: discord.Interaction):
+		queue = self._queue_for_guild(interaction.guild.id)
+		if not queue:
+			await interaction.followup.send("❌ Queue is empty.", ephemeral=False)
+			return
 
-	guild = interaction.guild
-	voice_client = guild.voice_client
-	
-	current_track = guild_now_playing.get(guild.id)
-	if current_track:
-		history = self._history_for_guild(guild.id)
-		history.append(current_track)
-		if len(history) > 25:
-			history.pop(0)
-	
-	next_track = queue.pop(0)
+		guild = interaction.guild
+		voice_client = guild.voice_client
+		
+		current_track = guild_now_playing.get(guild.id)
+		if current_track:
+			history = self._history_for_guild(guild.id)
+			history.append(current_track)
+			if len(history) > 25:
+				history.pop(0)
+		
+		next_track = queue.pop(0)
 
-	queue_messages = self._queue_messages_for_guild(guild.id)
-	if queue_messages:
-		queue_messages.pop(0)
+		queue_messages = self._queue_messages_for_guild(guild.id)
+		if queue_messages:
+			queue_messages.pop(0)
 
-	try:
-		embed = await self._start_track(guild, voice_client, next_track, push_history=False)
-	except Exception as e:
-		print(f"[PLAY] Next error: {e}")
-		await interaction.followup.send("❌ Couldn't start the next track.", ephemeral=False)
-		return
+		try:
+			embed = await self._start_track(guild, voice_client, next_track, push_history=False)
+		except Exception as e:
+			print(f"[PLAY] Next error: {e}")
+			await interaction.followup.send("❌ Couldn't start the next track.", ephemeral=False)
+			return
 
-	view = MusicControls(self, guild.id)
-	guild_last_text_channel[guild.id] = interaction.channel.id
-	guild_now_message[guild.id] = {
-		"channel_id": interaction.channel.id,
-		"message_id": interaction.message.id,
-	}
-	try:
-		await interaction.message.edit(embed=embed, view=view)
-	except Exception:
-		await interaction.followup.send(embed=embed, view=view)
+		view = MusicControls(self, guild.id)
+		guild_last_text_channel[guild.id] = interaction.channel.id
+		guild_now_message[guild.id] = {
+			"channel_id": interaction.channel.id,
+			"message_id": interaction.message.id,
+		}
+		try:
+			await interaction.message.edit(embed=embed, view=view)
+		except Exception:
+			await interaction.followup.send(embed=embed, view=view)
 
 	async def _music_previous(self, interaction: discord.Interaction):
 		history = self._history_for_guild(interaction.guild.id)
