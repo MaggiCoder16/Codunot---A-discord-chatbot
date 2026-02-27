@@ -295,14 +295,13 @@ YTDL_OPTIONS = {
 	"source_address": "0.0.0.0",
 	"extractor_args": {
 		"youtube": {
-			"player_client": ["web_creator", "mweb"],
+			"player_client": ["ios", "mweb"],
 		}
 	},
 }
 
 FFMPEG_BEFORE_OPTIONS = "-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5"
 
-# Detect node binary path for yt-dlp EJS challenge solver
 _NODE_CANDIDATES = [
 	"/opt/hostedtoolcache/node/20.20.0/x64/bin/node",
 	"/usr/local/bin/node",
@@ -378,13 +377,13 @@ def _get_ffmpeg_options() -> dict:
 
 
 async def _extract_song_info(queries: list[str], tier: str) -> dict:
-	"""Extract a single track. Tries each query in order (YT → SC)."""
 	loop = asyncio.get_running_loop()
 	last_error: Exception | None = None
 
 	for query in queries:
 		def _extract(q=query):
-			with yt_dlp.YoutubeDL(_get_ytdl_options(tier)) as ytdl:
+			opts = _get_ytdl_options(tier)
+			with yt_dlp.YoutubeDL(opts) as ytdl:
 				return ytdl.extract_info(q, download=False)
 
 		try:
@@ -399,6 +398,7 @@ async def _extract_song_info(queries: list[str], tier: str) -> dict:
 			return data
 		except Exception as e:
 			last_error = e
+			print(f"[EXTRACTOR] Failed query {query}: {e}")
 			continue
 
 	raise last_error or Exception("No results found.")
@@ -476,7 +476,6 @@ def _build_track_from_flat_entry(entry: dict, requested_by: str, tier: str) -> d
 
 
 async def _ensure_stream_url(track: dict) -> dict:
-	"""If the track has no stream_url, resolve it now."""
 	if track.get("stream_url"):
 		return track
 
@@ -486,9 +485,11 @@ async def _ensure_stream_url(track: dict) -> dict:
 
 	tier = track.get("tier", "free")
 	info = await _extract_song_info([flat_url], tier)
+	
 	track["stream_url"] = info.get("url")
 	if not track["stream_url"]:
 		raise Exception(f"No stream URL after resolve for: {track.get('title')}")
+	
 	if not track.get("thumbnail"):
 		track["thumbnail"] = info.get("thumbnail")
 	if not track.get("duration"):
@@ -502,12 +503,12 @@ async def _ensure_stream_url(track: dict) -> dict:
 
 class MusicControls(discord.ui.View):
 	def __init__(self, cog, guild_id: int):
-		super().__init__(timeout=None)  # Never expire — fixes "interaction failed" after 15min
+		super().__init__(timeout=None)
 		self.cog = cog
 		self.guild_id = guild_id
 
 	async def interaction_check(self, interaction: discord.Interaction) -> bool:
-		await interaction.response.defer()  # Defer immediately on every button press
+		await interaction.response.defer()
 		return await self.cog._ensure_music_control(interaction)
 
 	@discord.ui.button(emoji="⏮️", style=discord.ButtonStyle.secondary)
@@ -926,12 +927,12 @@ class Codunot(commands.Cog):
 		track = guild_now_playing.get(guild_id)
 		if not message_info or not track:
 			return
+		
 		channel_id = message_info.get("channel_id")
 		message_id = message_info.get("message_id")
 		try:
 			guild = self.bot.get_guild(guild_id)
-			if guild is None:
-				return
+			if guild is None: return
 			channel = guild.get_channel(channel_id) or await self.bot.fetch_channel(channel_id)
 			message = await channel.fetch_message(message_id)
 			ended_embed = self._build_ended_embed(track)
@@ -946,15 +947,8 @@ class Codunot(commands.Cog):
 		track: dict,
 		push_history: bool = True,
 	) -> discord.Embed:
-		if push_history:
-			prev_track = guild_now_playing.get(guild.id)
-			if prev_track:
-				history = self._history_for_guild(guild.id)
-				history.append(prev_track)
-				if len(history) > 25:
-					history.pop(0)
-
 		track = await _ensure_stream_url(track)
+		
 		guild_now_playing[guild.id] = track
 		guild_last_activity[guild.id] = asyncio.get_event_loop().time()
 
@@ -964,14 +958,10 @@ class Codunot(commands.Cog):
 		def _after_playback(error: Exception | None):
 			if error:
 				print(f"[PLAY] Playback error: {error}")
-			future = asyncio.run_coroutine_threadsafe(
+			asyncio.run_coroutine_threadsafe(
 				self._auto_advance(guild.id),
 				self.bot.loop
 			)
-			try:
-				future.result()
-			except Exception as e:
-				print(f"[AUTO ADVANCE ERROR] {e}")
 
 		source = discord.FFmpegPCMAudio(track["stream_url"], **_get_ffmpeg_options())
 		voice_client.play(source, after=_after_playback)
@@ -988,36 +978,39 @@ class Codunot(commands.Cog):
 			return
 
 		guild = self.bot.get_guild(guild_id)
-		if guild is None:
-			return
+		if guild is None: return
 		voice_client = guild.voice_client
-		if voice_client is None:
-			return
+		if voice_client is None: return
 
 		next_track = queue.pop(0)
+		
+		prev_track = guild_now_playing.get(guild_id)
+		if prev_track:
+			history = self._history_for_guild(guild_id)
+			history.append(prev_track)
+			if len(history) > 25: history.pop(0)
+
 		try:
-			embed = await self._start_track(guild, voice_client, next_track)
+			embed = await self._start_track(guild, voice_client, next_track, push_history=False)
 		except Exception as e:
-			print(f"[PLAY] Auto-advance error: {e}")
+			print(f"[PLAY] Skipping {next_track.get('title')} due to resolution error: {e}")
+			guild_now_playing[guild_id] = next_track 
 			await self._auto_advance(guild_id)
 			return
 
 		view = MusicControls(self, guild_id)
-
 		queue_messages = self._queue_messages_for_guild(guild_id)
 		promoted = False
+		
 		if queue_messages:
 			queued_msg_info = queue_messages.pop(0)
-			q_channel_id = queued_msg_info.get("channel_id")
-			q_message_id = queued_msg_info.get("message_id")
 			try:
-				channel = guild.get_channel(q_channel_id) or await self.bot.fetch_channel(q_channel_id)
-				message = await channel.fetch_message(q_message_id)
+				channel = guild.get_channel(queued_msg_info["channel_id"]) or await self.bot.fetch_channel(queued_msg_info["channel_id"])
+				message = await channel.fetch_message(queued_msg_info["message_id"])
 				await message.edit(content=None, embed=embed, view=view)
-				guild_now_message[guild_id] = {"channel_id": q_channel_id, "message_id": q_message_id}
+				guild_now_message[guild_id] = {"channel_id": channel.id, "message_id": message.id}
 				promoted = True
-			except Exception as e:
-				print(f"[PLAY] Failed to promote queued message to now-playing: {e}")
+			except Exception: pass
 
 		if not promoted:
 			channel_id = guild_last_text_channel.get(guild_id)
@@ -1026,11 +1019,7 @@ class Codunot(commands.Cog):
 					channel = guild.get_channel(channel_id) or await self.bot.fetch_channel(channel_id)
 					message = await channel.send(embed=embed, view=view)
 					guild_now_message[guild_id] = {"channel_id": channel.id, "message_id": message.id}
-				except Exception as e:
-					print(f"[PLAY] Failed to send now-playing message: {e}")
-
-	# ── Music button handlers ─────────────────────────────────────────────────
-	# Note: interaction is already deferred by interaction_check in MusicControls
+				except Exception: pass
 
 	async def _music_pause(self, interaction: discord.Interaction):
 		voice_client = interaction.guild.voice_client
