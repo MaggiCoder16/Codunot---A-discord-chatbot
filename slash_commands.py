@@ -861,10 +861,7 @@ class ConfigureGroup(app_commands.Group):
 	@configure_channels.error
 	async def configure_error(self, interaction: discord.Interaction, error: app_commands.AppCommandError):
 		print(f"[CONFIGURE ERROR] {error}")
-		if isinstance(error, app_commands.TransformerError):
-			msg = "❌ I couldn't resolve one of those channels. Please pick channels from the autocomplete list."
-		else:
-			msg = "❌ You are not the server owner."
+		msg = "❌ Couldn't complete this configure request."
 		if interaction.response.is_done():
 			await interaction.followup.send(msg, ephemeral=True)
 		else:
@@ -1412,14 +1409,9 @@ class Codunot(commands.Cog):
 
 		except ImageAPIError as e:
 			print(f"[SLASH IMAGE ERROR] type={type(e).__name__} err={e}")
-			if e.status_code == 400:
-				await interaction.followup.send(
-					f"{interaction.user.mention} ⚠️ The image API couldn't process that prompt. Please try a different prompt."
-				)
-			else:
-				await interaction.followup.send(
-					f"{interaction.user.mention} 🤔 Couldn't generate image right now. Please try again later."
-				)
+			await interaction.followup.send(
+				f"{interaction.user.mention} 🤔 Couldn't generate image right now. Please try again later."
+			)
 		except Exception as e:
 			print(f"[SLASH IMAGE ERROR] type={type(e).__name__} err={e}")
 			traceback.print_exc()
