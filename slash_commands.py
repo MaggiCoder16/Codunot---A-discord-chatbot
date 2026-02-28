@@ -119,6 +119,7 @@ TRANSCRIBE_HOST_NORMALIZATION = {
 _YT_PLAYLIST_HOSTS = {"youtube.com", "www.youtube.com", "m.youtube.com", "youtu.be"}
 _SC_PLAYLIST_HOSTS = {"soundcloud.com", "www.soundcloud.com"}
 _SPOTIFY_HOSTS = {"open.spotify.com", "play.spotify.com"}
+SPOTIFY_PLAYLIST_FETCH_LIMIT = 50
 
 
 def _is_spotify_url(url: str) -> bool:
@@ -143,7 +144,7 @@ async def _fetch_spotify_playlist_entries(url: str) -> list[dict]:
 	if not playlist_id:
 		return []
 
-	headers = {"User-Agent": "Mozilla/5.0"}
+	headers = {"User-Agent": "CodunotBot/1.0"}
 	async with aiohttp.ClientSession(headers=headers) as session:
 		async with session.get(
 			"https://open.spotify.com/get_access_token?reason=transport&productType=web_player"
@@ -156,7 +157,8 @@ async def _fetch_spotify_playlist_entries(url: str) -> list[dict]:
 			return []
 
 		api_headers = {"Authorization": f"Bearer {access_token}"}
-		api_url = f"https://api.spotify.com/v1/playlists/{playlist_id}/tracks?limit=50"
+		# Keep parity with the existing yt-dlp playlist cap in this command.
+		api_url = f"https://api.spotify.com/v1/playlists/{playlist_id}/tracks?limit={SPOTIFY_PLAYLIST_FETCH_LIMIT}"
 		async with session.get(api_url, headers=api_headers) as tracks_resp:
 			if tracks_resp.status != 200:
 				return []
@@ -474,6 +476,7 @@ async def _extract_song_info(queries: list[str], tier: str) -> dict:
 
 async def _extract_playlist_info(url: str, tier: str) -> list[dict]:
 	loop = asyncio.get_running_loop()
+	is_spotify_playlist = _is_spotify_playlist_url(url)
 
 	def _extract():
 		opts = _get_ytdl_options(tier, allow_playlist=True)
@@ -483,19 +486,23 @@ async def _extract_playlist_info(url: str, tier: str) -> list[dict]:
 		with yt_dlp.YoutubeDL(opts) as ytdl:
 			return ytdl.extract_info(url, download=False)
 
+	async def _spotify_fallback() -> list[dict]:
+		if not is_spotify_playlist:
+			return []
+		return await _fetch_spotify_playlist_entries(url)
+
 	try:
 		data = await loop.run_in_executor(None, _extract)
-	except Exception:
-		if _is_spotify_playlist_url(url):
-			entries = await _fetch_spotify_playlist_entries(url)
-			if entries:
-				return entries
+	except Exception as e:
+		entries = await _spotify_fallback()
+		if entries:
+			print(f"[PLAYLIST EXTRACT] yt-dlp failed for Spotify playlist, using API fallback: {e}")
+			return entries
 		raise
-	if not data and _is_spotify_playlist_url(url):
-		entries = await _fetch_spotify_playlist_entries(url)
+	if not data:
+		entries = await _spotify_fallback()
 		if entries:
 			return entries
-	if not data:
 		raise Exception("No data returned from playlist extractor.")
 
 	entries = [e for e in data.get("entries", []) if e and (e.get("url") or e.get("id"))]
