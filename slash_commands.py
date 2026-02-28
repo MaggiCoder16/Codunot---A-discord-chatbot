@@ -10,6 +10,7 @@ import asyncio
 import random
 import traceback
 import tempfile
+import re
 from typing import Optional
 from urllib.parse import urlparse, quote_plus
 
@@ -129,6 +130,59 @@ def _is_spotify_playlist_url(url: str) -> bool:
 	parsed = urlparse(url)
 	host = (parsed.hostname or "").lower()
 	return host in _SPOTIFY_HOSTS and parsed.path.lower().startswith("/playlist/")
+
+
+def _spotify_playlist_id_from_url(url: str) -> str | None:
+	parsed = urlparse(url)
+	match = re.match(r"^/playlist/([A-Za-z0-9]+)", parsed.path or "")
+	return match.group(1) if match else None
+
+
+async def _fetch_spotify_playlist_entries(url: str) -> list[dict]:
+	playlist_id = _spotify_playlist_id_from_url(url)
+	if not playlist_id:
+		return []
+
+	headers = {"User-Agent": "Mozilla/5.0"}
+	async with aiohttp.ClientSession(headers=headers) as session:
+		async with session.get(
+			"https://open.spotify.com/get_access_token?reason=transport&productType=web_player"
+		) as token_resp:
+			if token_resp.status != 200:
+				return []
+			token_data = await token_resp.json()
+		access_token = token_data.get("accessToken")
+		if not access_token:
+			return []
+
+		api_headers = {"Authorization": f"Bearer {access_token}"}
+		api_url = f"https://api.spotify.com/v1/playlists/{playlist_id}/tracks?limit=50"
+		async with session.get(api_url, headers=api_headers) as tracks_resp:
+			if tracks_resp.status != 200:
+				return []
+			tracks_data = await tracks_resp.json()
+
+	entries = []
+	for item in tracks_data.get("items", []):
+		track = item.get("track") if isinstance(item, dict) else None
+		if not isinstance(track, dict):
+			continue
+		title = (track.get("name") or "").strip()
+		artists = track.get("artists") if isinstance(track.get("artists"), list) else []
+		artist_names = [a.get("name", "").strip() for a in artists if isinstance(a, dict) and a.get("name")]
+		if not title:
+			continue
+		entries.append(
+			{
+				"title": title,
+				"artists": [{"name": name} for name in artist_names],
+				"artist": ", ".join(artist_names),
+				"url": (track.get("external_urls") or {}).get("spotify"),
+				"duration": (track.get("duration_ms") or 0) // 1000 if track.get("duration_ms") else None,
+			}
+		)
+	return entries
+
 
 def _is_playlist_url(url: str) -> bool:
 	try:
@@ -429,7 +483,18 @@ async def _extract_playlist_info(url: str, tier: str) -> list[dict]:
 		with yt_dlp.YoutubeDL(opts) as ytdl:
 			return ytdl.extract_info(url, download=False)
 
-	data = await loop.run_in_executor(None, _extract)
+	try:
+		data = await loop.run_in_executor(None, _extract)
+	except Exception:
+		if _is_spotify_playlist_url(url):
+			entries = await _fetch_spotify_playlist_entries(url)
+			if entries:
+				return entries
+		raise
+	if not data and _is_spotify_playlist_url(url):
+		entries = await _fetch_spotify_playlist_entries(url)
+		if entries:
+			return entries
 	if not data:
 		raise Exception("No data returned from playlist extractor.")
 
