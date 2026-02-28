@@ -551,7 +551,8 @@ def _build_vote_embed() -> discord.Embed:
 			"• 🖌️ **Edit Images** — send image + instruction\n"
 			"• 🖼️ **Merge Images** — attach 2+ images + say merge\n"
 			"• 🎬 **Generate Video** — `/generate_video`\n"
-			"• 🔊 **Text-to-Speech** — `/generate_tts`"
+			"• 🔊 **Text-to-Speech** — `/generate_tts`\n"
+			"• 🎵 **Play Music** — `/play [song/URL]` in voice channels"
 		),
 		inline=False
 	)
@@ -562,20 +563,6 @@ def _build_vote_embed() -> discord.Embed:
 			"• 📝 **DOCX Reading** — upload Word documents\n"
 			"• 📃 **TXT Reading** — upload text files\n"
 			"• 🔍 **Smart Summaries** — get instant file summaries"
-		),
-		inline=False
-	)
-	embed.add_field(
-		name="💬 Slash Action Commands",
-		value=(
-			"• 🤗 `/hug @user` — give someone a warm hug\n"
-			"• 💋 `/kiss @user` — send a kiss with a GIF\n"
-			"• 🥋 `/kick @user` — kick someone (playfully!)\n"
-			"• 🖐️ `/slap @user` — slap with dramatic effect\n"
-			"• 🌅 `/wish_goodmorning @user` — brighten someone's day\n"
-			"• 🪙 `/bet [heads/tails]` — flip a coin and bet\n"
-			"• 😂 `/meme` — get a random funny meme\n\n"
-			"*Each sends a random GIF with custom text!*"
 		),
 		inline=False
 	)

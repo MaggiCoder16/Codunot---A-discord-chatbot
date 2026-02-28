@@ -186,6 +186,7 @@ async def help_command(ctx: commands.Context):
 			"• 🎬 Generate Video — `/generate_video`\n"
 			"• 📝 Video to Text (YT/Twitch/X/Kick, max 30 mins) — `/transcribe`\n"
 			"• 🔊 Text-to-Speech — `/generate_tts`\n"
+			"• 🎵 Play Music — `/play [song/URL]`\n"
 			"• 🖌️ Edit Images (send image + instruction)\n"
 			"• 🖼️ Merge Images (attach 2+ images + say 'merge')\n"
 			"• 🌐 Smart Web Search (auto when needed for fresh info)"
@@ -194,9 +195,9 @@ async def help_command(ctx: commands.Context):
 	)
 
 	embed.add_field(
-		name="💬 Interactive Action Commands (Slash)",
+		name="💬 Free Action Commands (No Vote Needed)",
 		value=(
-			"Make chats fun and chaotic:\n"
+			"Make chats fun and chaotic — no vote required!\n"
 			"• 🤗 Hug — `/hug @user`\n"
 			"• 💋 Kiss — `/kiss @user`\n"
 			"• 🥋 Kick — `/kick @user`\n"
@@ -609,29 +610,21 @@ async def require_vote(message) -> None:
 			"🎨 Image Generation — `/generate_image`\n"
 			"🎬 Video Generation — `/generate_video`\n"
 			"🔊 Text-to-Speech — `/generate_tts`\n"
+			"🎵 Play Music — `/play [song/URL]`\n"
 			"🖌️ Edit Images (send image + instruction)\n"
 			"🖼️ Merge Images (attach 2+ images + say merge)\n"
 			"📄 File Reading & Summaries\n"
-			"🖼️ Image Analysis\n"
-			"💬 Interactive Slash Commands"
+			"🖼️ Image Analysis"
 		),
 		inline=False
 	)
 
 	embed.add_field(
-		name="💬 Slash Action Examples",
+		name="🆓 Free Commands (No Vote Needed)",
 		value=(
-			"🤗 `/hug @user`\n"
-			"💋 `/kiss @user`\n"
-			"🥋 `/kick @user`\n"
-			"🖐️ `/slap @user`\n"
-			"🌅 `/wish_goodmorning @user`\n"
-			"🪙 `/bet heads/tails`\n"
-			"😂 `/meme`\n\n"
-			"Example results:\n"
-			"Alex gave Sarah a hug 🤗\n"
-			"Mike kissed Sophia 💋\n"
-			"The coin landed on heads! Mary wins! 🎉"
+			"🤗 `/hug @user` · 💋 `/kiss @user` · 🥋 `/kick @user`\n"
+			"🖐️ `/slap @user` · 🌅 `/wish_goodmorning @user`\n"
+			"🪙 `/bet heads/tails` · 😂 `/meme`"
 		),
 		inline=False
 	)
@@ -831,9 +824,10 @@ PERSONAS = {
 "Image Merging: attach 2+ images + use a merge keyword ('merge', 'combine', 'blend', etc.) — vote required\n"
 "Image Analysis: attach any image and ask about it — Codunot AI will describe and analyze it\n"
 "File Reading: attach a .txt, .pdf, or .docx file and ask about it — vote required\n"
-"Action Commands (slash): /hug @user, /kiss @user, /kick @user, /slap @user, /wish_goodmorning @user\n"
-"Fun Commands: /bet [heads/tails], /meme\n"
+"Action Commands (slash, no vote required): /hug @user, /kiss @user, /kick @user, /slap @user, /wish_goodmorning @user\n"
+"Fun Commands (no vote required): /bet [heads/tails], /meme\n"
 "Chess: /chessmode or !chessmode — play chess in Discord, type moves like 'e4' or 'Nf3'\n"
+"Music: /play [song/URL] — play music in voice channels — vote required\n"
 "Vote to unlock premium features: https://top.gg/bot/1435987186502733878/vote (unlocks for 12 hours)\n"
 "Help command: !codunot_help — shows full bot info\n"
 "Support server: https://discord.gg/xEQpE7WS8z\n"
@@ -862,9 +856,10 @@ PERSONAS = {
 
 "If asked what you can do, say you can: generate images (/generate_image), generate videos (/generate_video), "
 "understand and analyze images, read files (txt/pdf/docx), edit images, merge multiple images into one, "
-"text-to-speech (/generate_tts), video-to-text transcription (/transcribe), chat in rizz mode and four core modes (fun, roast, serious, chess), use server config (/configure server, /configure channels), play text-based games, "
+"text-to-speech (/generate_tts), video-to-text transcription (/transcribe), play music in voice channels (/play), chat in rizz mode and four core modes (fun, roast, serious, chess), use server config (/configure server, /configure channels), play text-based games, "
 "and run interactive slash commands like /hug @user, /kiss @user, /kick @user, /slap @user, "
 "/wish_goodmorning @user, /bet [heads/tails], and /meme for random memes. "
+"Note: /bet, /meme, and action GIFs (/hug, /kiss, /kick, /slap, /wish_goodmorning) are free and don't require voting. "
 
 "CRITICAL: For simple messages like 'hi', 'hey', 'sup', 'yo': respond with just 1 SHORT sentence (5-10 words). "
 "Don't introduce yourself or explain features unless asked. Just vibe naturally. "
@@ -893,9 +888,10 @@ PERSONAS = {
 "Image Merging: attach 2+ images + use a merge keyword ('merge', 'combine', 'blend', etc.) — vote required\n"
 "Image Analysis: attach any image and ask about it — Codunot AI will describe and analyze it\n"
 "File Reading: attach a .txt, .pdf, or .docx file and ask about it — vote required\n"
-"Action Commands (slash): /hug @user, /kiss @user, /kick @user, /slap @user, /wish_goodmorning @user\n"
-"Fun Commands: /bet [heads/tails], /meme\n"
+"Action Commands (slash, no vote required): /hug @user, /kiss @user, /kick @user, /slap @user, /wish_goodmorning @user\n"
+"Fun Commands (no vote required): /bet [heads/tails], /meme\n"
 "Chess: /chessmode or !chessmode — play chess in Discord, type moves in standard notation (e.g. e4, Nf3)\n"
+"Music: /play [song/URL] — play music in voice channels — vote required\n"
 "Vote to unlock premium features: https://top.gg/bot/1435987186502733878/vote (unlocks for 12 hours)\n"
 "Help command: !codunot_help — displays full bot documentation\n"
 "Support server: https://discord.gg/xEQpE7WS8z\n"
@@ -920,9 +916,10 @@ PERSONAS = {
 
 "If asked what you can do, say you can: generate images (/generate_image), generate videos (/generate_video), "
 "analyze images, read and summarize files (txt/pdf/docx), edit images, merge multiple images into one, "
-"convert text to speech (/generate_tts), chat in four modes (fun, roast, serious, chess), play text-based games, "
+"convert text to speech (/generate_tts), play music in voice channels (/play), chat in four modes (fun, roast, serious, chess), play text-based games, "
 "and use interactive slash commands including /hug @user, /kiss @user, /kick @user, /slap @user, "
 "/wish_goodmorning @user, /bet [heads/tails], and /meme. "
+"Note: /bet, /meme, and action GIFs (/hug, /kiss, /kick, /slap, /wish_goodmorning) are free and don't require voting. "
 
 "Maximum 2000 characters."
 ),
@@ -949,9 +946,10 @@ PERSONAS = {
 "Image Merging: attach 2+ images + use a merge keyword ('merge', 'combine', 'blend', etc.) — vote required\n"
 "Image Analysis: attach any image and ask about it — Codunot AI will describe and analyze it\n"
 "File Reading: attach a .txt, .pdf, or .docx file and ask about it — vote required\n"
-"Action Commands (slash): /hug @user, /kiss @user, /kick @user, /slap @user, /wish_goodmorning @user\n"
-"Fun Commands: /bet [heads/tails], /meme\n"
+"Action Commands (slash, no vote required): /hug @user, /kiss @user, /kick @user, /slap @user, /wish_goodmorning @user\n"
+"Fun Commands (no vote required): /bet [heads/tails], /meme\n"
 "Chess: /chessmode or !chessmode — play chess in Discord, type moves like e4 or Nf3\n"
+"Music: /play [song/URL] — play music in voice channels — vote required\n"
 "Vote to unlock premium features: https://top.gg/bot/1435987186502733878/vote (unlocks for 12 hours)\n"
 "Help command: !codunot_help — shows full bot info\n"
 "Support server: https://discord.gg/xEQpE7WS8z\n"
@@ -975,9 +973,10 @@ PERSONAS = {
 
 "If asked what you can do, roast them while explaining you can: generate images (/generate_image), "
 "generate videos (/generate_video), analyze images, read files (txt/pdf/docx), edit images, merge images, "
-"text-to-speech (/generate_tts), video-to-text transcription (/transcribe), chat in rizz mode and four core modes (fun, roast, serious, chess), use server config (/configure server, /configure channels), play text-based games, "
+"text-to-speech (/generate_tts), video-to-text transcription (/transcribe), play music in voice channels (/play), chat in rizz mode and four core modes (fun, roast, serious, chess), use server config (/configure server, /configure channels), play text-based games, "
 "and flex interactive slash commands like /hug @user, /kiss @user, /kick @user, /slap @user, "
 "/wish_goodmorning @user, /bet [heads/tails], and /meme — all things you probably still won't use correctly 💀 "
+"Note: /bet, /meme, and action GIFs (/hug, /kiss, /kick, /slap, /wish_goodmorning) are free and don't require voting. "
 
 "Maximum 2000 characters."
 ),
