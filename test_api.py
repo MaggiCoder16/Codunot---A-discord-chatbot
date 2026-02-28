@@ -36,7 +36,7 @@ def _generate_image_bytes(prompt, aspect_ratio="16:9"):
     return response.content
 
 
-def _get_balance(api_key):
+def _get_imggen_balance(api_key):
     response = requests.get(
         f"{BASE_URL}/balance",
         headers={"X-API-Key": api_key},
@@ -54,9 +54,9 @@ async def generate_image(prompt, aspect_ratio="16:9"):
     balance = None
     if api_key:
         try:
-            balance = await asyncio.to_thread(_get_balance, api_key)
-        except Exception:
-            balance = None
+            balance = await asyncio.to_thread(_get_imggen_balance, api_key)
+        except requests.RequestException:
+            pass
     return image_bytes, balance
 
 
