@@ -9,6 +9,7 @@ ALLOWED_ASPECT_RATIOS = {"1:1", "2:3", "3:2", "3:4", "4:3", "4:5", "5:4", "9:16"
 
 
 def _generate_image_bytes(prompt, aspect_ratio="1:1"):
+    """Call imggen txt2img API and return image bytes."""
     api_key = os.getenv("TEST_API_KEY", "").strip()
     if not api_key:
         raise RuntimeError("Missing TEST_API_KEY environment variable")
@@ -35,7 +36,8 @@ def _generate_image_bytes(prompt, aspect_ratio="1:1"):
     return response.content
 
 
-async def generate_image(prompt, aspect_ratio="1:1", steps=15):
+async def generate_image(prompt, aspect_ratio="1:1"):
+    """Async wrapper for slash command integration."""
     return await asyncio.to_thread(_generate_image_bytes, prompt, aspect_ratio)
 
 

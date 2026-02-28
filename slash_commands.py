@@ -1394,7 +1394,7 @@ class Codunot(commands.Cog):
 		await interaction.followup.send("🎨 **Cooking up your image... hang tight ✨**")
 
 		try:
-			image_bytes = await generate_image(prompt, aspect_ratio="1:1", steps=15)
+			image_bytes = await generate_image(prompt, aspect_ratio="1:1")
 
 			output_text = (
 				f"{interaction.user.mention} 🖼️ Generated: `{prompt[:150]}...`"
