@@ -17,7 +17,7 @@ from urllib.parse import urlparse, quote_plus
 import yt_dlp
 
 from memory import MemoryManager
-from test_api import generate_image
+from test_api import generate_image, ImageAPIError
 from deAPI_client_text2vid import generate_video as text_to_video_512
 from deAPI_client_text2speech import text_to_speech
 from deAPI_client_video_to_text import transcribe_video, wait_for_transcription_text, VideoToTextError
@@ -836,11 +836,11 @@ class ConfigureGroup(app_commands.Group):
 	async def configure_channels(
 		self,
 		interaction: discord.Interaction,
-		channel_1: discord.TextChannel,
-		channel_2: Optional[discord.TextChannel] = None,
-		channel_3: Optional[discord.TextChannel] = None,
-		channel_4: Optional[discord.TextChannel] = None,
-		channel_5: Optional[discord.TextChannel] = None,
+		channel_1: discord.AppCommandChannel,
+		channel_2: Optional[discord.AppCommandChannel] = None,
+		channel_3: Optional[discord.AppCommandChannel] = None,
+		channel_4: Optional[discord.AppCommandChannel] = None,
+		channel_5: Optional[discord.AppCommandChannel] = None,
 	):
 		if not await self._ensure_guild_owner(interaction):
 			return
@@ -852,7 +852,7 @@ class ConfigureGroup(app_commands.Group):
 		channel_ids = [ch.id for ch in selected_channels]
 		set_channels_mode(interaction.guild.id, channel_ids)
 
-		mentions = ", ".join(ch.mention for ch in selected_channels)
+		mentions = ", ".join(f"<#{ch.id}>" for ch in selected_channels)
 		await interaction.response.send_message(
 			f"✅ Configuration updated: I will now only chat in these channel(s): {mentions}", ephemeral=False
 		)
@@ -861,10 +861,11 @@ class ConfigureGroup(app_commands.Group):
 	@configure_channels.error
 	async def configure_error(self, interaction: discord.Interaction, error: app_commands.AppCommandError):
 		print(f"[CONFIGURE ERROR] {error}")
+		msg = "❌ Couldn't complete this configure request."
 		if interaction.response.is_done():
-			await interaction.followup.send("❌ You are not the server owner.", ephemeral=True)
+			await interaction.followup.send(msg, ephemeral=True)
 		else:
-			await interaction.response.send_message("❌ You are not the server owner.", ephemeral=True)
+			await interaction.response.send_message(msg, ephemeral=True)
 
 
 # ── Main Cog ──────────────────────────────────────────────────────────────────
@@ -1406,6 +1407,11 @@ class Codunot(commands.Cog):
 			consume_total(interaction, "attachments", usage_key=usage_key, money_left=balance)
 			save_usage()
 
+		except ImageAPIError as e:
+			print(f"[SLASH IMAGE ERROR] type={type(e).__name__} err={e}")
+			await interaction.followup.send(
+				f"{interaction.user.mention} 🤔 Couldn't generate image right now. Please try again later."
+			)
 		except Exception as e:
 			print(f"[SLASH IMAGE ERROR] type={type(e).__name__} err={e}")
 			traceback.print_exc()
