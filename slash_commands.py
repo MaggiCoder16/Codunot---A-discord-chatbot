@@ -560,27 +560,30 @@ def _build_track_from_spotify_entry(entry: dict, requested_by: str, tier: str) -
 
 async def _ensure_stream_url(track: dict) -> dict:
 	if track.get("stream_url"):
+		print(f"[STREAM_URL] Already resolved: {track.get('title')}")
 		return track
-
+	
+	print(f"[STREAM_URL] Resolving: {track.get('title')} -> {track.get('_flat_url')}")
 	flat_url = track.get("_flat_url") or track.get("web_url")
 	if not flat_url:
 		raise Exception(f"Cannot resolve stream for track: {track.get('title')}")
 
 	tier = track.get("tier", "free")
 	info = await _extract_song_info([flat_url], tier)
-	
+
 	track["stream_url"] = info.get("url")
 	if not track["stream_url"]:
 		raise Exception(f"No stream URL after resolve for: {track.get('title')}")
-	
+
 	if not track.get("thumbnail"):
 		track["thumbnail"] = info.get("thumbnail")
 	if not track.get("duration"):
 		track["duration"] = info.get("duration")
 	if track.get("uploader") in (None, "Unknown"):
 		track["uploader"] = info.get("uploader") or info.get("channel") or "Unknown"
-	return track
 
+	print(f"[STREAM_URL] Resolved successfully: {track.get('title')}")
+	return track
 
 # ── Music Controls View ───────────────────────────────────────────────────────
 
@@ -1017,64 +1020,80 @@ class Codunot(commands.Cog):
 		track: dict,
 		push_history: bool = True,
 	) -> discord.Embed:
-		track = await _ensure_stream_url(track)
+		print(f"[START_TRACK] Attempting: {track.get('title')} | has_stream: {bool(track.get('stream_url'))} | flat_url: {track.get('_flat_url')}")
 		
+		track = await _ensure_stream_url(track)
+		print(f"[START_TRACK] Stream resolved: {track.get('title')} | url_preview: {(track.get('stream_url') or '')[:80]}")
+
 		guild_now_playing[guild.id] = track
 		guild_last_activity[guild.id] = asyncio.get_event_loop().time()
 
 		if voice_client.is_playing() or voice_client.is_paused():
+			print(f"[START_TRACK] Stopping current playback first")
 			voice_client.stop()
 
 		def _after_playback(error: Exception | None):
 			if error:
-				print(f"[PLAY] Playback error: {error}")
+				print(f"[AFTER_PLAYBACK] Error for '{track.get('title')}': {error}")
+			else:
+				print(f"[AFTER_PLAYBACK] Finished cleanly: '{track.get('title')}' guild={guild.id}")
+			print(f"[AFTER_PLAYBACK] Scheduling _auto_advance for guild {guild.id}")
 			asyncio.run_coroutine_threadsafe(
 				self._auto_advance(guild.id),
 				self.bot.loop
 			)
 
+		print(f"[START_TRACK] Starting FFmpegPCMAudio")
 		source = discord.FFmpegPCMAudio(track["stream_url"], **_get_ffmpeg_options())
 		voice_client.play(source, after=_after_playback)
+		print(f"[START_TRACK] voice_client.play() called for: {track.get('title')}")
+
 		return self._build_now_playing_embed(track)
 
 	async def _auto_advance(self, guild_id: int):
+		print(f"[AUTO_ADVANCE] Triggered for guild {guild_id}")
 		await self._mark_now_playing_as_ended(guild_id)
-	
+
 		queue = self._queue_for_guild(guild_id)
+		print(f"[AUTO_ADVANCE] Queue size: {len(queue)}")
 		if not queue:
+			print(f"[AUTO_ADVANCE] Queue empty, going idle")
 			guild_now_playing.pop(guild_id, None)
 			guild_now_message.pop(guild_id, None)
 			asyncio.create_task(self._start_idle_timer(guild_id))
 			return
-	
+
 		guild = self.bot.get_guild(guild_id)
-		if guild is None: 
+		if guild is None:
+			print(f"[AUTO_ADVANCE] Guild not found: {guild_id}")
 			return
 		voice_client = guild.voice_client
-		if voice_client is None: 
+		if voice_client is None:
+			print(f"[AUTO_ADVANCE] No voice client for guild {guild_id}")
 			return
-	
+
 		next_track = queue.pop(0)
-		
+		print(f"[AUTO_ADVANCE] Next track: {next_track.get('title')}")
+
 		prev_track = guild_now_playing.get(guild_id)
 		if prev_track:
 			history = self._history_for_guild(guild_id)
 			history.append(prev_track)
-			if len(history) > 25: 
+			if len(history) > 25:
 				history.pop(0)
-	
+
 		try:
 			embed = await self._start_track(guild, voice_client, next_track, push_history=False)
 		except Exception as e:
-			print(f"[PLAY] Skipping {next_track.get('title')} due to resolution error: {e}")
-			guild_now_playing[guild_id] = next_track 
+			print(f"[AUTO_ADVANCE] Failed to start '{next_track.get('title')}': {e} — skipping")
+			guild_now_playing[guild_id] = next_track
 			await self._auto_advance(guild_id)
 			return
-	
+
 		view = MusicControls(self, guild_id)
 		queue_messages = self._queue_messages_for_guild(guild_id)
 		promoted = False
-		
+
 		if queue_messages:
 			queued_msg_info = queue_messages.pop(0)
 			try:
@@ -1083,9 +1102,9 @@ class Codunot(commands.Cog):
 				await message.edit(content=None, embed=embed, view=view)
 				guild_now_message[guild_id] = {"channel_id": channel.id, "message_id": message.id}
 				promoted = True
-			except Exception: 
-				pass
-	
+			except Exception as e:
+				print(f"[AUTO_ADVANCE] Failed to promote queued message: {e}")
+
 		if not promoted:
 			channel_id = guild_last_text_channel.get(guild_id)
 			if channel_id:
@@ -1093,8 +1112,8 @@ class Codunot(commands.Cog):
 					channel = guild.get_channel(channel_id) or await self.bot.fetch_channel(channel_id)
 					message = await channel.send(embed=embed, view=view)
 					guild_now_message[guild_id] = {"channel_id": channel.id, "message_id": message.id}
-				except Exception: 
-					pass
+				except Exception as e:
+					print(f"[AUTO_ADVANCE] Failed to send now-playing message: {e}")
 
 	async def _music_pause(self, interaction: discord.Interaction):
 		voice_client = interaction.guild.voice_client
