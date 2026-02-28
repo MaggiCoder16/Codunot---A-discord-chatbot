@@ -836,11 +836,11 @@ class ConfigureGroup(app_commands.Group):
 	async def configure_channels(
 		self,
 		interaction: discord.Interaction,
-		channel_1: discord.AppCommandChannel,
-		channel_2: Optional[discord.AppCommandChannel] = None,
-		channel_3: Optional[discord.AppCommandChannel] = None,
-		channel_4: Optional[discord.AppCommandChannel] = None,
-		channel_5: Optional[discord.AppCommandChannel] = None,
+		channel_1: app_commands.AppCommandChannel,
+		channel_2: Optional[app_commands.AppCommandChannel] = None,
+		channel_3: Optional[app_commands.AppCommandChannel] = None,
+		channel_4: Optional[app_commands.AppCommandChannel] = None,
+		channel_5: Optional[app_commands.AppCommandChannel] = None,
 	):
 		if not await self._ensure_guild_owner(interaction):
 			return
