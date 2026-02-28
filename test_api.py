@@ -1,4 +1,5 @@
 import argparse
+import asyncio
 import os
 import requests
 
@@ -7,7 +8,7 @@ REQUEST_TIMEOUT = 60
 ALLOWED_ASPECT_RATIOS = {"1:1", "2:3", "3:2", "3:4", "4:3", "4:5", "5:4", "9:16", "16:9", "21:9"}
 
 
-def text_to_image(prompt, filename="txt2img_output.jpg", aspect_ratio="1:1"):
+def _generate_image_bytes(prompt, aspect_ratio="1:1"):
     api_key = os.getenv("TEST_API_KEY", "").strip()
     if not api_key:
         raise RuntimeError("Missing TEST_API_KEY environment variable")
@@ -31,9 +32,18 @@ def text_to_image(prompt, filename="txt2img_output.jpg", aspect_ratio="1:1"):
         raise RuntimeError(f"API request failed ({response.status_code}): {error}")
     if not response.headers.get("Content-Type", "").startswith("image/"):
         raise RuntimeError(f"Unexpected content type: {response.headers.get('Content-Type', 'unknown')}")
+    return response.content
+
+
+async def generate_image(prompt, aspect_ratio="1:1", steps=15):
+    return await asyncio.to_thread(_generate_image_bytes, prompt, aspect_ratio)
+
+
+def text_to_image(prompt, filename="txt2img_output.jpg", aspect_ratio="1:1"):
+    image_bytes = _generate_image_bytes(prompt, aspect_ratio)
 
     with open(filename, "wb") as f:
-        f.write(response.content)
+        f.write(image_bytes)
     return filename
 
 
