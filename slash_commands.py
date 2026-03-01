@@ -1084,12 +1084,13 @@ class Codunot(commands.Cog):
 		guild_id = interaction.guild.id
 		voice_client = interaction.guild.voice_client
 		new_volume = self._set_volume_for_guild(guild_id, self._get_volume_for_guild(guild_id) + delta)
-		if voice_client and voice_client.source and hasattr(voice_client.source, "volume"):
+		if voice_client and isinstance(voice_client.source, discord.PCMVolumeTransformer):
 			voice_client.source.volume = new_volume
-		await interaction.followup.send(
-			f"🔊 Volume set to **{int(new_volume * 100)}%**.",
-			ephemeral=False,
-		)
+		message = f"🔊 Volume set to **{round(new_volume * 100)}%**."
+		if interaction.response.is_done():
+			await interaction.followup.send(message, ephemeral=False)
+		else:
+			await interaction.response.send_message(message, ephemeral=False)
 
 	async def _music_stop(self, interaction: discord.Interaction):
 		voice_client = interaction.guild.voice_client
