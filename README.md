@@ -27,15 +27,9 @@ Open: `http://localhost:8080/index.html`
 
 ## 🎵 Spotify support notes
 
-- You **do not need a Spotify API key** for `/play` Spotify links in this bot.
-- Spotify links are resolved through `yt-dlp` metadata and then searched on playable sources.
-- Optional fallback if Spotify blocks anonymous access in your region:
-  - `SPOTIFY_ACCESS_TOKEN` (Bearer token), or
-  - `SPOTIFY_CLIENT_ID` + `SPOTIFY_CLIENT_SECRET` (client credentials flow).
-- How to get Spotify credentials:
-  - Go to **https://developer.spotify.com/dashboard** and create an app.
-  - Copy **Client ID** and **Client Secret** into `SPOTIFY_CLIENT_ID` / `SPOTIFY_CLIENT_SECRET`.
-  - If you already have a valid short-lived bearer token, you can set `SPOTIFY_ACCESS_TOKEN` instead.
+- You **do not need a Spotify API key** or **Lavalink** for `/play` with Spotify links.
+- Spotify tracks and playlists are handled by `yt-dlp` — no extra secrets needed.
+- Playlists auto-queue: the first track plays immediately, remaining tracks queue and auto-advance.
 - Manual requirements:
   - Use **public** Spotify track/playlist links.
   - Keep bot voice dependencies working (`ffmpeg`, `discord.py[voice]`, `yt_dlp`).
