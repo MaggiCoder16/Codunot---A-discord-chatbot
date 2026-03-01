@@ -41,51 +41,44 @@ Open: `http://localhost:8080/index.html`
   - Keep bot voice dependencies working (`ffmpeg`, `discord.py[voice]`, `yt_dlp`).
   - If source sites rate-limit/age-gate some tracks, provide cookies via `YTDL_COOKIE_CONTENT` (code env), or `YTDL_COOKIES_CONTENT` in GitHub Actions workflow (written to `YTDL_COOKIES_TXT` path).
 
-## 🔐 GitHub Secrets to set (and where to get them)
+## 🔐 Secrets / environment variables
+
+> **TL;DR — You only need two secrets to run the bot: `DISCORD_TOKEN` and `GROQ_API_KEY`.**  
+> Everything else is optional and only needed for specific features.
+
+### GitHub Actions
 
 Set secrets in: **GitHub repo → Settings → Secrets and variables → Actions → New repository secret**.
 
-### Minimum needed to run the advanced bot workflow
+| Secret | Required? | Where to get it |
+|--------|-----------|-----------------|
+| `DISCORD_TOKEN` | **Yes** | **Discord Developer Portal** → Your App → **Bot** → *Reset Token* / copy token |
+| `GROQ_API_KEY` | **Yes** | **Groq Console** → API Keys |
+| `DEAPI_API_KEY` | No | **deAPI.ai** account/API dashboard (image/video/transcription features) |
+| `TEST_API_KEY` | No | Image generation API provider configured in `test_api.py` |
+| `HUGGINGFACE_API_KEY_IMAGE_GEN` | No | **Hugging Face** → Settings → Access Tokens |
+| `REPLICATE_API_TOKEN` | No | **Replicate** → Account → API tokens |
+| `GEMINI_API_KEY` | No | **Google AI Studio** (also accepts `GOOGLE_AI_STUDIO_API_KEY`) |
+| `TOPGG_TOKEN` | No | **top.gg** bot page (vote checks) |
+| `TOPGG_WEBHOOK_AUTH` | No | Same value configured in top.gg webhook settings |
+| `YTDL_COOKIES_CONTENT` | No | Netscape cookie-jar text (helps bypass age-gated content) |
+| `LAVALINK_HOST` | No | Hostname of a Lavalink server; leave empty to use yt-dlp fallback |
+| `LAVALINK_PORT` | No | Lavalink port (defaults to `443`) |
+| `LAVALINK_PASSWORD` | No | Lavalink password |
+| `LAVALINK_SECURE` | No | `true` for HTTPS, `false` for HTTP (defaults to `true`) |
 
-- `DISCORD_TOKEN`  
-  Get from **Discord Developer Portal** → Your App → **Bot** → *Reset Token* / copy token.
-- `GROQ_API_KEY`  
-  Get from **Groq Console** → API Keys.
+### Running locally
 
-### Common optional secrets (feature-based)
+Copy `.env.example` to `.env`, fill in at least `DISCORD_TOKEN` and `GROQ_API_KEY`, and export the variables before running:
 
-- `DEAPI_API_KEY`  
-  Get from your **deAPI.ai** account/API dashboard (used for image/video/transcription features).
-- `TEST_API_KEY`  
-  Get from the image generation API provider you configured for `test_api.py` (`imggen-api-production.up.railway.app` in this repo).
-- `HUGGINGFACE_API_KEY_IMAGE_GEN`  
-  Get from **Hugging Face** → Settings → Access Tokens.
-- `REPLICATE_API_TOKEN`  
-  Get from **Replicate** → Account → API tokens.
-- `GEMINI_API_KEY` (or `GOOGLE_AI_STUDIO_API_KEY`)  
-  Get from **Google AI Studio**.
-- `TOPGG_TOKEN`  
-  Get from **top.gg** bot page (used for vote checks).
-- `TOPGG_WEBHOOK_AUTH`  
-  Set this to the same webhook auth value configured in top.gg webhook settings (if using webhook route).
-- `YTDL_COOKIES_CONTENT`  
-  Use this exact secret name in GitHub Actions. The workflow writes it to `cookies.txt` and passes the path as `YTDL_COOKIES_TXT`.
-- `SPOTIFY_ACCESS_TOKEN` **or** (`SPOTIFY_CLIENT_ID` + `SPOTIFY_CLIENT_SECRET`)  
-  Optional Spotify fallback only if anonymous Spotify access fails. Get these from Spotify Developer Dashboard: https://developer.spotify.com/dashboard
-- `LAVALINK_HOST`  
-  Hostname of a Lavalink server (e.g. `lavalink.example.com`). Leave empty or unset to disable Lavalink and use the yt-dlp fallback for all music playback.
-- `LAVALINK_PORT`  
-  Port for the Lavalink server. Defaults to `443`.
-- `LAVALINK_PASSWORD`  
-  Password for the Lavalink server.
-- `LAVALINK_SECURE`  
-  Set to `true` for HTTPS or `false` for HTTP. Defaults to `true`.
+```bash
+cp .env.example .env
+# edit .env with your values
+export $(grep -v '^#' .env | xargs)
+python groq_bot.py
+```
 
-### Notes
-
-- If you only need basic bot startup, start with `DISCORD_TOKEN` + `GROQ_API_KEY`.
-- Add other secrets only for the features you use.
-- For local runs (not GitHub Actions), the code also supports `YTDL_COOKIE_CONTENT` directly.
+For local runs the code also supports `YTDL_COOKIE_CONTENT` (instead of `YTDL_COOKIES_CONTENT` used in GitHub Actions).
 
 ## 🧩 Communities data (Discord API export)
 

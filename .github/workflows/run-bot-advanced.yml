@@ -63,17 +63,17 @@ jobs:
           yt-dlp --version
           yt-dlp --verbose --version 2>&1 | grep -i node || true
 
-      - name: Write cookies.txt
+      - name: Write cookies.txt (optional)
         env:
           YTDL_COOKIES_CONTENT: ${{ secrets.YTDL_COOKIES_CONTENT }}
         run: |
           mkdir -p .secrets
-          echo "$YTDL_COOKIES_CONTENT" > .secrets/cookies.txt
-          if [ ! -s .secrets/cookies.txt ]; then
-            echo "cookies.txt missing or empty"
-            exit 1
+          if [ -n "$YTDL_COOKIES_CONTENT" ]; then
+            echo "$YTDL_COOKIES_CONTENT" > .secrets/cookies.txt
+            echo "cookies.txt written ($(wc -c < .secrets/cookies.txt) bytes)"
+          else
+            echo "YTDL_COOKIES_CONTENT not set — skipping cookies.txt (some age-gated content may be unavailable)"
           fi
-          wc -c .secrets/cookies.txt
      
       - name: Initialize usage files if missing
         run: |
@@ -101,8 +101,10 @@ jobs:
           REPLICATE_API_TOKEN: ${{ secrets.REPLICATE_API_TOKEN }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           TEST_API_KEY: ${{ secrets.TEST_API_KEY }}
-          SPOTIFY_CLIENT_ID: ${{ secrets.SPOTIFY_CLIENT_ID }}
-          SPOTIFY_CLIENT_SECRET: ${{ secrets.SPOTIFY_CLIENT_SECRET }}
+          LAVALINK_HOST: ${{ secrets.LAVALINK_HOST }}
+          LAVALINK_PORT: ${{ secrets.LAVALINK_PORT }}
+          LAVALINK_PASSWORD: ${{ secrets.LAVALINK_PASSWORD }}
+          LAVALINK_SECURE: ${{ secrets.LAVALINK_SECURE }}
           YTDL_COOKIES_TXT: .secrets/cookies.txt
           YDL_OPTS: "--js-runtimes node:/opt/hostedtoolcache/node/20.20.0/x64/bin/node"
         run: |
