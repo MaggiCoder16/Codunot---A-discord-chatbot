@@ -522,6 +522,17 @@ async def _extract_playlist_info(url: str, tier: str) -> list[dict]:
 	loop = asyncio.get_running_loop()
 	is_spotify_playlist = _is_spotify_playlist_url(url)
 
+	if is_spotify_playlist:
+		print(f"[PLAYLIST EXTRACT] Spotify playlist detected — using Spotify API directly")
+		entries = await _fetch_spotify_playlist_entries(url)
+		if entries:
+			print(f"[PLAYLIST EXTRACT] Spotify API returned {len(entries)} tracks")
+			return entries
+		raise Exception(
+			"Couldn't load this Spotify playlist. Make sure it is set to **public** and that "
+			"SPOTIFY_CLIENT_ID / SPOTIFY_CLIENT_SECRET environment variables are set correctly."
+		)
+
 	def _extract():
 		opts = _get_ytdl_options(tier, allow_playlist=True)
 		opts["extract_flat"] = "in_playlist"
@@ -530,23 +541,12 @@ async def _extract_playlist_info(url: str, tier: str) -> list[dict]:
 		with yt_dlp.YoutubeDL(opts) as ytdl:
 			return ytdl.extract_info(url, download=False)
 
-	async def _spotify_fallback() -> list[dict]:
-		if not is_spotify_playlist:
-			return []
-		return await _fetch_spotify_playlist_entries(url)
-
 	try:
 		data = await loop.run_in_executor(None, _extract)
 	except Exception as e:
-		entries = await _spotify_fallback()
-		if entries:
-			print(f"[PLAYLIST EXTRACT] yt-dlp failed for Spotify playlist, using API fallback: {e}")
-			return entries
-		raise
+		raise Exception(f"Couldn't load that playlist: {e}") from e
+
 	if not data:
-		entries = await _spotify_fallback()
-		if entries:
-			return entries
 		raise Exception("No data returned from playlist extractor.")
 
 	entries = [e for e in data.get("entries", []) if e and (e.get("url") or e.get("id"))]
