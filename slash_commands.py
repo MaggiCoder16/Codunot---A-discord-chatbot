@@ -154,27 +154,58 @@ async def _fetch_spotify_playlist_entries(url: str) -> list[dict]:
 		"Origin": "https://open.spotify.com",
 	}
 	async with aiohttp.ClientSession(headers=headers) as session:
+		access_token = ""
+		use_market_from_token = True
 		async with session.get(
 			"https://open.spotify.com/get_access_token?reason=transport&productType=web_player",
 			headers={"app-platform": "WebPlayer"},
 		) as token_resp:
-			if token_resp.status != 200:
-				return []
-			token_data = await token_resp.json()
-		access_token = token_data.get("accessToken")
+			if token_resp.status == 200:
+				token_data = await token_resp.json()
+				access_token = token_data.get("accessToken") or ""
+
+		if not access_token:
+			access_token = (os.getenv("SPOTIFY_ACCESS_TOKEN") or "").strip()
+			use_market_from_token = False
+
+		if not access_token:
+			client_id = (os.getenv("SPOTIFY_CLIENT_ID") or "").strip()
+			client_secret = (os.getenv("SPOTIFY_CLIENT_SECRET") or "").strip()
+			if client_id and client_secret:
+				async with session.post(
+					"https://accounts.spotify.com/api/token",
+					auth=aiohttp.BasicAuth(client_id, client_secret),
+					data={"grant_type": "client_credentials"},
+				) as cred_resp:
+					if cred_resp.status == 200:
+						cred_data = await cred_resp.json()
+						access_token = cred_data.get("access_token") or ""
+						use_market_from_token = False
+
 		if not access_token:
 			return []
 
 		api_headers = {"Authorization": f"Bearer {access_token}"}
 		# Keep parity with the existing yt-dlp playlist cap in this command.
-		api_url = (
+		api_urls = [
 			f"https://api.spotify.com/v1/playlists/{playlist_id}/tracks"
-			f"?market=from_token&limit={SPOTIFY_PLAYLIST_FETCH_LIMIT}"
-		)
-		async with session.get(api_url, headers=api_headers) as tracks_resp:
-			if tracks_resp.status != 200:
-				return []
-			tracks_data = await tracks_resp.json()
+			f"?limit={SPOTIFY_PLAYLIST_FETCH_LIMIT}"
+		]
+		if use_market_from_token:
+			api_urls.insert(
+				0,
+				f"https://api.spotify.com/v1/playlists/{playlist_id}/tracks"
+				f"?market=from_token&limit={SPOTIFY_PLAYLIST_FETCH_LIMIT}",
+			)
+
+		tracks_data = None
+		for api_url in api_urls:
+			async with session.get(api_url, headers=api_headers) as tracks_resp:
+				if tracks_resp.status == 200:
+					tracks_data = await tracks_resp.json()
+					break
+		if not isinstance(tracks_data, dict):
+			return []
 
 	entries = []
 	for item in tracks_data.get("items", []):

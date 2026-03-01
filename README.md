@@ -29,6 +29,9 @@ Open: `http://localhost:8080/index.html`
 
 - You **do not need a Spotify API key** for `/play` Spotify links in this bot.
 - Spotify links are resolved through `yt-dlp` metadata and then searched on playable sources.
+- Optional fallback if Spotify blocks anonymous access in your region:
+  - `SPOTIFY_ACCESS_TOKEN` (Bearer token), or
+  - `SPOTIFY_CLIENT_ID` + `SPOTIFY_CLIENT_SECRET` (client credentials flow).
 - Manual requirements:
   - Use **public** Spotify track/playlist links.
   - Keep bot voice dependencies working (`ffmpeg`, `discord.py[voice]`, `yt_dlp`).
