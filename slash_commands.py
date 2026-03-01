@@ -1,6 +1,7 @@
 import discord
 from discord import app_commands
 from discord.ext import commands
+import copy
 import os
 import time
 import io
@@ -465,8 +466,7 @@ def _build_query_candidates(song: str) -> list[str]:
 
 
 def _get_ytdl_options(tier: str, allow_playlist: bool = False) -> dict:
-	options = dict(YTDL_OPTIONS)
-	options["extractor_args"] = dict(YTDL_OPTIONS.get("extractor_args", {}))
+	options = copy.deepcopy(YTDL_OPTIONS)
 	if tier in {"premium", "gold"}:
 		options["format"] = "bestaudio/best"
 	else:
@@ -476,7 +476,11 @@ def _get_ytdl_options(tier: str, allow_playlist: bool = False) -> dict:
 	client_id = (os.getenv("SPOTIFY_CLIENT_ID") or "").strip()
 	client_secret = (os.getenv("SPOTIFY_CLIENT_SECRET") or "").strip()
 	if client_id and client_secret:
-		options["extractor_args"]["spotify"] = {
+		extractor_args = options.get("extractor_args")
+		if not isinstance(extractor_args, dict):
+			extractor_args = {}
+			options["extractor_args"] = extractor_args
+		extractor_args["spotify"] = {
 			"client_id": client_id,
 			"client_secret": client_secret,
 		}
