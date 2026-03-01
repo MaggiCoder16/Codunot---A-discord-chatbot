@@ -568,6 +568,7 @@ class Codunot(commands.Cog):
 	def __init__(self, bot: commands.Bot):
 		self.bot = bot
 		self.bot.tree.add_command(ConfigureGroup())
+		self._lavalink_session: aiohttp.ClientSession | None = None
 
 	# ── Lavalink connect ──────────────────────────────────────────────────────
 
@@ -584,6 +585,7 @@ class Codunot(commands.Cog):
 			ctx.verify_mode = ssl.CERT_NONE
 			connector = aiohttp.TCPConnector(ssl=ctx)
 			session = aiohttp.ClientSession(connector=connector)
+			self._lavalink_session = session
 		node = wavelink.Node(
 			uri=f"{'https' if LAVALINK_SECURE else 'http'}://{LAVALINK_HOST}:{LAVALINK_PORT}",
 			password=LAVALINK_PASSWORD,
@@ -599,6 +601,14 @@ class Codunot(commands.Cog):
 				await wavelink.Pool.close()
 			except Exception as close_err:
 				print(f"[LAVALINK] Pool cleanup error: {close_err}")
+
+	async def cog_unload(self):
+		try:
+			await wavelink.Pool.close()
+		except Exception:
+			pass
+		if self._lavalink_session and not self._lavalink_session.closed:
+			await self._lavalink_session.close()
 
 	def _lavalink_available(self) -> bool:
 		try:
