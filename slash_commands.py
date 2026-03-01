@@ -2,6 +2,7 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 import os
+import ssl
 import time
 import io
 import json
@@ -55,6 +56,7 @@ pending_transcriptions: dict[str, int] = {}
 guild_history: dict[int, list] = {}
 guild_now_message: dict[int, dict] = {}
 guild_queue_messages: dict[int, list] = {}
+guild_ytdl_queue: dict[int, list] = {}
 guild_last_text_channel: dict[int, int] = {}
 guild_volume: dict[int, int] = {}
 guild_last_activity = {}
@@ -62,10 +64,14 @@ _COOKIE_TEMP_FILE = None
 _COOKIE_TEMP_PATH: str = ""
 
 # ── Lavalink node ─────────────────────────────────────────────────────────────
-LAVALINK_HOST = "lavalink.nextgencoders.xyz"
-LAVALINK_PORT = 443
-LAVALINK_PASSWORD = "nextgencoderspvt"
-LAVALINK_SECURE = True
+LAVALINK_HOST = os.getenv("LAVALINK_HOST", "").strip()
+try:
+	LAVALINK_PORT = int(os.getenv("LAVALINK_PORT", "443"))
+except ValueError:
+	print("[LAVALINK] Invalid LAVALINK_PORT value, defaulting to 443")
+	LAVALINK_PORT = 443
+LAVALINK_PASSWORD = os.getenv("LAVALINK_PASSWORD", "")
+LAVALINK_SECURE = os.getenv("LAVALINK_SECURE", "true").strip().lower() in ("true", "1", "yes")
 
 # ── yt-dlp fallback ───────────────────────────────────────────────────────────
 
@@ -153,6 +159,23 @@ async def _ytdl_extract(queries: list[str], tier: str) -> dict:
 			last_error = e
 			continue
 	raise last_error or Exception("No results found.")
+
+async def _ytdl_extract_playlist(url: str, tier: str) -> list[dict]:
+	"""Extract all tracks from a playlist URL via yt-dlp."""
+	loop = asyncio.get_running_loop()
+	def _extract():
+		opts = _get_ytdl_options(tier, allow_playlist=True)
+		with yt_dlp.YoutubeDL(opts) as ytdl:
+			return ytdl.extract_info(url, download=False)
+	data = await loop.run_in_executor(None, _extract)
+	if not data:
+		raise Exception("No data returned.")
+	if "entries" in data:
+		entries = [e for e in data.get("entries", []) if e]
+		if not entries:
+			raise Exception("No results found in playlist.")
+		return entries
+	return [data]
 
 
 # ── Transcription config ──────────────────────────────────────────────────────
@@ -545,19 +568,47 @@ class Codunot(commands.Cog):
 	def __init__(self, bot: commands.Bot):
 		self.bot = bot
 		self.bot.tree.add_command(ConfigureGroup())
+		self._lavalink_session: aiohttp.ClientSession | None = None
 
 	# ── Lavalink connect ──────────────────────────────────────────────────────
 
 	async def cog_load(self):
+		if not LAVALINK_HOST:
+			print("[LAVALINK] No LAVALINK_HOST configured — Lavalink disabled, Spotify won't work")
+			return
+		# Build a custom session with relaxed SSL to work around
+		# TLSV1_UNRECOGNIZED_NAME errors on some Lavalink hosts.
+		session: aiohttp.ClientSession | None = None
+		if LAVALINK_SECURE:
+			ctx = ssl.create_default_context()
+			ctx.check_hostname = False
+			ctx.verify_mode = ssl.CERT_NONE
+			connector = aiohttp.TCPConnector(ssl=ctx)
+			session = aiohttp.ClientSession(connector=connector)
+			self._lavalink_session = session
 		node = wavelink.Node(
 			uri=f"{'https' if LAVALINK_SECURE else 'http'}://{LAVALINK_HOST}:{LAVALINK_PORT}",
 			password=LAVALINK_PASSWORD,
+			session=session,
+			retries=3,
 		)
 		try:
 			await wavelink.Pool.connect(nodes=[node], client=self.bot, cache_capacity=100)
 			print(f"[LAVALINK] Connected to {LAVALINK_HOST}")
 		except Exception as e:
-			print(f"[LAVALINK] Failed to connect: {e} — will fall back to yt-dlp for non-Spotify")
+			print(f"[LAVALINK] Failed to connect: {e} — Spotify won't work")
+			try:
+				await wavelink.Pool.close()
+			except Exception as close_err:
+				print(f"[LAVALINK] Pool cleanup error: {close_err}")
+
+	async def cog_unload(self):
+		try:
+			await wavelink.Pool.close()
+		except Exception:
+			pass
+		if self._lavalink_session and not self._lavalink_session.closed:
+			await self._lavalink_session.close()
 
 	def _lavalink_available(self) -> bool:
 		try:
@@ -596,7 +647,7 @@ class Codunot(commands.Cog):
 			print(f"[WAVELINK] Auto-advance error: {e}")
 
 	# ── yt-dlp fallback engine ────────────────────────────────────────────────
-	# Used when Lavalink is down OR for non-Spotify URLs when Lavalink fails
+	# Used when Lavalink is down or fails
 
 	async def _start_idle_timer(self, guild_id: int):
 		await asyncio.sleep(600)
@@ -829,6 +880,13 @@ class Codunot(commands.Cog):
 			player.queue.clear()
 			await player.stop()
 			await player.disconnect()
+		elif player:
+			guild_ytdl_queue.pop(interaction.guild.id, None)
+			player.stop()
+			try:
+				await player.disconnect(force=True)
+			except Exception:
+				pass
 		guild_queue_messages.pop(interaction.guild.id, None)
 		guild_now_message.pop(interaction.guild.id, None)
 		ended_embed = discord.Embed(title="⏹️ Ended", description="Playback stopped.", color=0x5C5C5C)
@@ -841,6 +899,16 @@ class Codunot(commands.Cog):
 	async def _music_next(self, interaction: discord.Interaction):
 		player: wavelink.Player = interaction.guild.voice_client
 		if not player or not isinstance(player, wavelink.Player):
+			# yt-dlp fallback skip
+			vc = interaction.guild.voice_client
+			if vc and hasattr(vc, 'is_playing') and vc.is_playing():
+				queue = guild_ytdl_queue.get(interaction.guild.id, [])
+				if not queue:
+					await interaction.followup.send("❌ Queue is empty.", ephemeral=False)
+					return
+				vc.stop()  # triggers _after_playback → _ytdl_auto_advance
+				await interaction.followup.send("⏭️ Skipped.", ephemeral=False)
+				return
 			await interaction.followup.send("❌ Not connected.", ephemeral=False)
 			return
 		if player.queue.is_empty:
@@ -925,7 +993,14 @@ class Codunot(commands.Cog):
 		tier = get_tier_from_message(interaction)
 		guild_last_text_channel[interaction.guild.id] = interaction.channel.id
 
-		if self._lavalink_available():
+		# ── Spotify → Lavalink ───────────────────────────────────────────────
+		if _is_spotify_url(song):
+			if not self._lavalink_available():
+				await interaction.edit_original_response(
+					content="❌ Spotify requires Lavalink which is currently unavailable. Try again in a moment."
+				)
+				return
+
 			try:
 				player: wavelink.Player = interaction.guild.voice_client
 				if not player or not isinstance(player, wavelink.Player):
@@ -937,14 +1012,13 @@ class Codunot(commands.Cog):
 					return
 				await player.set_volume(guild_volume.get(interaction.guild.id, 100))
 
-				await interaction.edit_original_response(content="🔍 Searching...")
+				await interaction.edit_original_response(content="🔍 Searching Spotify via Lavalink...")
 
 				tracks = await wavelink.Playable.search(song)
 				if not tracks:
 					raise Exception("No results found.")
 
 				if isinstance(tracks, wavelink.Playlist):
-					# Playlist
 					added = 0
 					first_track = None
 					for track in tracks.tracks:
@@ -966,7 +1040,6 @@ class Codunot(commands.Cog):
 						"title": embed.description or "Unknown",
 					}
 				else:
-					# Single track
 					track = tracks[0] if isinstance(tracks, list) else tracks
 					if player.playing:
 						player.queue.put(track)
@@ -978,7 +1051,6 @@ class Codunot(commands.Cog):
 						queue_messages.append({"channel_id": queued_msg.channel.id, "message_id": queued_msg.id})
 					else:
 						await player.play(track)
-						# Save to history
 						history = guild_history.setdefault(interaction.guild.id, [])
 						if len(history) > 25:
 							history.pop(0)
@@ -993,19 +1065,13 @@ class Codunot(commands.Cog):
 				return
 
 			except Exception as e:
-				print(f"[LAVALINK] Play error: {e} — falling back to yt-dlp")
-				if _is_spotify_url(song):
-					await interaction.edit_original_response(
-						content=f"❌ Lavalink failed to load this Spotify link: {e}"
-					)
-					return
+				print(f"[LAVALINK] Spotify play error: {e}")
+				await interaction.edit_original_response(
+					content=f"❌ Lavalink failed to load this Spotify link: {e}"
+				)
+				return
 
-		# ── yt-dlp fallback (non-Spotify only) ───────────────────────────────
-		if _is_spotify_url(song):
-			await interaction.edit_original_response(
-				content="❌ Spotify requires Lavalink which is currently unavailable. Try again in a moment."
-			)
-			return
+		# ── Everything else → yt-dlp ─────────────────────────────────────────
 
 		voice_client = interaction.guild.voice_client
 		try:
@@ -1027,7 +1093,72 @@ class Codunot(commands.Cog):
 			await interaction.edit_original_response(content="❌ Couldn't connect to your voice channel.")
 			return
 
-		await interaction.edit_original_response(content="🔍 Searching (yt-dlp fallback)...")
+		await interaction.edit_original_response(content="🔍 Searching...")
+
+		# ── Playlist handling ────────────────────────────────────────────
+		if _is_playlist_url(song):
+			try:
+				entries = await _ytdl_extract_playlist(song, tier)
+			except Exception as e:
+				print(f"[YTDL] Playlist extraction error: {e}")
+				await interaction.edit_original_response(content="❌ Couldn't load that playlist.")
+				return
+
+			if not entries:
+				await interaction.edit_original_response(content="❌ Playlist appears to be empty.")
+				return
+
+			first = entries[0]
+			stream_url = first.get("url")
+			if not stream_url:
+				await interaction.edit_original_response(content="❌ Couldn't get a stream URL for the first track.")
+				return
+
+			# Queue remaining tracks
+			remaining = entries[1:]
+			queue = guild_ytdl_queue.setdefault(interaction.guild.id, [])
+			for entry in remaining:
+				if entry.get("url"):
+					queue.append({
+						"title": entry.get("title") or "Unknown",
+						"web_url": entry.get("webpage_url") or entry.get("url"),
+						"uploader": entry.get("uploader") or entry.get("channel") or "Unknown",
+						"duration": entry.get("duration"),
+						"thumbnail": entry.get("thumbnail"),
+						"stream_url": entry.get("url"),
+						"requested_by": interaction.user.mention,
+						"tier": tier,
+					})
+
+			def _after_playback(error):
+				if error:
+					print(f"[YTDL] Playback error: {error}")
+				asyncio.run_coroutine_threadsafe(
+					self._ytdl_auto_advance(interaction.guild.id),
+					self.bot.loop
+				)
+
+			volume = guild_volume.get(interaction.guild.id, 100) / 100
+			source = discord.PCMVolumeTransformer(
+				discord.FFmpegPCMAudio(stream_url, **_get_ffmpeg_options()),
+				volume=volume,
+			)
+			voice_client.play(source, after=_after_playback)
+			guild_last_activity[interaction.guild.id] = asyncio.get_event_loop().time()
+
+			embed = self._build_now_playing_embed_from_ytdl(first, interaction.user.mention, tier)
+			view = MusicControls(self, interaction.guild.id)
+			total = len(entries)
+			queued = len(remaining)
+			status = f"📋 Playlist loaded! Playing first track, **{queued}** more queued." if queued else None
+			message = await interaction.followup.send(content=status, embed=embed, view=view, wait=True)
+			guild_now_message[interaction.guild.id] = {
+				"channel_id": message.channel.id, "message_id": message.id,
+				"title": embed.description or "Unknown",
+			}
+			return
+
+		# ── Single track ─────────────────────────────────────────────────
 		queries = _build_query_candidates(song)
 
 		try:
@@ -1079,10 +1210,61 @@ class Codunot(commands.Cog):
 		}
 
 	async def _ytdl_auto_advance(self, guild_id: int):
-		"""yt-dlp fallback auto-advance — queue not supported in fallback mode."""
+		"""yt-dlp fallback auto-advance — plays next track from yt-dlp queue."""
 		await self._mark_now_playing_as_ended(guild_id)
 		guild_now_message.pop(guild_id, None)
-		asyncio.create_task(self._start_idle_timer(guild_id))
+
+		queue = guild_ytdl_queue.get(guild_id, [])
+		if not queue:
+			asyncio.create_task(self._start_idle_timer(guild_id))
+			return
+
+		next_track = queue.pop(0)
+		stream_url = next_track.get("stream_url")
+		if not stream_url:
+			asyncio.create_task(self._ytdl_auto_advance(guild_id))
+			return
+
+		guild = self.bot.get_guild(guild_id)
+		if guild is None:
+			return
+		voice_client = guild.voice_client
+		if not voice_client or not voice_client.is_connected():
+			guild_ytdl_queue.pop(guild_id, None)
+			return
+
+		def _after_playback(error):
+			if error:
+				print(f"[YTDL] Playback error: {error}")
+			asyncio.run_coroutine_threadsafe(
+				self._ytdl_auto_advance(guild_id),
+				self.bot.loop
+			)
+
+		try:
+			volume = guild_volume.get(guild_id, 100) / 100
+			source = discord.PCMVolumeTransformer(
+				discord.FFmpegPCMAudio(stream_url, **_get_ffmpeg_options()),
+				volume=volume,
+			)
+			voice_client.play(source, after=_after_playback)
+			guild_last_activity[guild_id] = asyncio.get_event_loop().time()
+
+			info = {
+				"title": next_track.get("title"),
+				"webpage_url": next_track.get("web_url"),
+				"uploader": next_track.get("uploader"),
+				"duration": next_track.get("duration"),
+				"thumbnail": next_track.get("thumbnail"),
+			}
+			embed = self._build_now_playing_embed_from_ytdl(
+				info, next_track.get("requested_by", "Unknown"), next_track.get("tier", "free")
+			)
+			view = MusicControls(self, guild_id)
+			await self._post_now_playing(guild_id, embed, view)
+		except Exception as e:
+			print(f"[YTDL] Auto-advance error: {e}")
+			asyncio.create_task(self._ytdl_auto_advance(guild_id))
 
 	# ── Mode commands ─────────────────────────────────────────────────────────
 
