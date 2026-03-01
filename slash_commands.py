@@ -118,12 +118,7 @@ TRANSCRIBE_HOST_NORMALIZATION = {
 
 _YT_PLAYLIST_HOSTS = {"youtube.com", "www.youtube.com", "m.youtube.com", "youtu.be"}
 _SC_PLAYLIST_HOSTS = {"soundcloud.com", "www.soundcloud.com"}
-_SPOTIFY_HOSTS = {"open.spotify.com", "play.spotify.com"}
-
-
-def _is_spotify_url(url: str) -> bool:
-	parsed = urlparse(url)
-	return (parsed.hostname or "").lower() in _SPOTIFY_HOSTS
+_UNSUPPORTED_PLAY_HOSTS = {"open.spotify.com", "play.spotify.com"}
 
 
 def _is_playlist_url(url: str) -> bool:
@@ -1484,7 +1479,7 @@ class Codunot(commands.Cog):
 			return
 
 		# ── Single track branch ───────────────────────────────────────────────
-		if _looks_like_url(song) and _is_spotify_url(song):
+		if _looks_like_url(song) and (urlparse(song).hostname or "").lower() in _UNSUPPORTED_PLAY_HOSTS:
 			await interaction.edit_original_response(content="❌ Spotify links are no longer supported.")
 			return
 		queries = _build_query_candidates(song)
