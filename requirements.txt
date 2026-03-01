@@ -14,3 +14,4 @@ uvicorn
 replicate
 yt-dlp
 PyNaCl
+wavelink
