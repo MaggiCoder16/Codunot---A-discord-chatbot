@@ -466,12 +466,20 @@ def _build_query_candidates(song: str) -> list[str]:
 
 def _get_ytdl_options(tier: str, allow_playlist: bool = False) -> dict:
 	options = dict(YTDL_OPTIONS)
+	options["extractor_args"] = dict(YTDL_OPTIONS.get("extractor_args", {}))
 	if tier in {"premium", "gold"}:
 		options["format"] = "bestaudio/best"
 	else:
 		options["format"] = "bestaudio[abr<=192]/bestaudio/best"
 	if allow_playlist:
 		options["noplaylist"] = False
+	client_id = (os.getenv("SPOTIFY_CLIENT_ID") or "").strip()
+	client_secret = (os.getenv("SPOTIFY_CLIENT_SECRET") or "").strip()
+	if client_id and client_secret:
+		options["extractor_args"]["spotify"] = {
+			"client_id": client_id,
+			"client_secret": client_secret,
+		}
 	if COOKIE_PATH:
 		options["cookiefile"] = COOKIE_PATH
 	if _NODE_PATH:
