@@ -62,10 +62,10 @@ Set secrets in: **GitHub repo → Settings → Secrets and variables → Actions
 | `TOPGG_TOKEN` | No | **top.gg** bot page (vote checks) |
 | `TOPGG_WEBHOOK_AUTH` | No | Same value configured in top.gg webhook settings |
 | `YTDL_COOKIES_CONTENT` | No | Netscape cookie-jar text (helps bypass age-gated content) |
-| `LAVALINK_HOST` | **No** | Hostname of a Lavalink server. **You do not need this** — leave empty and music plays via yt-dlp |
-| `LAVALINK_PORT` | **No** | Lavalink port (defaults to `443`). Only needed if you set `LAVALINK_HOST` |
-| `LAVALINK_PASSWORD` | **No** | Lavalink password. Only needed if you set `LAVALINK_HOST` |
-| `LAVALINK_SECURE` | **No** | `true` for HTTPS, `false` for HTTP (defaults to `true`). Only needed if you set `LAVALINK_HOST` |
+| `LAVALINK_HOST` | No | Hostname of a Lavalink server. Leave empty — music plays via yt-dlp without it |
+| `LAVALINK_PORT` | No | Lavalink port (defaults to `443`). Only set if you use Lavalink |
+| `LAVALINK_PASSWORD` | No | Lavalink password. Only set if you use Lavalink |
+| `LAVALINK_SECURE` | No | `true` for HTTPS, `false` for HTTP (defaults to `true`). Only set if you use Lavalink |
 
 ### Running locally
 
