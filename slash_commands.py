@@ -144,10 +144,19 @@ async def _fetch_spotify_playlist_entries(url: str) -> list[dict]:
 	if not playlist_id:
 		return []
 
-	headers = {"User-Agent": "CodunotBot/1.0"}
+	headers = {
+		"User-Agent": (
+			"Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+			"AppleWebKit/537.36 (KHTML, like Gecko) "
+			"Chrome/133.0.0.0 Safari/537.36"
+		),
+		"Referer": "https://open.spotify.com/",
+		"Origin": "https://open.spotify.com",
+	}
 	async with aiohttp.ClientSession(headers=headers) as session:
 		async with session.get(
-			"https://open.spotify.com/get_access_token?reason=transport&productType=web_player"
+			"https://open.spotify.com/get_access_token?reason=transport&productType=web_player",
+			headers={"app-platform": "WebPlayer"},
 		) as token_resp:
 			if token_resp.status != 200:
 				return []
@@ -158,7 +167,10 @@ async def _fetch_spotify_playlist_entries(url: str) -> list[dict]:
 
 		api_headers = {"Authorization": f"Bearer {access_token}"}
 		# Keep parity with the existing yt-dlp playlist cap in this command.
-		api_url = f"https://api.spotify.com/v1/playlists/{playlist_id}/tracks?limit={SPOTIFY_PLAYLIST_FETCH_LIMIT}"
+		api_url = (
+			f"https://api.spotify.com/v1/playlists/{playlist_id}/tracks"
+			f"?market=from_token&limit={SPOTIFY_PLAYLIST_FETCH_LIMIT}"
+		)
 		async with session.get(api_url, headers=api_headers) as tracks_resp:
 			if tracks_resp.status != 200:
 				return []
