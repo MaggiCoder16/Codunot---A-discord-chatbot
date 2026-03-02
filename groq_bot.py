@@ -1523,7 +1523,7 @@ User idea:
 	try:
 		boosted = await call_groq(
 			prompt=boost_instruction,
-			model="llama-3.3-70b-versatile",
+			model="llama-3.1-8b-instant",
 			temperature=0.1
 		)
 
@@ -1593,7 +1593,7 @@ async def boost_video_prompt(user_prompt: str) -> str:
 	try:
 		boosted = await call_groq(
 			prompt=boost_instruction,
-			model="llama-3.3-70b-versatile",
+			model="llama-3.1-8b-instant",
 			temperature=0.1
 		)
 

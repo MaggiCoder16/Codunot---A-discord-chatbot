@@ -1337,8 +1337,12 @@ class Codunot(commands.Cog):
 			return
 		await interaction.followup.send("🎨 **Cooking up your image... hang tight ✨**")
 		try:
-			image_bytes, balance = await generate_image(prompt, aspect_ratio="16:9")
-			output_text = f"{interaction.user.mention} 🖼️ Generated: `{prompt[:150]}{'...' if len(prompt) > 150 else ''}`"
+			boosted_prompt = await boost_image_prompt(prompt)
+			image_bytes, balance = await generate_image(boosted_prompt, aspect_ratio="16:9")
+			output_text = (
+				f"{interaction.user.mention} 🖼️ Generated: `{prompt[:150]}{'...' if len(prompt) > 150 else ''}`"
+				f"\n✨ **Boosted prompt:** `{boosted_prompt[:300]}{'...' if len(boosted_prompt) > 300 else ''}`"
+			)
 			await self._deliver_paid_attachment(interaction, output_text, "generated_image.png", image_bytes)
 			consume(interaction, "attachments", usage_key=usage_key)
 			consume_total(interaction, "attachments", usage_key=usage_key, money_left=balance)
@@ -1367,7 +1371,10 @@ class Codunot(commands.Cog):
 		try:
 			boosted_prompt = await boost_video_prompt(prompt)
 			video_bytes = await text_to_video_512(prompt=boosted_prompt)
-			output_text = f"{interaction.user.mention} 🎬 Generated: `{prompt[:150]}{'...' if len(prompt) > 150 else ''}`"
+			output_text = (
+				f"{interaction.user.mention} 🎬 Generated: `{prompt[:150]}{'...' if len(prompt) > 150 else ''}`"
+				f"\n✨ **Boosted prompt:** `{boosted_prompt[:300]}{'...' if len(boosted_prompt) > 300 else ''}`"
+			)
 			await self._deliver_paid_attachment(interaction, output_text, "generated_video.mp4", video_bytes)
 			consume(interaction, "attachments", usage_key=usage_key)
 			consume_total(interaction, "attachments", usage_key=usage_key)
