@@ -20,6 +20,7 @@ import yt_dlp
 
 from memory import MemoryManager
 from test_api import generate_image, ImageAPIError
+import requests
 from deAPI_client_text2vid import generate_video as text_to_video_512
 from deAPI_client_text2speech import text_to_speech
 from deAPI_client_video_to_text import transcribe_video, wait_for_transcription_text, VideoToTextError
@@ -1344,6 +1345,10 @@ class Codunot(commands.Cog):
 			consume(interaction, "attachments", usage_key=usage_key)
 			consume_total(interaction, "attachments", usage_key=usage_key, money_left=balance)
 			save_usage()
+		except (requests.exceptions.ReadTimeout, requests.exceptions.ConnectionError) as e:
+			print(f"[SLASH IMAGE ERROR] {e}")
+			traceback.print_exc()
+			await interaction.followup.send(f"{interaction.user.mention} ⏱️ The image API timed out. The server may be busy — please try again in a moment.")
 		except Exception as e:
 			print(f"[SLASH IMAGE ERROR] {e}")
 			traceback.print_exc()

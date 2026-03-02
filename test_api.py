@@ -1,10 +1,12 @@
 """Test the new flux2max endpoint."""
 import asyncio
 import os
+import time
 import requests
 
 BASE_URL = "https://imggen-api-production.up.railway.app"
-REQUEST_TIMEOUT = 60
+REQUEST_TIMEOUT = 120
+MAX_RETRIES = 2
 
 # Aspect ratio to (width, height) mapping for flux2max
 ASPECT_RATIO_DIMENSIONS = {
@@ -40,27 +42,36 @@ def _generate_image_bytes(prompt, aspect_ratio="16:9"):
 
     width, height = ASPECT_RATIO_DIMENSIONS[aspect_ratio]
 
-    response = requests.post(
-        f"{BASE_URL}/flux2max",
-        headers={"X-API-Key": api_key, "Content-Type": "application/json"},
-        json={
-            "prompt": prompt,
-            "width": width,
-            "height": height,
-            "safety_tolerance": 5,
-        },
-        timeout=REQUEST_TIMEOUT,
-    )
-
-    if response.status_code != 200:
+    last_exc = None
+    for attempt in range(1, MAX_RETRIES + 1):
         try:
-            error = response.json().get("error", response.text)
-        except ValueError:
-            error = response.text
-        raise ImageAPIError(response.status_code, error)
-    if not response.headers.get("Content-Type", "").startswith("image/"):
-        raise RuntimeError(f"Unexpected content type: {response.headers.get('Content-Type', 'unknown')}")
-    return response.content
+            response = requests.post(
+                f"{BASE_URL}/flux2max",
+                headers={"X-API-Key": api_key, "Content-Type": "application/json"},
+                json={
+                    "prompt": prompt,
+                    "width": width,
+                    "height": height,
+                    "safety_tolerance": 5,
+                },
+                timeout=REQUEST_TIMEOUT,
+            )
+
+            if response.status_code != 200:
+                try:
+                    error = response.json().get("error", response.text)
+                except ValueError:
+                    error = response.text
+                raise ImageAPIError(response.status_code, error)
+            if not response.headers.get("Content-Type", "").startswith("image/"):
+                raise RuntimeError(f"Unexpected content type: {response.headers.get('Content-Type', 'unknown')}")
+            return response.content
+        except (requests.exceptions.ReadTimeout, requests.exceptions.ConnectionError) as e:
+            last_exc = e
+            print(f"[IMGGEN] Attempt {attempt}/{MAX_RETRIES} failed: {e}")
+            if attempt < MAX_RETRIES:
+                time.sleep(2 ** attempt)
+    raise last_exc
 
 
 def _get_imggen_balance(api_key):
