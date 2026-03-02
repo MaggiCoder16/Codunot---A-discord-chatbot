@@ -20,6 +20,7 @@ import yt_dlp
 
 from memory import MemoryManager
 from test_api import generate_image, ImageAPIError
+import requests
 from deAPI_client_text2vid import generate_video as text_to_video_512
 from deAPI_client_text2speech import text_to_speech
 from deAPI_client_video_to_text import transcribe_video, wait_for_transcription_text, VideoToTextError
@@ -1338,12 +1339,16 @@ class Codunot(commands.Cog):
 		await interaction.followup.send("🎨 **Cooking up your image... hang tight ✨**")
 		try:
 			boosted_prompt = await boost_image_prompt(prompt)
-			image_bytes, balance = await generate_image(boosted_prompt, aspect_ratio="16:9")
+			image_bytes, balance = await generate_image(boosted_prompt, aspect_ratio="1:1")
 			output_text = f"{interaction.user.mention} 🖼️ Generated: `{prompt[:150]}{'...' if len(prompt) > 150 else ''}`"
 			await self._deliver_paid_attachment(interaction, output_text, "generated_image.png", image_bytes)
 			consume(interaction, "attachments", usage_key=usage_key)
 			consume_total(interaction, "attachments", usage_key=usage_key, money_left=balance)
 			save_usage()
+		except (requests.exceptions.ReadTimeout, requests.exceptions.ConnectionError) as e:
+			print(f"[SLASH IMAGE ERROR] {e}")
+			traceback.print_exc()
+			await interaction.followup.send(f"{interaction.user.mention} ⏱️ The image API timed out after multiple attempts. The server may be busy — please try again in a moment.")
 		except Exception as e:
 			print(f"[SLASH IMAGE ERROR] {e}")
 			traceback.print_exc()
