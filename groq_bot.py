@@ -1067,6 +1067,9 @@ async def generate_and_reply(chan_id, message, content, mode):
 	if await should_search_web(content):
 		search_context = await search_web_context(content)
 
+		if not search_context:
+			search_context = "[Web search attempted but returned no results - use your knowledge base]"
+
 	prompt = (
 		build_general_prompt(chan_id, mode, message, include_last_image=False)
 		+ (f"\n=== WEB SEARCH CONTEXT ===\n{search_context}\n=== END WEB SEARCH CONTEXT ===\n" if search_context else "")
@@ -1128,40 +1131,93 @@ async def should_search_web(user_text: str) -> bool:
 
 
 async def search_web_context(query: str, max_results: int = 5) -> str:
-	"""Fetch lightweight web search snippets from DuckDuckGo HTML results."""
-	encoded = urllib.parse.quote_plus(query)
-	url = f"https://duckduckgo.com/html/?q={encoded}"
+	"""
+	Fetch web search results using DuckDuckGo Instant Answer API.
+	Returns formatted search results with direct answers and related topics.
+	"""
 
 	try:
+		encoded = urllib.parse.quote_plus(query)
+		api_url = f"https://api.duckduckgo.com/?q={encoded}&format=json&no_html=1&skip_disambig=1"
+
 		async with aiohttp.ClientSession() as session:
-			async with session.get(url, timeout=aiohttp.ClientTimeout(total=20)) as resp:
+			async with session.get(
+				api_url,
+				timeout=aiohttp.ClientTimeout(total=10)
+			) as resp:
 				if resp.status != 200:
+					print(f"[WEB SEARCH] API returned status {resp.status}")
 					return ""
-				html_text = await resp.text()
 
-		result_pattern = re.compile(
-			r'<a[^>]*class="result__a"[^>]*href="(?P<link>[^"]+)"[^>]*>(?P<title>.*?)</a>.*?'
-			r'<a[^>]*class="result__snippet"[^>]*>(?P<snippet>.*?)</a>',
-			re.S,
-		)
+				data = await resp.json()
+				results = []
 
-		items = []
-		for match in result_pattern.finditer(html_text):
-			if len(items) >= max_results:
-				break
+				if data.get("Answer"):
+					results.append(
+						f"**Direct Answer:**\n{data['Answer']}"
+					)
 
-			title = re.sub(r"<.*?>", "", match.group("title"))
-			title = html.unescape(title).strip()
-			snippet = re.sub(r"<.*?>", "", match.group("snippet"))
-			snippet = html.unescape(snippet).strip()
-			link = html.unescape(match.group("link")).strip()
+				if data.get("AbstractText"):
+					abstract = data["AbstractText"]
+					source = data.get("AbstractSource", "Unknown")
+					url = data.get("AbstractURL", "")
 
-			if title and snippet:
-				items.append(f"- {title}\n  {snippet}\n  Source: {link}")
+					if len(abstract) > 500:
+						abstract = abstract[:497] + "..."
 
-		return "\n".join(items)
+					results.append(
+						f"**{source}:**\n{abstract}\n{url}"
+					)
+
+				if data.get("Definition"):
+					results.append(
+						f"**Definition:**\n{data['Definition']}"
+					)
+
+				topics_added = 0
+				for topic in data.get("RelatedTopics", []):
+					if topics_added >= max_results:
+						break
+
+					if isinstance(topic, dict):
+						if "Topics" in topic:
+							for subtopic in topic.get("Topics", []):
+								if topics_added >= max_results:
+									break
+								text = subtopic.get("Text", "").strip()
+								if text and len(text) > 20:
+									results.append(f"• {text}")
+									topics_added += 1
+
+						elif "Text" in topic:
+							text = topic.get("Text", "").strip()
+							if text and len(text) > 20:
+								results.append(f"• {text}")
+								topics_added += 1
+
+				for result in data.get("Results", [])[:max_results]:
+					if isinstance(result, dict):
+						text = result.get("Text", "").strip()
+						if text:
+							results.append(f"• {text}")
+
+				if results:
+					return "\n\n".join(results)
+
+				print(f"[WEB SEARCH] No results for query: {query}")
+				return ""
+
+	except asyncio.TimeoutError:
+		print("[WEB SEARCH] Request timed out")
+		return ""
+	except aiohttp.ClientError as e:
+		print(f"[WEB SEARCH] Network error: {e}")
+		return ""
+	except json.JSONDecodeError as e:
+		print(f"[WEB SEARCH] Invalid JSON response: {e}")
+		return ""
 	except Exception as e:
-		print(f"[WEB SEARCH ERROR] {e}")
+		print(f"[WEB SEARCH] Unexpected error: {e}")
 		return ""
 
 # ---------------- IMAGE EXTRACTION ----------------
