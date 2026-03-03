@@ -436,7 +436,7 @@ def _build_vote_embed() -> discord.Embed:
 		"• 🖌️ **Edit Images** — send image + instruction\n"
 		"• 🖼️ **Merge Images** — attach 2+ images + say merge\n"
 		"• 🎬 **Generate Video** — `/generate_video`\n"
-		"• 🔊 **Text-to-Speech** — `/generate_tts` (choose voice & language)\n"
+		"• 🔊 **Text-to-Speech** — `/generate_tts` (voice & language, min 20 chars)\n"
 		"• 🎵 **Play Music** — `/play [song/URL]` in voice channels"
 	), inline=False)
 	embed.add_field(name="📁 File Tools", value=(
@@ -1429,7 +1429,7 @@ class Codunot(commands.Cog):
 
 	@app_commands.command(name="generate_tts", description="🔊 Generate text-to-speech audio — pick a voice & language")
 	@app_commands.describe(
-		text="The text you want to convert to speech",
+		text="The text you want to convert to speech (minimum 20 characters)",
 		voice="Choose a voice for the speech",
 		language="Choose the language for the speech",
 	)
@@ -1444,6 +1444,12 @@ class Codunot(commands.Cog):
 		voice: app_commands.Choice[str],
 		language: app_commands.Choice[str],
 	):
+		if len(text) < 20:
+			await interaction.response.send_message(
+				"🚫 Your text must be at least **20 characters** long. Please provide a longer message.",
+				ephemeral=True,
+			)
+			return
 		usage_key = await self._resolve_paid_usage_key(interaction)
 		await interaction.response.defer()
 		await interaction.edit_original_response(content="🗳️ **Checking your vote status...**")
