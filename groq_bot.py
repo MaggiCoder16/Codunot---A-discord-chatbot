@@ -106,6 +106,11 @@ user_vote_unlocks = {}
 channel_last_images = {}
 channel_last_chess_result = {}
 
+# Promotional message tracking
+channel_message_counts = {}
+PROMO_MIN_MESSAGES = 10
+PROMO_MAX_MESSAGES = 25
+
 # ---------------- SETUP SLASH COMMANDS ----------------
 @bot.event
 async def setup_hook():
@@ -145,6 +150,65 @@ async def setup_hook():
 			)
 	except Exception as e:
 		print(f"[SLASH COMMANDS] Failed to sync global commands: {e}")
+
+# ---------------- PROMOTIONAL EMBED ----------------
+def build_support_promo_embed() -> discord.Embed:
+	"""Build the promotional support/upgrade embed"""
+	embed = discord.Embed(
+		title="🤖 Codunot - Help & Upgrades",
+		color=0xFFA500
+	)
+
+	help_text = (
+		"**Having issues using Codunot?**\n"
+		"Type `!codunot_help` in DMs, "
+		"`@Codunot AI !codunot_help` in servers, "
+		"or join the [support server](https://discord.gg/GVuFk5gxtW)"
+	)
+
+	upgrade_text = (
+		"**Upgrade to Premium or Gold**\n"
+		"I, a 13 year old, have done a lot of hard work to make this bot, "
+		"and I also spend some of my pocket money on this bot on APIs, "
+		"and a good cloud for hosting the bot.\n\n"
+		"Support me by upgrading to premium or gold, though this is totally your choice :)"
+	)
+
+	embed.description = f"{help_text}\n\n{upgrade_text}"
+
+	embed.set_footer(
+		text="💡 This message is sent randomly • Learn more: discord.gg/GVuFk5gxtW"
+	)
+
+	return embed
+
+async def maybe_send_promo_message(channel, chan_id: str):
+	"""
+	Randomly send promotional embed based on message count.
+	Appears at least once every 25 messages, at most once every 10 messages.
+	"""
+	current_count = channel_message_counts.get(chan_id, 0)
+	current_count += 1
+	channel_message_counts[chan_id] = current_count
+
+	if current_count < PROMO_MIN_MESSAGES:
+		return
+
+	if current_count >= PROMO_MAX_MESSAGES:
+		should_send = True
+	else:
+		progress = (current_count - PROMO_MIN_MESSAGES) / (PROMO_MAX_MESSAGES - PROMO_MIN_MESSAGES)
+		should_send = random.random() < (0.2 + progress * 0.3)
+
+	if should_send:
+		try:
+			embed = build_support_promo_embed()
+			await channel.send(embed=embed)
+			channel_message_counts[chan_id] = 0
+		except discord.errors.Forbidden:
+			print(f"[PROMO] Cannot send in channel {chan_id} - Missing Permissions")
+		except Exception as e:
+			print(f"[PROMO ERROR] {e}")
 
 # ---------------- COMMANDS ----------------
 @bot.command(name="codunot_help")
@@ -270,7 +334,13 @@ async def funmode(ctx: commands.Context):
 	memory.save_channel_mode(chan_id, "funny")
 	channel_chess[chan_id] = False
 
-	await ctx.send("😎 Fun mode activated!")
+	await ctx.send(
+		"😎 **Fun mode activated!**\n"
+		"🎮 **How to chat:**\n"
+		"📍 In servers: `@Codunot AI your message`\n"
+		"💬 In DMs: Just talk normally!\n\n"
+		"I'll keep it fun, use emojis, and match your vibe. Try asking me anything! 💬✨"
+	)
 
 
 @bot.command(name="seriousmode")
@@ -285,7 +355,12 @@ async def seriousmode(ctx: commands.Context):
 	memory.save_channel_mode(chan_id, "serious")
 	channel_chess[chan_id] = False
 
-	await ctx.send("🤓 Serious mode ON")
+	await ctx.send(
+		"🤓 **Serious mode ON.**\n"
+		"📍 In servers: `@Codunot AI your question`\n"
+		"💬 In DMs: Just type your question directly.\n\n"
+		"I'll give clear, structured answers — great for homework, research, or coding help."
+	)
 
 
 @bot.command(name="roastmode")
@@ -300,7 +375,12 @@ async def roastmode(ctx: commands.Context):
 	memory.save_channel_mode(chan_id, "roast")
 	channel_chess[chan_id] = False
 
-	await ctx.send("🔥 ROAST MODE ACTIVATED")
+	await ctx.send(
+		"🔥 **ROAST MODE ACTIVATED!**\n"
+		"📍 In servers: `@Codunot AI roast me` or `@Codunot AI roast @someone`\n"
+		"💬 In DMs: Just type who or what to roast!\n\n"
+		"Brace yourself — I don't hold back (much) 😈"
+	)
 
 @bot.command(name="teachmerizz")
 async def teachmerizz(ctx: commands.Context, submode: str = None):
@@ -326,7 +406,9 @@ async def teachmerizz(ctx: commands.Context, submode: str = None):
 		channel_chess[chan_id] = False
 		await ctx.send(
 			"💬 **Rizz Coach (Online) activated!**\n"
-			"Send your situation, paste a convo, or just ask anything 👇"
+			"📍 In servers: `@Codunot AI` + your situation or screenshot\n"
+			"💬 In DMs: Just type or paste your convo directly!\n\n"
+			"Send a screenshot, paste a convo, or describe what's happening — I'll coach you through it 👇"
 		)
 
 	elif submode == "irl":
@@ -335,7 +417,9 @@ async def teachmerizz(ctx: commands.Context, submode: str = None):
 		channel_chess[chan_id] = False
 		await ctx.send(
 			"🗣️ **Rizz Coach (IRL) activated!**\n"
-			"Describe your situation, ask for tips, or tell me what happened 👇"
+			"📍 In servers: `@Codunot AI` + describe your situation\n"
+			"💬 In DMs: Just type what's going on!\n\n"
+			"Describe the situation, ask for tips, or tell me what happened — I got you 👇"
 		)
 
 	else:
@@ -357,7 +441,18 @@ async def chessmode(ctx: commands.Context):
 	channel_modes[chan_id] = "funny"
 	chess_engine.new_board(chan_id)
 
-	await ctx.send("♟️ Chess mode ACTIVATED. You are white, start!")
+	await ctx.send(
+		"♟️ **Chess mode ACTIVATED!** You're playing white, I'm black.\n"
+		"📍 **In servers:** Ping me with your move: `@Codunot AI e4`\n"
+		"💬 **In DMs:** Just type your move directly: `e4`\n\n"
+		"🎯 **Try these opening moves:**\n"
+		"• `e4` — King's pawn\n"
+		"• `d4` — Queen's pawn\n"
+		"• `Nf3` — Knight to f3\n\n"
+		"💡 Move formats: `e4`, `Nf3`, `Bxc4`, `O-O` (castle kingside), `O-O-O` (queenside)\n"
+		"You can also ask for hints, resign, or chat about the position!\n"
+		"Your move! ♟️"
+	)
 
 @bot.command(name="replicate_test")
 async def replicate_test(ctx: commands.Context, *, message: str):
@@ -1021,6 +1116,7 @@ async def handle_roast_mode(chan_id, message, user_message):
 	channel_memory[chan_id].append(f"{BOT_NAME}: {reply}")
 	memory.add_message(chan_id, BOT_NAME, reply)
 	memory.persist()
+	await maybe_send_promo_message(message.channel, chan_id)
 
 async def handle_rizz_message(chan_id, message, mode):
 	guild_id = message.guild.id if message.guild else None
@@ -1054,6 +1150,7 @@ async def handle_rizz_message(chan_id, message, mode):
 	channel_memory[chan_id].append(f"{BOT_NAME}: {reply}")
 	memory.add_message(chan_id, BOT_NAME, reply)
 	memory.persist()
+	await maybe_send_promo_message(message.channel, chan_id)
 
 async def generate_and_reply(chan_id, message, content, mode):
 	guild_id = message.guild.id if message.guild else None
@@ -1103,6 +1200,9 @@ async def generate_and_reply(chan_id, message, content, mode):
 	channel_memory[chan_id].append(f"{BOT_NAME}: {reply}")
 	memory.add_message(chan_id, BOT_NAME, reply)
 	memory.persist()
+	
+	# ---------------- PROMOTIONAL MESSAGE ----------------
+	await maybe_send_promo_message(message.channel, chan_id)
 
 async def should_search_web(user_text: str) -> bool:
 	"""Ask the model if fresh web data is likely needed for this user query."""
@@ -2022,6 +2122,7 @@ async def on_message(message: Message):
 				channel_memory[chan_id].append(f"{BOT_NAME}: {image_reply}")
 				memory.add_message(chan_id, BOT_NAME, image_reply)
 				memory.persist()
+				await maybe_send_promo_message(message.channel, chan_id)
 				
 			return
 		
@@ -2194,7 +2295,7 @@ async def on_message(message: Message):
 			if not move_san:
 				await send_human_reply(
 					message.channel,
-					"🤔 That doesn't look like a legal move. Try something like `e4` or `Bc4`."
+					"🤔 That doesn't look like a legal move. Try something like `e4`, `Nf3`, or `O-O` (castling). Type `hint` if you need help!"
 				)
 				return
 		
@@ -2203,7 +2304,7 @@ async def on_message(message: Message):
 			except:
 				await send_human_reply(
 					message.channel,
-					"⚠️ That move isn't legal in this position."
+					"⚠️ That move isn't legal in this position. Try a different piece or square. Type `hint` if you're stuck!"
 				)
 				return
 		
