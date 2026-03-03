@@ -72,7 +72,6 @@ VOTE_DURATION = 12 * 60 * 60
 MAX_MEMORY = 20
 RATE_LIMIT = 30
 MAX_IMAGE_BYTES = 2_000_000  # 2 MB
-MAX_TTS_LENGTH = 150  # kept for reference only
 VOTE_FILE = "vote_unlocks.json"
 
 MERGE_KEYWORDS = [
