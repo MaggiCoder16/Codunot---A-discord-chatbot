@@ -59,7 +59,6 @@ guild_now_message: dict[int, dict] = {}
 guild_queue_messages: dict[int, list] = {}
 guild_ytdl_queue: dict[int, list] = {}
 guild_last_text_channel: dict[int, int] = {}
-guild_volume: dict[int, int] = {}
 guild_last_activity = {}
 _COOKIE_TEMP_FILE = None
 _COOKIE_TEMP_PATH: str = ""
@@ -406,14 +405,6 @@ class MusicControls(discord.ui.View):
 	@discord.ui.button(emoji="⏭️", style=discord.ButtonStyle.secondary)
 	async def next_button(self, interaction: discord.Interaction, button: discord.ui.Button):
 		await self.cog._music_next(interaction)
-
-	@discord.ui.button(emoji="🔉", style=discord.ButtonStyle.secondary)
-	async def volume_down_button(self, interaction: discord.Interaction, button: discord.ui.Button):
-		await self.cog._music_adjust_volume(interaction, -10)
-
-	@discord.ui.button(emoji="🔊", style=discord.ButtonStyle.secondary)
-	async def volume_up_button(self, interaction: discord.Interaction, button: discord.ui.Button):
-		await self.cog._music_adjust_volume(interaction, 10)
 
 	@discord.ui.button(emoji="⏹️", style=discord.ButtonStyle.danger)
 	async def stop_button(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -945,28 +936,6 @@ class Codunot(commands.Cog):
 		except Exception:
 			await interaction.followup.send(embed=embed, view=view)
 
-	async def _music_adjust_volume(self, interaction: discord.Interaction, delta: int):
-		"""Adjust guild playback volume by delta percentage points within 10%-200%."""
-		voice_client = interaction.guild.voice_client
-		if not voice_client or not voice_client.is_connected():
-			await interaction.followup.send("❌ I'm not connected to a voice channel.", ephemeral=True)
-			return
-
-		guild_id = interaction.guild.id
-		current = guild_volume.get(guild_id, 100)
-		new_volume = max(10, min(200, current + delta))
-		if new_volume == current:
-			await interaction.followup.send(f"🔊 Volume is already at **{new_volume}%**.", ephemeral=True)
-			return
-
-		guild_volume[guild_id] = new_volume
-		if isinstance(voice_client, wavelink.Player):
-			await voice_client.set_volume(new_volume)
-		elif isinstance(getattr(voice_client, "source", None), discord.PCMVolumeTransformer):
-			voice_client.source.volume = new_volume / 100
-
-		await interaction.followup.send(f"🔊 Volume set to **{new_volume}%**.", ephemeral=True)
-
 	# ── Play command ──────────────────────────────────────────────────────────
 
 	@app_commands.command(
@@ -1005,7 +974,7 @@ class Codunot(commands.Cog):
 						content=f"❌ I'm already in {player.channel.mention}."
 					)
 					return
-				await player.set_volume(guild_volume.get(interaction.guild.id, 100))
+				await player.set_volume(100)
 
 				await interaction.edit_original_response(content="🔍 Searching Spotify via Lavalink...")
 
@@ -1133,11 +1102,7 @@ class Codunot(commands.Cog):
 					self.bot.loop
 				)
 
-			volume = guild_volume.get(interaction.guild.id, 100) / 100
-			source = discord.PCMVolumeTransformer(
-				discord.FFmpegPCMAudio(stream_url, **_get_ffmpeg_options()),
-				volume=volume,
-			)
+			source = discord.FFmpegPCMAudio(stream_url, **_get_ffmpeg_options())
 			voice_client.play(source, after=_after_playback)
 			guild_last_activity[interaction.guild.id] = asyncio.get_event_loop().time()
 
@@ -1188,11 +1153,7 @@ class Codunot(commands.Cog):
 				self.bot.loop
 			)
 
-		volume = guild_volume.get(interaction.guild.id, 100) / 100
-		source = discord.PCMVolumeTransformer(
-			discord.FFmpegPCMAudio(stream_url, **_get_ffmpeg_options()),
-			volume=volume,
-		)
+		source = discord.FFmpegPCMAudio(stream_url, **_get_ffmpeg_options())
 		voice_client.play(source, after=_after_playback)
 		guild_last_activity[interaction.guild.id] = asyncio.get_event_loop().time()
 
@@ -1237,11 +1198,7 @@ class Codunot(commands.Cog):
 			)
 
 		try:
-			volume = guild_volume.get(guild_id, 100) / 100
-			source = discord.PCMVolumeTransformer(
-				discord.FFmpegPCMAudio(stream_url, **_get_ffmpeg_options()),
-				volume=volume,
-			)
+			source = discord.FFmpegPCMAudio(stream_url, **_get_ffmpeg_options())
 			voice_client.play(source, after=_after_playback)
 			guild_last_activity[guild_id] = asyncio.get_event_loop().time()
 
