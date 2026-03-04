@@ -74,11 +74,12 @@ TTS_LANG_VOICES: dict[str, tuple[str, dict[str, str]]] = {
 		"Alex": "em_alex", "Dora": "ef_dora", "Santa": "em_santa",
 	}),
 }
-TTS_VOICE_CODE_TO_NAME = {
-	code: name
+TTS_ALL_VOICES: dict[str, str] = {
+	name: code
 	for _, voices in TTS_LANG_VOICES.values()
 	for name, code in voices.items()
 }
+TTS_VOICE_CODE_TO_NAME = {code: name for name, code in TTS_ALL_VOICES.items()}
 boost_image_prompt = None
 boost_video_prompt = None
 save_vote_unlocks = None
@@ -1537,11 +1538,7 @@ class Codunot(commands.Cog):
 		if lang_code and lang_code in TTS_LANG_VOICES:
 			_, voices = TTS_LANG_VOICES[lang_code]
 		else:
-			voices = {
-				name: code
-				for _, lang_voices in TTS_LANG_VOICES.values()
-				for name, code in lang_voices.items()
-			}
+			voices = TTS_ALL_VOICES
 		return [
 			app_commands.Choice(name=name, value=code)
 			for name, code in voices.items()
