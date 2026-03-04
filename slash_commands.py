@@ -29,6 +29,7 @@ from deAPI_client_text2vid import generate_video as text_to_video_512
 from deAPI_client_text2speech import text_to_speech
 from deAPI_client_video_to_text import transcribe_video, wait_for_transcription_text, VideoToTextError
 from google_ai_studio_client import call_google_ai_studio
+from cerebras_client import call_cerebras
 
 from usage_manager import (
 	check_limit,
@@ -664,35 +665,6 @@ async def run_python_code(code: str) -> dict:
 	return await loop.run_in_executor(None, _execute)
 
 
-# ── Cerebras AI Code Fixer ────────────────────────────────────────────────────
-
-_CEREBRAS_API_KEY = os.getenv("CEREBRAS_API_KEY")
-_cerebras_client = None
-
-async def call_cerebras_fix(prompt: str, temperature: float = 0.2) -> str | None:
-	"""Call Cerebras API to fix Python code."""
-	global _cerebras_client
-	if not _CEREBRAS_API_KEY:
-		print("[CEREBRAS] Missing CEREBRAS_API_KEY")
-		return None
-	try:
-		from cerebras.cloud.sdk import Cerebras
-		loop = asyncio.get_running_loop()
-		def _call():
-			global _cerebras_client
-			if _cerebras_client is None:
-				_cerebras_client = Cerebras(api_key=_CEREBRAS_API_KEY)
-			chat = _cerebras_client.chat.completions.create(
-				messages=[{"role": "user", "content": prompt}],
-				model="qwen-3-32b",
-				temperature=temperature,
-			)
-			return chat.choices[0].message.content if chat.choices else None
-		return await loop.run_in_executor(None, _call)
-	except Exception as e:
-		print(f"[CEREBRAS ERROR] {e}")
-		return None
-
 
 # ── URL Browser / Web Scraper ─────────────────────────────────────────────────
 
@@ -816,7 +788,7 @@ class CodeTestModal(discord.ui.Modal, title="🧪 Test Your Python Code"):
 				"Fixed code:"
 			)
 			try:
-				fixed_code = await call_cerebras_fix(prompt=fix_prompt, temperature=0.2)
+				fixed_code = await call_cerebras(prompt=fix_prompt, temperature=0.2)
 				fixed_code = (fixed_code or "").strip()
 				if fixed_code.startswith("```"):
 					fixed_code = re.sub(r"^```(?:python)?\n?", "", fixed_code)
