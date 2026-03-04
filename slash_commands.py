@@ -667,9 +667,11 @@ async def run_python_code(code: str) -> dict:
 # ── Cerebras AI Code Fixer ────────────────────────────────────────────────────
 
 _CEREBRAS_API_KEY = os.getenv("CEREBRAS_API_KEY")
+_cerebras_client = None
 
 async def call_cerebras_fix(prompt: str, temperature: float = 0.2) -> str | None:
 	"""Call Cerebras API to fix Python code."""
+	global _cerebras_client
 	if not _CEREBRAS_API_KEY:
 		print("[CEREBRAS] Missing CEREBRAS_API_KEY")
 		return None
@@ -677,8 +679,10 @@ async def call_cerebras_fix(prompt: str, temperature: float = 0.2) -> str | None
 		from cerebras.cloud.sdk import Cerebras
 		loop = asyncio.get_running_loop()
 		def _call():
-			client = Cerebras(api_key=_CEREBRAS_API_KEY)
-			chat = client.chat.completions.create(
+			global _cerebras_client
+			if _cerebras_client is None:
+				_cerebras_client = Cerebras(api_key=_CEREBRAS_API_KEY)
+			chat = _cerebras_client.chat.completions.create(
 				messages=[{"role": "user", "content": prompt}],
 				model="qwen-3-32b",
 				temperature=temperature,
