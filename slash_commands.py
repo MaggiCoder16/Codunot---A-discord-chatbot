@@ -1397,10 +1397,10 @@ class Codunot(commands.Cog):
 			return
 		await interaction.edit_original_response(content="✅ **Vote verified! You're good to go.**")
 		if not check_limit(interaction, "attachments", usage_key=usage_key):
-			await interaction.followup.send("🚫 You've hit your **daily image generation limit**.")
+			await interaction.followup.send("🚫 You've hit your **daily attachments limit**. Either wait for the limits to renew, or contact my owner aarav_2022 on discord, for an upgrade!")
 			return
 		if not check_total_limit(interaction, "attachments", usage_key=usage_key):
-			await interaction.followup.send("🚫 You've hit your **2 months' image generation limit**.")
+			await interaction.followup.send("🚫 You've hit your **2 months' attachments limit**. Either wait for the limits to renew, or contact my owner aarav_2022 on discord, for an upgrade!")
 			return
 		await interaction.followup.send("🎨 **Cooking up your image... hang tight ✨**")
 		try:
@@ -1434,10 +1434,10 @@ class Codunot(commands.Cog):
 			return
 		await interaction.edit_original_response(content="✅ **Vote verified! You're good to go.**")
 		if not check_limit(interaction, "attachments", usage_key=usage_key):
-			await interaction.followup.send("🚫 You've hit your **daily video generation limit**.")
+			await interaction.followup.send("🚫 You've hit your **daily attachments limit**. Either wait for the limits to renew, or contact my owner aarav_2022 on discord, for an upgrade!")
 			return
 		if not check_total_limit(interaction, "attachments", usage_key=usage_key):
-			await interaction.followup.send("🚫 You've hit your **2 months' video generation limit**.")
+			await interaction.followup.send("🚫 You've hit your **2 months' attachments limit**. Either wait for the limits to renew, or contact my owner aarav_2022 on discord, for an upgrade!")
 			return
 		await interaction.followup.send("🎬 **Rendering your video... this may take up to ~1 min ⏳**")
 		try:
@@ -1484,7 +1484,7 @@ class Codunot(commands.Cog):
 		if voice not in valid_codes:
 			await interaction.response.send_message(
 				f"🚫 **{voice}** is not a valid voice for **{lang_display}**. "
-				f"Available voices: {', '.join(voices.keys())}",
+				f"Available voices: {', '.join(voices.keys())}\n\n"
 				f"Try again, with the new language, and you will see the correct voices available, for that language! :)",
 				ephemeral=False,
 			)
@@ -1497,10 +1497,10 @@ class Codunot(commands.Cog):
 			return
 		await interaction.edit_original_response(content="✅ **Vote verified! You're good to go.**")
 		if not check_limit(interaction, "attachments", usage_key=usage_key):
-			await interaction.followup.send("🚫 You've hit your **daily TTS generation limit**.")
+			await interaction.followup.send("🚫 You've hit your **daily attachments limit**. Either wait for the limits to renew, or contact my owner aarav_2022 on discord, for an upgrade!")
 			return
 		if not check_total_limit(interaction, "attachments", usage_key=usage_key):
-			await interaction.followup.send("🚫 You've hit your **2 months' TTS generation limit**.")
+			await interaction.followup.send("🚫 You've hit your **2 months' attachments limit**. Either wait for the limits to renew, or contact my owner aarav_2022 on discord, for an upgrade!")
 			return
 		await interaction.followup.send(
 			f"🔊 **Generating your audio** (voice: **{voice_display}**, language: **{lang_display}**)... almost there 🎙️"
