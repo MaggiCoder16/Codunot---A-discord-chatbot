@@ -93,6 +93,7 @@ guild_queue_messages: dict[int, list] = {}
 guild_ytdl_queue: dict[int, list] = {}
 guild_last_text_channel: dict[int, int] = {}
 guild_volume: dict[int, int] = {}
+guild_filters: dict[int, str] = {}
 guild_last_activity = {}
 _COOKIE_TEMP_FILE = None
 _COOKIE_TEMP_PATH: str = ""
@@ -139,6 +140,18 @@ YTDL_OPTIONS = {
 }
 FFMPEG_BEFORE_OPTIONS = "-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5"
 
+# Audio filter presets
+AUDIO_FILTERS = {
+	"normal": "",
+	"bass": "bass=g=10,dynaudnorm",
+	"nightcore": "asetrate=48000*1.25,aresample=48000,atempo=1.06",
+	"slowed": "asetrate=48000*0.8,aresample=48000,atempo=0.9",
+	"8d": "apulsator=hz=0.125",
+	"treble": "treble=g=8",
+	"lofi": "asetrate=48000*0.94,aresample=48000,lowpass=f=3000",
+	"vaporwave": "asetrate=48000*0.85,aresample=48000",
+}
+
 _NODE_CANDIDATES = [
 	"/opt/hostedtoolcache/node/20.20.0/x64/bin/node",
 	"/usr/local/bin/node",
@@ -168,7 +181,11 @@ def _get_ytdl_options(tier: str, allow_playlist: bool = False) -> dict:
 def _get_quality_label(tier: str) -> str:
 	return "320kbps" if tier in {"premium", "gold"} else "HD"
 
-def _get_ffmpeg_options() -> dict:
+def _get_ffmpeg_options(filter_name: str = "normal") -> dict:
+	"""Get FFmpeg options with optional audio filter."""
+	audio_filter = AUDIO_FILTERS.get(filter_name, "")
+	if audio_filter:
+		return {"before_options": FFMPEG_BEFORE_OPTIONS, "options": f"-vn -af {audio_filter}"}
 	return {"before_options": FFMPEG_BEFORE_OPTIONS, "options": "-vn"}
 
 async def _ytdl_extract(queries: list[str], tier: str) -> dict:
@@ -994,12 +1011,24 @@ class Codunot(commands.Cog):
 
 	# ── Play command ──────────────────────────────────────────────────────────
 
+	_FILTER_CHOICES = [
+		app_commands.Choice(name="🎵 Normal (No Filter)", value="normal"),
+		app_commands.Choice(name="🔊 Bass Boost", value="bass"),
+		app_commands.Choice(name="🎤 Nightcore (Fast + High Pitch)", value="nightcore"),
+		app_commands.Choice(name="🐌 Slowed + Reverb", value="slowed"),
+		app_commands.Choice(name="🎧 8D Audio", value="8d"),
+		app_commands.Choice(name="🎸 Treble Boost", value="treble"),
+		app_commands.Choice(name="📻 Lo-Fi", value="lofi"),
+		app_commands.Choice(name="🎭 Vaporwave", value="vaporwave"),
+	]
+
 	@app_commands.command(
 		name="play",
-		description="🎵 Play a song or playlist (YouTube, SoundCloud, Spotify)"
+		description="🎵 Play a song or playlist with audio filter"
 	)
-	@app_commands.describe(song="Song name, URL, or playlist URL")
-	async def play_slash(self, interaction: discord.Interaction, song: str):
+	@app_commands.describe(song="Song name, URL, or playlist URL", filter="Audio filter to apply")
+	@app_commands.choices(filter=_FILTER_CHOICES)
+	async def play_slash(self, interaction: discord.Interaction, song: str, filter: app_commands.Choice[str] | None = None):
 		if interaction.guild is None:
 			await interaction.response.send_message("❌ Server only.", ephemeral=True)
 			return
@@ -1012,6 +1041,10 @@ class Codunot(commands.Cog):
 
 		if not await require_vote_deferred(interaction):
 			return
+
+		# Store filter preference for this guild
+		if filter is not None:
+			guild_filters[interaction.guild.id] = filter.value
 
 		await interaction.edit_original_response(content="🎵 Joining voice channel...")
 
@@ -1159,8 +1192,9 @@ class Codunot(commands.Cog):
 				)
 
 			volume = guild_volume.get(interaction.guild.id, 100) / 100
+			selected_filter = guild_filters.get(interaction.guild.id, "normal")
 			source = discord.PCMVolumeTransformer(
-				discord.FFmpegPCMAudio(stream_url, **_get_ffmpeg_options()),
+				discord.FFmpegPCMAudio(stream_url, **_get_ffmpeg_options(selected_filter)),
 				volume=volume,
 			)
 			voice_client.play(source, after=_after_playback)
@@ -1214,8 +1248,9 @@ class Codunot(commands.Cog):
 			)
 
 		volume = guild_volume.get(interaction.guild.id, 100) / 100
+		selected_filter = guild_filters.get(interaction.guild.id, "normal")
 		source = discord.PCMVolumeTransformer(
-			discord.FFmpegPCMAudio(stream_url, **_get_ffmpeg_options()),
+			discord.FFmpegPCMAudio(stream_url, **_get_ffmpeg_options(selected_filter)),
 			volume=volume,
 		)
 		voice_client.play(source, after=_after_playback)
@@ -1262,9 +1297,10 @@ class Codunot(commands.Cog):
 			)
 
 		try:
+			selected_filter = guild_filters.get(guild_id, "normal")
 			volume = guild_volume.get(guild_id, 100) / 100
 			source = discord.PCMVolumeTransformer(
-				discord.FFmpegPCMAudio(stream_url, **_get_ffmpeg_options()),
+				discord.FFmpegPCMAudio(stream_url, **_get_ffmpeg_options(selected_filter)),
 				volume=volume,
 			)
 			voice_client.play(source, after=_after_playback)
@@ -1285,6 +1321,29 @@ class Codunot(commands.Cog):
 		except Exception as e:
 			print(f"[YTDL] Auto-advance error: {e}")
 			asyncio.create_task(self._ytdl_auto_advance(guild_id))
+
+	# ── Filter command ────────────────────────────────────────────────────────
+
+	@app_commands.command(name="filter", description="🎛️ Change audio filter for current playback")
+	@app_commands.describe(filter="Audio filter to apply")
+	@app_commands.choices(filter=_FILTER_CHOICES)
+	async def filter_slash(self, interaction: discord.Interaction, filter: app_commands.Choice[str]):
+		await interaction.response.defer()
+		if not await self._ensure_music_control(interaction):
+			return
+
+		voice_client = interaction.guild.voice_client
+		if not voice_client or not voice_client.is_playing():
+			await interaction.followup.send("❌ Nothing is playing right now.", ephemeral=False)
+			return
+
+		guild_filters[interaction.guild.id] = filter.value
+
+		await interaction.followup.send(
+			f"🎛️ Filter changed to **{filter.name}**!\n"
+			f"⏭️ Skip to the next track to apply the new filter.",
+			ephemeral=False
+		)
 
 	# ── Mode commands ─────────────────────────────────────────────────────────
 
