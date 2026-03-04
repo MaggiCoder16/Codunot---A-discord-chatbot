@@ -100,6 +100,7 @@ jobs:
           TOPGG_TOKEN: ${{ secrets.TOPGG_TOKEN }}
           REPLICATE_API_TOKEN: ${{ secrets.REPLICATE_API_TOKEN }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}
           TEST_API_KEY: ${{ secrets.TEST_API_KEY }}
           LAVALINK_HOST: ${{ secrets.LAVALINK_HOST }}
           LAVALINK_PORT: ${{ secrets.LAVALINK_PORT }}
