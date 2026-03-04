@@ -1170,7 +1170,7 @@ async def generate_and_reply(chan_id, message, content, mode):
 	url_context = ""
 	url_match = re.search(r'https?://[^\s<>"\']+', content)
 	if url_match:
-		from slash_commands import fetch_url_content
+		from slash_commands import fetch_url_content  # lazy import to avoid circular dependency
 		try:
 			extracted = await fetch_url_content(url_match.group(0), max_chars=1500)
 			if extracted and not extracted.startswith("❌"):

@@ -614,11 +614,32 @@ class ConfigureGroup(app_commands.Group):
 
 _CODE_TIMEOUT = 10  # seconds
 
+_BLOCKED_CODE_PATTERNS = re.compile(
+	r"(?:import\s+(?:os|sys|subprocess|shutil|socket|ctypes|signal|pathlib)"
+	r"|from\s+(?:os|sys|subprocess|shutil|socket|ctypes|signal|pathlib)\s+import"
+	r"|__import__\s*\("
+	r"|exec\s*\(|eval\s*\("
+	r"|open\s*\(|compile\s*\("
+	r"|globals\s*\(|locals\s*\(|vars\s*\("
+	r"|getattr\s*\(|setattr\s*\(|delattr\s*\("
+	r")",
+	re.IGNORECASE,
+)
+
 async def run_python_code(code: str) -> dict:
 	"""
 	Execute Python code in a subprocess with a timeout.
 	Returns dict with keys: success (bool), output (str), error (str).
+	Blocks code that uses dangerous modules or built-in functions.
 	"""
+	blocked = _BLOCKED_CODE_PATTERNS.search(code)
+	if blocked:
+		return {
+			"success": False,
+			"output": "",
+			"error": f"🚫 Blocked: use of `{blocked.group()}` is not allowed for security reasons.",
+		}
+
 	loop = asyncio.get_running_loop()
 
 	def _execute():
@@ -628,6 +649,7 @@ async def run_python_code(code: str) -> dict:
 				capture_output=True,
 				text=True,
 				timeout=_CODE_TIMEOUT,
+				env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1"},
 			)
 			stdout = result.stdout.strip()
 			stderr = result.stderr.strip()
@@ -644,12 +666,34 @@ async def run_python_code(code: str) -> dict:
 
 # ── URL Browser / Web Scraper ─────────────────────────────────────────────────
 
+import ipaddress
+
+def _is_private_url(url: str) -> bool:
+	"""Return True if the URL points to a private/internal IP range."""
+	try:
+		hostname = urlparse(url).hostname or ""
+		import socket
+		addr = socket.getaddrinfo(hostname, None, socket.AF_UNSPEC, socket.SOCK_STREAM)
+		for family, _, _, _, sockaddr in addr:
+			ip = ipaddress.ip_address(sockaddr[0])
+			if ip.is_private or ip.is_loopback or ip.is_reserved or ip.is_link_local:
+				return True
+	except Exception:
+		pass
+	return False
+
 async def fetch_url_content(url: str, max_chars: int = 2000) -> str:
 	"""
 	Fetch a webpage and extract its main text content.
 	Uses trafilatura first; falls back to BeautifulSoup.
 	Returns extracted text truncated to *max_chars*.
+	Blocks private/internal IP ranges to prevent SSRF.
 	"""
+	parsed = urlparse(url)
+	if parsed.scheme not in ("http", "https"):
+		return "❌ Only http and https URLs are supported."
+	if _is_private_url(url):
+		return "❌ Cannot access internal/private network addresses."
 	headers = {
 		"User-Agent": (
 			"Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
