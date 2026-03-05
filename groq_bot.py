@@ -106,13 +106,11 @@ user_vote_unlocks = {}
 channel_last_images = {}
 channel_last_chess_result = {}
 
-# Promotional message tracking
 channel_message_counts = {}
 PROMO_MIN_MESSAGES = 10
 PROMO_MAX_MESSAGES = 25
 
-# Puter conversation memory (separate from main bot memory)
-puter_conversation_memory = {}  # {chan_id: [messages]}
+puter_conversation_memory = {}
 
 # ---------------- SETUP SLASH COMMANDS ----------------
 @bot.event
@@ -554,96 +552,76 @@ async def test_provider(ctx: commands.Context, provider: str = None, *, message:
 	else:
 		await ctx.send("❌ Google AI Studio call failed. Check API key/model and logs.")
 
-# ============================================================================
-# PUTER TEST COMMANDS (Owner Only) - Free & Unlimited AI
-# ============================================================================
-
 @bot.command(name="puter_imggen")
 async def puter_imggen_test(ctx: commands.Context, *, prompt: str):
-	"""
-	Owner-only: Test Puter.js image generation (GPT Image 1.5)
-	Usage: !puter_imggen a cat playing piano
-	"""
-	if not await is_owner_user(ctx.author):
-		await ctx.send("🚫 Owner only command.")
-		return
 
-	await ctx.send("🎨 **Generating with Puter.js (GPT Image 1.5)...**")
+    if not await is_owner_user(ctx.author):
+        await ctx.send("🚫 Owner only command.")
+        return
 
-	try:
-		from puter_client import puter_generate_image
+    await ctx.send("🎨 **Generating with Puter.js (GPT Image 1.5)...**")
 
-		# Boost prompt (reuse existing function)
-		boosted_prompt = await boost_image_prompt(prompt)
+    try:
+        from puter_client import puter_generate_image
 
-		# Generate with Puter (FREE & UNLIMITED)
-		image_bytes = await puter_generate_image(
-			prompt=boosted_prompt,
-			model="gpt-image-1.5",
-			quality="low"
-		)
+        boosted_prompt = await boost_image_prompt(prompt)
 
-		await ctx.send(
-			f"✅ Generated via Puter.js (free & unlimited)",
-			file=discord.File(io.BytesIO(image_bytes), filename="puter_image.png")
-		)
+        image_bytes = await puter_generate_image(
+            prompt=boosted_prompt,
+            model="gpt-image-1.5",
+            quality="low"
+        )
 
-	except Exception as e:
-		print(f"[PUTER IMGGEN ERROR] {e}")
-		import traceback
-		traceback.print_exc()
-		await ctx.send(f"❌ Error: {e}")
+        await ctx.send(
+            "✅ Generated via Puter.js (free & unlimited)",
+            file=discord.File(io.BytesIO(image_bytes), filename="puter_image.png")
+        )
+
+    except Exception as e:
+        print(f"[PUTER IMGGEN ERROR] {e}")
+        import traceback
+        traceback.print_exc()
+
+        await ctx.send(f"❌ Error: {e}")
 
 
 @bot.command(name="puter_tts")
 async def puter_tts_test(ctx: commands.Context, *, text: str):
-	"""
-	Owner-only: Test Puter.js TTS (ElevenLabs v3)
-	Usage: !puter_tts Hello world, this is a test message
-	"""
-	if not await is_owner_user(ctx.author):
-		await ctx.send("🚫 Owner only command.")
-		return
 
-	if len(text) < 20:
-		await ctx.send("⚠️ Text must be at least 20 characters.")
-		return
+    if not await is_owner_user(ctx.author):
+        await ctx.send("🚫 Owner only command.")
+        return
 
-	if len(text) > 3000:
-		await ctx.send("⚠️ Text must be less than 3000 characters.")
-		return
+    if len(text) < 20:
+        await ctx.send("⚠️ Text must be at least 20 characters.")
+        return
 
-	await ctx.send("🔊 **Generating with Puter.js (ElevenLabs v3)...**")
+    if len(text) > 3000:
+        await ctx.send("⚠️ Text must be less than 3000 characters.")
+        return
 
-	try:
-		from puter_client import puter_text_to_speech
-		import aiohttp
+    await ctx.send("🔊 **Generating with Puter.js (ElevenLabs)...**")
 
-		# Generate TTS (FREE & UNLIMITED)
-		audio_url = await puter_text_to_speech(
-			text=text,
-			voice="21m00Tcm4TlvDq8ikWAM",
-			model="eleven_v3"
-		)
+    try:
+        from puter_client import puter_text_to_speech
 
-		# Download audio
-		async with aiohttp.ClientSession() as session:
-			async with session.get(audio_url) as resp:
-				if resp.status != 200:
-					raise Exception(f"Failed to download audio: HTTP {resp.status}")
-				audio_bytes = await resp.read()
+        audio_bytes = await puter_text_to_speech(
+            text=text,
+            voice="21m00Tcm4TlvDq8ikWAM",
+            model="eleven_multilingual_v2"
+        )
 
-		await ctx.send(
-			f"✅ Generated via Puter.js (free & unlimited)",
-			file=discord.File(io.BytesIO(audio_bytes), filename="puter_tts.mp3")
-		)
+        await ctx.send(
+            "✅ Generated via Puter.js (free & unlimited)",
+            file=discord.File(io.BytesIO(audio_bytes), filename="puter_tts.mp3")
+        )
 
-	except Exception as e:
-		print(f"[PUTER TTS ERROR] {e}")
-		import traceback
-		traceback.print_exc()
-		await ctx.send(f"❌ Error: {e}")
+    except Exception as e:
+        print(f"[PUTER TTS ERROR] {e}")
+        import traceback
+        traceback.print_exc()
 
+        await ctx.send(f"❌ Error: {e}")
 
 @bot.command(name="puter_text")
 async def puter_text_test(ctx: commands.Context, *, message: str):
