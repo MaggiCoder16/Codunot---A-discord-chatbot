@@ -15,7 +15,7 @@ TTS_SYSTEM_PROMPT = (
     "- Preserve the meaning and intent of the original text.\n"
     "- Return only the polished text — do not add commentary, explanations, or formatting.\n"
     "- Keep it short and concise; only correct and polish the original text.\n"
-    "- Do not change the sentence - just fix it with the above requirements"
+    "- Do not change the sentence - just fix it with the above requirements."
 )
 
 
@@ -63,7 +63,7 @@ async def polish_text_for_tts(text: str) -> str:
         return text
 
     def _call() -> str:
-        with FreeFlowClient(providers=providers, verbose=True) as client:
+        with FreeFlowClient(providers=providers, verbose=False) as client:
             response = client.chat(
                 model="llama-3.1-8b-instant",
                 messages=[
