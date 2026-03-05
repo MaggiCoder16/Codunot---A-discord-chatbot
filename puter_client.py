@@ -43,18 +43,15 @@ async def _get_genai_client():
 
 async def puter_generate_image(
     prompt: str,
-    model: str = "gpt-image-1.5",
-    quality: str = "low"
+    model: str = "gpt-image-1.5"
 ) -> bytes:
 
     client = await _get_genai_client()
 
-    options = {
-        "model": model,
-        "quality": quality
-    }
-
-    image_url = await client.ai_txt2img(prompt, options=options)
+    image_url = await client.ai_txt2img(
+        prompt,
+        model=model
+    )
 
     if not image_url:
         raise Exception("No image URL returned")
