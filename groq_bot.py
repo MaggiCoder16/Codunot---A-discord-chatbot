@@ -110,8 +110,6 @@ channel_message_counts = {}
 PROMO_MIN_MESSAGES = 10
 PROMO_MAX_MESSAGES = 25
 
-puter_conversation_memory = {}
-
 # ---------------- SETUP SLASH COMMANDS ----------------
 @bot.event
 async def setup_hook():
@@ -139,8 +137,6 @@ async def setup_hook():
 		synced_names = sorted(cmd.name for cmd in synced)
 		print(f"[SLASH COMMANDS] Synced {len(synced)} global command(s): {', '.join(synced_names)}")
 
-		# Safety: ensure /transcribe is globally registered after sync.
-		# If Discord returns stale command list on first attempt, retry once.
 		if "transcribe" not in synced_names:
 			print("[SLASH COMMANDS] /transcribe not found after first sync, retrying global sync...")
 			synced_retry = await bot.tree.sync()
@@ -551,140 +547,6 @@ async def test_provider(ctx: commands.Context, provider: str = None, *, message:
 		await send_long_message(ctx.channel, f"**Google AI Studio Response:**\n{response}")
 	else:
 		await ctx.send("❌ Google AI Studio call failed. Check API key/model and logs.")
-
-@bot.command(name="puter_imggen")
-async def puter_imggen_test(ctx: commands.Context, *, prompt: str):
-
-    if not await is_owner_user(ctx.author):
-        await ctx.send("🚫 Owner only command.")
-        return
-
-    await ctx.send("🎨 Generating with Puter...")
-
-    try:
-        from puter_client import puter_generate_image
-
-        boosted_prompt = await boost_image_prompt(prompt)
-
-        image_bytes = await puter_generate_image(
-            prompt=boosted_prompt,
-            model="gpt-image-1.5"
-        )
-
-        await ctx.send(
-            "✅ Generated via Puter",
-            file=discord.File(io.BytesIO(image_bytes), filename="puter_image.png")
-        )
-
-    except Exception as e:
-        print(f"[PUTER IMGGEN ERROR] {e}")
-        import traceback
-        traceback.print_exc()
-
-        await ctx.send(f"❌ Error: {e}")
-
-
-@bot.command(name="puter_tts")
-async def puter_tts_test(ctx: commands.Context, *, text: str):
-
-    if not await is_owner_user(ctx.author):
-        await ctx.send("🚫 Owner only command.")
-        return
-
-    if len(text) < 20:
-        await ctx.send("⚠️ Text must be at least 20 characters.")
-        return
-
-    if len(text) > 3000:
-        await ctx.send("⚠️ Text must be less than 3000 characters.")
-        return
-
-    await ctx.send("🔊 **Generating with Puter.js (ElevenLabs)...**")
-
-    try:
-        from puter_client import puter_text_to_speech
-
-        audio_bytes = await puter_text_to_speech(
-            text=text,
-            voice="21m00Tcm4TlvDq8ikWAM",
-            model="eleven_multilingual_v2"
-        )
-
-        await ctx.send(
-            "✅ Generated via Puter.js (free & unlimited)",
-            file=discord.File(io.BytesIO(audio_bytes), filename="puter_tts.mp3")
-        )
-
-    except Exception as e:
-        print(f"[PUTER TTS ERROR] {e}")
-        import traceback
-        traceback.print_exc()
-
-        await ctx.send(f"❌ Error: {e}")
-
-@bot.command(name="puter_text")
-async def puter_text_test(ctx: commands.Context, *, message: str):
-	"""
-	Owner-only: Test Puter.js text generation (GPT-5.2) with memory
-	Usage: !puter_text what's 2+2?
-	"""
-	if not await is_owner_user(ctx.author):
-		await ctx.send("🚫 Owner only command.")
-		return
-
-	chan_id = (
-		f"dm_{ctx.author.id}"
-		if isinstance(ctx.channel, discord.DMChannel)
-		else str(ctx.channel.id)
-	)
-
-	# Initialize memory
-	if chan_id not in puter_conversation_memory:
-		puter_conversation_memory[chan_id] = []
-
-	# Add user message
-	puter_conversation_memory[chan_id].append({
-		"role": "user",
-		"content": message
-	})
-
-	# Keep last 10 messages
-	puter_conversation_memory[chan_id] = puter_conversation_memory[chan_id][-10:]
-
-	await ctx.send("🧠 **Generating with Puter.js (GPT-5.2)...**")
-
-	try:
-		from puter_client import puter_chat
-
-		# System message
-		system_msg = {
-			"role": "system",
-			"content": PERSONAS["funny"]
-		}
-
-		# Build conversation
-		messages = [system_msg] + puter_conversation_memory[chan_id]
-
-		# Generate response (FREE & UNLIMITED)
-		response = await puter_chat(
-			messages=messages,
-			model="gpt-5.2-chat",
-			temperature=0.7
-		)
-
-		# Add assistant response to memory
-		puter_conversation_memory[chan_id].append({
-			"role": "assistant",
-			"content": response
-		})
-
-		await send_human_reply(ctx.channel, response)
-
-	except Exception as e:
-		print(f"[PUTER TEXT ERROR] {e}")
-		import traceback
-		traceback.print_exc()
-		await ctx.send(f"❌ Error: {e}")
 
 # ---------------- MODELS ----------------
 PRIMARY_MODEL = "openai/gpt-oss-120b"
