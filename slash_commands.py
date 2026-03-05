@@ -27,6 +27,7 @@ from test_api import generate_image, ImageAPIError
 import requests
 from deAPI_client_text2vid import generate_video as text_to_video_512
 from deAPI_client_text2speech import text_to_speech
+from edge_tts_client import generate_tts_mp3
 from deAPI_client_video_to_text import transcribe_video, wait_for_transcription_text, VideoToTextError
 from google_ai_studio_client import call_google_ai_studio
 from cerebras_client import call_cerebras
@@ -85,6 +86,49 @@ TTS_ALL_VOICES: dict[str, str] = {
 	for name, code in voices.items()
 }
 TTS_VOICE_CODE_TO_NAME = {code: name for name, code in TTS_ALL_VOICES.items()}
+
+EDGE_TTS_LANG_VOICES: dict[str, list[str]] = {
+	"Afrikaans (South Africa)": ["af-ZA-AdriNeural", "af-ZA-WillemNeural"],
+	"Albanian": ["sq-AL-AnilaNeural", "sq-AL-IlirNeural"],
+	"Arabic (Egypt)": ["ar-EG-SalmaNeural"],
+	"Arabic (Saudi Arabia)": ["ar-SA-ZariyahNeural"],
+	"Bangla (Bangladesh)": ["bn-BD-HiraNeural"],
+	"Chinese (Simplified)": ["zh-CN-XiaoxiaoNeural"],
+	"Chinese (Traditional, HK)": ["zh-HK-HiuGaaiNeural"],
+	"Chinese (Traditional, TW)": ["zh-TW-HanHanNeural"],
+	"Croatian": ["hr-HR-SreckoNeural"],
+	"Czech": ["cs-CZ-VlastaNeural"],
+	"Danish": ["da-DK-ChristelNeural"],
+	"Dutch (Netherlands)": ["nl-NL-ColetteNeural", "nl-NL-BartNeural"],
+	"English (US)": ["en-US-MichelleNeural", "en-US-AriaNeural", "en-US-GuyNeural"],
+	"English (GB)": ["en-GB-SoniaNeural", "en-GB-RyanNeural"],
+	"English (AU)": ["en-AU-NatashaNeural", "en-AU-WilliamNeural"],
+	"English (IN)": ["en-IN-SwaraNeural", "en-IN-SohamNeural"],
+	"Finnish": ["fi-FI-HarriNeural"],
+	"French (FR)": ["fr-FR-DeniseNeural"],
+	"German (DE)": ["de-DE-KatjaNeural", "de-DE-ConradNeural"],
+	"Greek": ["el-GR-AthinaNeural"],
+	"Hindi (IN)": ["hi-IN-SwaraNeural", "hi-IN-NeerjaNeural"],
+	"Hungarian": ["hu-HU-NoemiNeural"],
+	"Indonesian": ["id-ID-ArdiNeural"],
+	"Italian": ["it-IT-IsabellaNeural"],
+	"Japanese": ["ja-JP-NanamiNeural"],
+	"Korean": ["ko-KR-SunHiNeural"],
+	"Norwegian Bokmål": ["nb-NO-PernilleNeural"],
+	"Polish": ["pl-PL-MajaNeural"],
+	"Portuguese (Brazil)": ["pt-BR-FranciscaNeural"],
+	"Romanian": ["ro-RO-AndreiNeural"],
+	"Russian": ["ru-RU-DariyaNeural"],
+	"Spanish (ES)": ["es-ES-ElviraNeural"],
+	"Spanish (MX)": ["es-MX-AlvaroNeural"],
+	"Swedish": ["sv-SE-SofieNeural"],
+	"Thai": ["th-TH-PremwadeeNeural"],
+	"Turkish": ["tr-TR-RemziNeural"],
+	"Ukrainian": ["uk-UA-OstapNeural"],
+	"Vietnamese": ["vi-VN-HoaiMyNeural"],
+}
+EDGE_TTS_ALL_VOICES: list[str] = [v for voices in EDGE_TTS_LANG_VOICES.values() for v in voices]
+
 boost_image_prompt = None
 boost_video_prompt = None
 save_vote_unlocks = None
@@ -1818,6 +1862,86 @@ class Codunot(commands.Cog):
 			app_commands.Choice(name=name, value=code)
 			for name, code in voices.items()
 			if current.lower() in name.lower()
+		][:25]
+
+	# ── Edge TTS ──────────────────────────────────────────────────────────────
+
+	@app_commands.command(name="edge_tts", description="🔊 Generate text-to-speech audio using Microsoft Edge TTS (owner only)")
+	@app_commands.describe(
+		text="The text you want to convert to speech",
+		language="Choose the language for the speech",
+		voice="Choose a voice (pick language first for filtered list)",
+	)
+	async def edge_tts_slash(
+		self,
+		interaction: discord.Interaction,
+		text: str,
+		language: Optional[str] = None,
+		voice: Optional[str] = None,
+	):
+		if interaction.user.id not in OWNER_IDS:
+			await interaction.response.send_message("🚫 This command is owner-only.", ephemeral=True)
+			return
+
+		lang = language or "English (US)"
+		if lang not in EDGE_TTS_LANG_VOICES:
+			await interaction.response.send_message(
+				f"🚫 Unknown language **{lang}**. Use the autocomplete to pick a valid language.",
+				ephemeral=True,
+			)
+			return
+
+		voices = EDGE_TTS_LANG_VOICES[lang]
+		voice_code = voice if voice and voice in voices else voices[0]
+
+		await interaction.response.defer()
+		await interaction.edit_original_response(
+			content=f"🔊 **Generating audio** (voice: **{voice_code}**, language: **{lang}**)… 🎙️",
+		)
+		try:
+			audio_bytes = await generate_tts_mp3(text, voice_code)
+			await interaction.followup.send(
+				content=f"{interaction.user.mention} 🔊 Edge TTS ({voice_code} / {lang}): `{text[:200]}{'…' if len(text) > 200 else ''}`",
+				file=discord.File(io.BytesIO(audio_bytes), filename="tts.mp3"),
+			)
+		except Exception as e:
+			print(f"[EDGE TTS ERROR] {e}")
+			traceback.print_exc()
+			await interaction.followup.send(f"{interaction.user.mention} 🤔 Couldn't generate speech right now.")
+
+	@edge_tts_slash.autocomplete("language")
+	async def _edge_tts_language_autocomplete(
+		self,
+		interaction: discord.Interaction,
+		current: str,
+	) -> list[app_commands.Choice[str]]:
+		return [
+			app_commands.Choice(name=lang, value=lang)
+			for lang in EDGE_TTS_LANG_VOICES
+			if current.lower() in lang.lower()
+		][:25]
+
+	@edge_tts_slash.autocomplete("voice")
+	async def _edge_tts_voice_autocomplete(
+		self,
+		interaction: discord.Interaction,
+		current: str,
+	) -> list[app_commands.Choice[str]]:
+		lang_choice = getattr(interaction.namespace, "language", None)
+		if isinstance(lang_choice, app_commands.Choice):
+			lang_name = lang_choice.value
+		elif isinstance(lang_choice, str):
+			lang_name = lang_choice
+		else:
+			lang_name = None
+		if lang_name and lang_name in EDGE_TTS_LANG_VOICES:
+			voices = EDGE_TTS_LANG_VOICES[lang_name]
+		else:
+			voices = EDGE_TTS_ALL_VOICES
+		return [
+			app_commands.Choice(name=v, value=v)
+			for v in voices
+			if current.lower() in v.lower()
 		][:25]
 
 	# ── Utility ───────────────────────────────────────────────────────────────
