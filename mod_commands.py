@@ -1522,5 +1522,4 @@ class ModerationCog(commands.Cog, name="ModerationCog"):
 async def setup(bot: commands.Bot):
     cog = ModerationCog(bot)
     await bot.add_cog(cog)
-    bot.tree.add_command(cog.note_group)
     print("[COG] Loaded ModerationCog")
