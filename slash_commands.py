@@ -535,7 +535,7 @@ def _build_vote_embed() -> discord.Embed:
 		"• 🖌️ **Edit Images** — send image + instruction\n"
 		"• 🖼️ **Merge Images** — attach 2+ images + say merge\n"
 		"• 🎬 **Generate Video** — `/generate_video`\n"
-		"• 🔊 **Text-to-Speech** — `/generate_tts` (voice & language, min 20 chars)\n"
+		"• 🔊 **Text-to-Speech** — `/generate_tts` (voice & language)\n"
 		"• 🎵 **Play Music** — `/play [song/URL]` in voice channels"
 	), inline=False)
 	embed.add_field(name="📁 File Tools", value=(
@@ -1773,7 +1773,7 @@ class Codunot(commands.Cog):
 
 	@app_commands.command(name="generate_tts", description="🔊 Generate text-to-speech audio — pick a voice & language")
 	@app_commands.describe(
-		text="The text you want to convert to speech (minimum 20 characters)",
+		text="The text you want to convert to speech",
 		language="Choose the language for the speech",
 		voice="Choose a voice (pick language first for filtered list)",
 	)
@@ -1781,17 +1781,10 @@ class Codunot(commands.Cog):
 		self,
 		interaction: discord.Interaction,
 		text: str,
-		language: Optional[str] = None,
-		voice: Optional[str] = None,
+		language: str,
+		voice: str,
 	):
-		if len(text) < 20:
-			await interaction.response.send_message(
-				"🚫 Your text must be at least **20 characters** long. Please provide a longer message.",
-				ephemeral=True,
-			)
-			return
-
-		lang = language or "English (US)"
+		lang = language
 		if lang not in EDGE_TTS_LANG_VOICES:
 			await interaction.response.send_message(
 				f"🚫 Unknown language **{lang}**. Use the autocomplete to pick a valid language.",
@@ -1800,7 +1793,13 @@ class Codunot(commands.Cog):
 			return
 
 		voices = EDGE_TTS_LANG_VOICES[lang]
-		voice_code = voice if voice and voice in voices else voices[0]
+		if voice not in voices:
+			await interaction.response.send_message(
+				f"🚫 Unknown voice **{voice}** for **{lang}**. Use the autocomplete to pick a valid voice.",
+				ephemeral=True,
+			)
+			return
+		voice_code = voice
 
 		usage_key = await self._resolve_paid_usage_key(interaction)
 		await interaction.response.defer()
@@ -1844,86 +1843,6 @@ class Codunot(commands.Cog):
 
 	@generate_tts_slash.autocomplete("voice")
 	async def _tts_voice_autocomplete(
-		self,
-		interaction: discord.Interaction,
-		current: str,
-	) -> list[app_commands.Choice[str]]:
-		lang_choice = getattr(interaction.namespace, "language", None)
-		if isinstance(lang_choice, app_commands.Choice):
-			lang_name = lang_choice.value
-		elif isinstance(lang_choice, str):
-			lang_name = lang_choice
-		else:
-			lang_name = None
-		if lang_name and lang_name in EDGE_TTS_LANG_VOICES:
-			voices = EDGE_TTS_LANG_VOICES[lang_name]
-		else:
-			voices = EDGE_TTS_ALL_VOICES
-		return [
-			app_commands.Choice(name=v, value=v)
-			for v in voices
-			if current.lower() in v.lower()
-		][:25]
-
-	# ── Edge TTS ──────────────────────────────────────────────────────────────
-
-	@app_commands.command(name="edge_tts", description="🔊 Generate text-to-speech audio using Microsoft Edge TTS (owner only)")
-	@app_commands.describe(
-		text="The text you want to convert to speech",
-		language="Choose the language for the speech",
-		voice="Choose a voice (pick language first for filtered list)",
-	)
-	async def edge_tts_slash(
-		self,
-		interaction: discord.Interaction,
-		text: str,
-		language: Optional[str] = None,
-		voice: Optional[str] = None,
-	):
-		if interaction.user.id not in OWNER_IDS:
-			await interaction.response.send_message("🚫 This command is owner-only.", ephemeral=True)
-			return
-
-		lang = language or "English (US)"
-		if lang not in EDGE_TTS_LANG_VOICES:
-			await interaction.response.send_message(
-				f"🚫 Unknown language **{lang}**. Use the autocomplete to pick a valid language.",
-				ephemeral=True,
-			)
-			return
-
-		voices = EDGE_TTS_LANG_VOICES[lang]
-		voice_code = voice if voice and voice in voices else voices[0]
-
-		await interaction.response.defer()
-		await interaction.edit_original_response(
-			content=f"🔊 **Generating audio** (voice: **{voice_code}**, language: **{lang}**)… 🎙️",
-		)
-		try:
-			audio_bytes = await generate_tts_mp3(text, voice_code)
-			await interaction.followup.send(
-				content=f"{interaction.user.mention} 🔊 Edge TTS ({voice_code} / {lang}): `{text[:200]}{'…' if len(text) > 200 else ''}`",
-				file=discord.File(io.BytesIO(audio_bytes), filename="tts.mp3"),
-			)
-		except Exception as e:
-			print(f"[EDGE TTS ERROR] {e}")
-			traceback.print_exc()
-			await interaction.followup.send(f"{interaction.user.mention} 🤔 Couldn't generate speech right now.")
-
-	@edge_tts_slash.autocomplete("language")
-	async def _edge_tts_language_autocomplete(
-		self,
-		interaction: discord.Interaction,
-		current: str,
-	) -> list[app_commands.Choice[str]]:
-		return [
-			app_commands.Choice(name=lang, value=lang)
-			for lang in EDGE_TTS_LANG_VOICES
-			if current.lower() in lang.lower()
-		][:25]
-
-	@edge_tts_slash.autocomplete("voice")
-	async def _edge_tts_voice_autocomplete(
 		self,
 		interaction: discord.Interaction,
 		current: str,
