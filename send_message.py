@@ -1,16 +1,3 @@
-"""
-send_message.py
-───────────────
-Run this ONCE to broadcast the Codunot moderation announcement
-to every server the bot is in.
-
-Usage:
-    python send_message.py
-
-It will try to find the best channel in each server to send to,
-print a summary of successes and failures, and exit.
-"""
-
 import asyncio
 import os
 import discord
@@ -18,8 +5,6 @@ from dotenv import load_dotenv
 
 load_dotenv()
 DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
-
-# ── The embed that gets sent to every server ──────────────────────────────────
 
 def build_announce_embed(guild: discord.Guild) -> discord.Embed:
     me = guild.me
