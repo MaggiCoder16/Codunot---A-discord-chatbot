@@ -25,7 +25,7 @@ def build_announce_embed(guild: discord.Guild) -> discord.Embed:
         title="🛡️ Codunot now does Moderation!",
         description=(
             "Hey! Big update — **Codunot is no longer just a chatbot**.\n\n"
-            "It now includes a **full server moderation system** — completely free to set up!\n\n"
+            "It now includes a **full server moderation system** — completely free to set up! (some features are in premium and gold)\n\n"
             "**Run `/setup-moderation` to get started.** It's a 6-step wizard that takes ~2 minutes."
         ),
         color=0xFFA500,
@@ -58,7 +58,7 @@ def build_announce_embed(guild: discord.Guild) -> discord.Embed:
                 "**Missing:**\n" + "\n".join(f"• `{p}`" for p in missing) + "\n\n"
                 "**How to fix:**\n"
                 "1. Go to **Server Settings → Roles**\n"
-                "2. Find and click the **Codunot** role\n"
+                "2. Find and click the **role you have given to me**\n"
                 "3. Enable the permissions listed above\n"
                 "4. Save — done! ✅\n\n"
                 "*(Mod commands will show `❌ No permission` errors until this is fixed)*"
