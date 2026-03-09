@@ -4,7 +4,7 @@ from discord.ext import commands
 import json, os, asyncio, re
 from datetime import datetime, timedelta, timezone
 from collections import defaultdict, deque
-from typing import Optional
+from typing import Literal, Optional
 
 MOD_DATA_FILE = "mod_data.json"
 
@@ -1300,15 +1300,35 @@ class ModerationCog(commands.Cog, name="ModerationCog"):
         e.add_field(name="Moderator", value=interaction.user.mention)
         await self._log_guild(interaction.guild, e, interaction.channel.id)
 
-    @app_commands.command(name="slowmode", description="🐌 Set slowmode for this channel")
-    @app_commands.describe(seconds="Delay in seconds (0 = disable, max 21600)")
-    async def slowmode_slash(self, interaction: discord.Interaction, seconds: int = 0):
+    @app_commands.command(name="slowmode", description="🐌 Enable or disable slowmode for this channel")
+    @app_commands.describe(
+        enable="Choose whether to enable or disable slowmode",
+        duration="Required when enabling (seconds, max 21600)",
+    )
+    async def slowmode_slash(
+        self,
+        interaction: discord.Interaction,
+        enable: Literal["enable", "disable"],
+        duration: Optional[int] = None,
+    ):
         if not await self._gate(interaction):
             return
-        delay = max(0, min(21600, seconds))
+
+        if enable == "disable":
+            await interaction.channel.edit(slowmode_delay=0)
+            await interaction.response.send_message("✅ Slowmode **disabled**.")
+            return
+
+        if duration is None:
+            await interaction.response.send_message(
+                "❌ Please provide a **duration** (in seconds) when enabling slowmode.",
+                ephemeral=True,
+            )
+            return
+
+        delay = max(1, min(21600, duration))
         await interaction.channel.edit(slowmode_delay=delay)
-        msg = "✅ Slowmode **disabled**." if delay == 0 else f"🐌 Slowmode set to **{delay}s**."
-        await interaction.response.send_message(msg)
+        await interaction.response.send_message(f"🐌 Slowmode set to **{delay}s**.")
 
     @app_commands.command(name="lock", description="🔒 Prevent @everyone from sending messages")
     @app_commands.describe(channel="Channel to lock (default: current)", reason="Reason")
