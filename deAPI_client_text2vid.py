@@ -16,12 +16,21 @@ class Text2VidError(Exception):
 async def warm_webhook_server():
     if not RESULT_URL_BASE:
         return
-    try:
-        async with aiohttp.ClientSession() as session:
-            await session.get(RESULT_URL_BASE, timeout=5)
-        print("[Warmup] Webhook server awake.")
-    except Exception as e:
-        logger.warning("[Warmup] Warmup skipped: %s", e)
+    for attempt in range(5):
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(
+                    RESULT_URL_BASE,
+                    timeout=aiohttp.ClientTimeout(total=15)
+                ) as resp:
+                    if resp.status == 200:
+                        print(f"[Warmup] Webhook server awake (attempt {attempt + 1})")
+                        await asyncio.sleep(3)
+                        return
+        except Exception as e:
+            print(f"[Warmup] Attempt {attempt + 1} failed: {e}")
+            await asyncio.sleep(5)
+    print("[Warmup] Warning: webhook server may not be ready")
 
 async def _submit_job(session: aiohttp.ClientSession, *, prompt: str, model: str) -> tuple[str, int]:
     seed = random.randint(0, 2**32 - 1)
