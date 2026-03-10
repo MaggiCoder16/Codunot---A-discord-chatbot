@@ -1,4 +1,3 @@
-"""Test the new flux2max endpoint."""
 import asyncio
 import os
 import time
@@ -8,7 +7,6 @@ BASE_URL = "https://imggen-api-production.up.railway.app"
 REQUEST_TIMEOUT = 180
 MAX_RETRIES = 3
 
-# Aspect ratio to (width, height) mapping for flux2max
 ASPECT_RATIO_DIMENSIONS = {
     "1:1": (1024, 1024),
     "2:3": (832, 1216),
@@ -31,7 +29,6 @@ class ImageAPIError(RuntimeError):
 
 
 def _generate_image_bytes(prompt, aspect_ratio="16:9"):
-    """Call imggen flux2max API and return image bytes."""
     api_key = os.getenv("TEST_API_KEY", "").strip()
     if not api_key:
         raise RuntimeError("Missing TEST_API_KEY environment variable")
@@ -41,22 +38,15 @@ def _generate_image_bytes(prompt, aspect_ratio="16:9"):
         raise ValueError(f"Invalid aspect ratio: {aspect_ratio}")
 
     width, height = ASPECT_RATIO_DIMENSIONS[aspect_ratio]
-
     last_exc = None
     for attempt in range(1, MAX_RETRIES + 1):
         try:
             response = requests.post(
                 f"{BASE_URL}/flux2max",
                 headers={"X-API-Key": api_key, "Content-Type": "application/json"},
-                json={
-                    "prompt": prompt,
-                    "width": width,
-                    "height": height,
-                    "safety_tolerance": 5,
-                },
+                json={"prompt": prompt, "width": width, "height": height, "safety_tolerance": 5},
                 timeout=REQUEST_TIMEOUT,
             )
-
             if response.status_code != 200:
                 try:
                     error = response.json().get("error", response.text)
@@ -89,12 +79,10 @@ def _get_imggen_balance(api_key):
         timeout=REQUEST_TIMEOUT,
     )
     response.raise_for_status()
-    data = response.json()
-    return float(data["balance"])
+    return float(response.json()["balance"])
 
 
 async def generate_image(prompt, aspect_ratio="16:9"):
-    """Async wrapper for slash command integration."""
     image_bytes = await asyncio.to_thread(_generate_image_bytes, prompt, aspect_ratio)
     api_key = os.getenv("TEST_API_KEY", "").strip()
     balance = None
@@ -104,91 +92,3 @@ async def generate_image(prompt, aspect_ratio="16:9"):
         except requests.RequestException:
             pass
     return image_bytes, balance
-
-
-def text_to_image(prompt, filename="flux2max_output.jpg", aspect_ratio="16:9"):
-    image_bytes = _generate_image_bytes(prompt, aspect_ratio)
-
-    with open(filename, "wb") as f:
-        f.write(image_bytes)
-    return filename
-
-
-if __name__ == "__main__":
-    api_key = os.getenv("TEST_API_KEY", "").strip()
-    if not api_key:
-        print("Missing TEST_API_KEY environment variable")
-        exit(1)
-
-    print("=== Testing Flux2Max Endpoint ===\n")
-
-    # Check balance first
-    r = requests.get(f"{BASE_URL}/balance", headers={"X-API-Key": api_key})
-    data = r.json()
-    print(f"Current Balance: ${data['balance']:.2f}\n")
-
-    if data['balance'] < 0.01:
-        print("Insufficient balance!")
-        exit(1)
-
-    # Test 1: Basic generation with defaults
-    print("Test 1: Basic generation (1024x1024)")
-    r = requests.post(
-        f"{BASE_URL}/flux2max",
-        headers={"X-API-Key": api_key, "Content-Type": "application/json"},
-        json={
-            "prompt": "A majestic dragon flying over a medieval castle at sunset, highly detailed, fantasy art"
-        }
-    )
-
-    if r.status_code == 200:
-        with open("flux2max_basic.jpg", "wb") as f:
-            f.write(r.content)
-        print(f"✓ Saved flux2max_basic.jpg ({len(r.content):,} bytes)\n")
-    else:
-        print(f"✗ Error {r.status_code}: {r.json()}\n")
-
-    # Test 2: Custom dimensions (landscape 16:9)
-    print("Test 2: Landscape (1920x1088)")
-    r = requests.post(
-        f"{BASE_URL}/flux2max",
-        headers={"X-API-Key": api_key, "Content-Type": "application/json"},
-        json={
-            "prompt": "A cyberpunk city street with neon lights and flying cars, cinematic, 8k",
-            "width": 1920,
-            "height": 1088
-        }
-    )
-
-    if r.status_code == 200:
-        with open("flux2max_landscape.jpg", "wb") as f:
-            f.write(r.content)
-        print(f"✓ Saved flux2max_landscape.jpg ({len(r.content):,} bytes)\n")
-    else:
-        print(f"✗ Error {r.status_code}: {r.json()}\n")
-
-    # Test 3: With seed for reproducibility
-    print("Test 3: With seed (42)")
-    r = requests.post(
-        f"{BASE_URL}/flux2max",
-        headers={"X-API-Key": api_key, "Content-Type": "application/json"},
-        json={
-            "prompt": "A serene mountain landscape at sunrise, photorealistic",
-            "width": 1024,
-            "height": 1024,
-            "seed": 42,
-            "safety_tolerance": 5
-        }
-    )
-
-    if r.status_code == 200:
-        with open("flux2max_seeded.jpg", "wb") as f:
-            f.write(r.content)
-        print(f"✓ Saved flux2max_seeded.jpg ({len(r.content):,} bytes)\n")
-    else:
-        print(f"✗ Error {r.status_code}: {r.json()}\n")
-
-    # Check final balance
-    r = requests.get(f"{BASE_URL}/balance", headers={"X-API-Key": api_key})
-    data = r.json()
-    print(f"Final Balance: ${data['balance']:.2f}")
