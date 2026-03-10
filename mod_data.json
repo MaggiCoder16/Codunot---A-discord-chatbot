@@ -548,7 +548,7 @@
   },
   "cases": {
     "1470038794274209815": {
-      "next_case": 4,
+      "next_case": 5,
       "by_number": {
         "1": {
           "type": "mute",
@@ -582,6 +582,18 @@
           "timestamp": "2026-03-10T09:39:39.241888+00:00",
           "extra": {
             "minutes": 2
+          }
+        },
+        "4": {
+          "type": "mute",
+          "user_id": 1405510052424716381,
+          "user": "i_am_mister_smooth_talker",
+          "moderator_id": 1220934047794987048,
+          "moderator": "aarav_2022",
+          "reason": ", reason: test",
+          "timestamp": "2026-03-10T10:42:13.605407+00:00",
+          "extra": {
+            "minutes": 5
           }
         }
       }
