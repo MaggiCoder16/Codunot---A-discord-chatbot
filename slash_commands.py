@@ -52,40 +52,6 @@ OWNER_IDS = set()
 VOTE_DURATION = 12 * 60 * 60
 BYPASS_IDS = {1220934047794987048, 1167443519070290051}
 BOT_NAME = "Codunot"
-TTS_LANG_VOICES: dict[str, tuple[str, dict[str, str]]] = {
-	"en-gb": ("English (GB)", {
-		"Alice": "bf_alice", "Daniel": "bm_daniel", "Emma": "bf_emma",
-		"Fable": "bm_fable", "George": "bm_george", "Isabella": "bf_isabella",
-		"Lewis": "bm_lewis", "Lily": "bf_lily",
-	}),
-	"en-us": ("English (US)", {
-		"Adam": "am_adam", "Alloy": "af_alloy", "Aoede": "af_aoede",
-		"Bella": "af_bella", "Echo": "am_echo", "Eric": "am_eric",
-		"Fenrir": "am_fenrir", "Heart": "af_heart", "Jessica": "af_jessica",
-		"Kore": "af_kore", "Liam": "am_liam", "Michael": "am_michael",
-		"Nicole": "af_nicole", "Nova": "af_nova", "Onyx": "am_onyx",
-		"Puck": "am_puck", "River": "af_river", "Santa": "am_santa",
-		"Sarah": "af_sarah", "Sky": "af_sky",
-	}),
-	"fr-fr": ("France", {"Siwis": "ff_siwis"}),
-	"hi": ("Hindi", {
-		"Alpha": "hf_alpha", "Beta": "hf_beta",
-		"Omega": "hm_omega", "Psi": "hm_psi",
-	}),
-	"it": ("Italian", {"Nicola": "im_nicola", "Sara": "if_sara"}),
-	"pt-br": ("Portugal (BR)", {
-		"Alex": "pm_alex", "Dora": "pf_dora", "Santa": "pm_santa",
-	}),
-	"es": ("Spain", {
-		"Alex": "em_alex", "Dora": "ef_dora", "Santa": "em_santa",
-	}),
-}
-TTS_ALL_VOICES: dict[str, str] = {
-	name: code
-	for _, voices in TTS_LANG_VOICES.values()
-	for name, code in voices.items()
-}
-TTS_VOICE_CODE_TO_NAME = {code: name for name, code in TTS_ALL_VOICES.items()}
 
 EDGE_TTS_LANGUAGE_NAMES: dict[str, str] = {
     "af": "Afrikaans",
@@ -1633,7 +1599,6 @@ class Codunot(commands.Cog):
 			await interaction.response.send_message("❌ Server only.", ephemeral=True)
 			return
 		await interaction.response.defer(ephemeral=False)
-		await interaction.response.defer(ephemeral=True)
 		if not await self._ensure_music_control(interaction):
 			return
 		await self._music_adjust_volume(interaction, 10)
@@ -1644,7 +1609,6 @@ class Codunot(commands.Cog):
 			await interaction.response.send_message("❌ Server only.", ephemeral=True)
 			return
 		await interaction.response.defer(ephemeral=False)
-		await interaction.response.defer(ephemeral=True)
 		if not await self._ensure_music_control(interaction):
 			return
 		await self._music_adjust_volume(interaction, -10)
@@ -2167,7 +2131,8 @@ class Codunot(commands.Cog):
 						info = await _ytdl_extract_different_track(f"ytsearch8:{seed}", "free", seed)
 						if info is None:
 							info = await _ytdl_extract_different_track(f"scsearch8:{seed}", "free", seed)
-						info = await _ytdl_extract(_build_query_candidates(seed), "free")
+						if info is None:
+							info = await _ytdl_extract(_build_query_candidates(seed), "free")
 						if info and info.get("url"):
 							queue.append({
 								"title": info.get("title") or seed,
@@ -2178,12 +2143,10 @@ class Codunot(commands.Cog):
 								"stream_url": info.get("url"),
 								"requested_by": "Autoplay",
 								"tier": "free",
-								"filter": "normal",
+								"filter": guild_filters.get(guild_id, "normal"),
 							})
 						else:
 							print(f"[YTDL] Autoplay couldn't find a different track for seed={seed!r}")
-								"filter": guild_filters.get(guild_id, "normal"),
-							})
 					except Exception as e:
 						print(f"[YTDL] Autoplay fetch failed: {e}")
 
