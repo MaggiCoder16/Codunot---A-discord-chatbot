@@ -1736,17 +1736,36 @@ class Codunot(commands.Cog):
 
 	async def _music_pause(self, interaction: discord.Interaction):
 		player: wavelink.Player = interaction.guild.voice_client
-		if player and isinstance(player, wavelink.Player) and player.playing:
-			await player.pause(not player.paused)
-			state = "⏸️ Paused." if player.paused else "▶️ Resumed."
-			await interaction.followup.send(state, ephemeral=False)
+		if player and isinstance(player, wavelink.Player):
+			if player.playing and not player.paused:
+				await player.pause(True)
+				await interaction.followup.send("⏸️ Paused.", ephemeral=False)
+				return
+			if player.paused:
+				await interaction.followup.send("⏸️ Already paused.", ephemeral=False)
+				return
+
+		vc = interaction.guild.voice_client
+		if vc and hasattr(vc, "is_playing") and vc.is_playing() and hasattr(vc, "pause"):
+			vc.pause()
+			await interaction.followup.send("⏸️ Paused.", ephemeral=False)
 		else:
 			await interaction.followup.send("❌ Nothing is playing.", ephemeral=False)
 
 	async def _music_resume(self, interaction: discord.Interaction):
 		player: wavelink.Player = interaction.guild.voice_client
-		if player and isinstance(player, wavelink.Player) and player.paused:
-			await player.pause(False)
+		if player and isinstance(player, wavelink.Player):
+			if player.paused:
+				await player.pause(False)
+				await interaction.followup.send("▶️ Resumed.", ephemeral=False)
+				return
+			if player.playing:
+				await interaction.followup.send("▶️ Already playing.", ephemeral=False)
+				return
+
+		vc = interaction.guild.voice_client
+		if vc and hasattr(vc, "is_paused") and vc.is_paused() and hasattr(vc, "resume"):
+			vc.resume()
 			await interaction.followup.send("▶️ Resumed.", ephemeral=False)
 		else:
 			await interaction.followup.send("❌ Nothing is paused.", ephemeral=False)
