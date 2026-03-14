@@ -16,7 +16,7 @@ import re
 from datetime import datetime, timezone
 from typing import Optional
 from collections import deque
-from urllib.parse import urlparse, quote_plus
+from urllib.parse import urlparse, quote_plus, parse_qs
 
 from bs4 import BeautifulSoup
 import trafilatura
@@ -492,6 +492,7 @@ guild_autoplay: dict[int, bool] = {}
 guild_loop_mode:           dict[int, str]            = {}   # "off" | "song" | "queue"
 guild_saved_queue:         dict[int, list]           = {}   # snapshot for loop-queue
 guild_recent_titles:       dict[int, "deque"]        = {}   # last-N played titles (dedup)
+guild_recent_ids:          dict[int, "deque"]        = {}   # last-N played video IDs (dedup)
 guild_prefetched_autoplay: dict[int, Optional[dict]] = {}   # pre-fetched autoplay track
 
 _RECENT_TITLES_LIMIT = 10
@@ -707,6 +708,60 @@ async def _ytdl_extract_different_track(query: str, tier: str, current_title: st
 	return None
 
 
+def _extract_yt_video_id(url: str | None) -> str | None:
+	"""Extract YouTube video ID from a watch URL."""
+	if not url:
+		return None
+	try:
+		parsed = urlparse(url)
+		if parsed.hostname in ("youtube.com", "www.youtube.com", "m.youtube.com"):
+			vid = parse_qs(parsed.query).get("v", [None])[0]
+			return vid
+		if parsed.hostname in ("youtu.be",):
+			return parsed.path.lstrip("/").split("?")[0] or None
+	except Exception:
+		pass
+	return None
+
+
+async def _ytdl_fetch_yt_mix(video_id: str, tier: str, exclude_ids: set[str]) -> dict | None:
+	"""
+	Fetch YouTube Radio/Mix for a video and return the first track not in exclude_ids.
+	The mix URL gives genuinely related songs, not just other uploads of the same track.
+	"""
+	mix_url = f"https://www.youtube.com/watch?v={video_id}&list=RD{video_id}"
+	loop = asyncio.get_running_loop()
+
+	def _extract():
+		opts = dict(YTDL_OPTIONS)
+		opts["noplaylist"] = False
+		opts["playlistend"] = 10
+		if COOKIE_PATH:
+			opts["cookiefile"] = COOKIE_PATH
+		if _NODE_PATH:
+			opts["js_runtimes"] = {"node": {"path": _NODE_PATH}}
+		with yt_dlp.YoutubeDL(opts) as ytdl:
+			return ytdl.extract_info(mix_url, download=False)
+
+	try:
+		data = await loop.run_in_executor(None, _extract)
+	except Exception as e:
+		print(f"[AUTOPLAY] YT mix fetch failed: {e}")
+		return None
+
+	if not data:
+		return None
+
+	entries = [e for e in data.get("entries", []) if e] if "entries" in data else [data]
+	for entry in entries:
+		eid = entry.get("id") or _extract_yt_video_id(entry.get("webpage_url") or entry.get("url") or "")
+		if eid and eid in exclude_ids:
+			continue
+		if entry.get("url"):
+			return entry
+	return None
+
+
 # ── Transcription config ──────────────────────────────────────────────────────
 
 ALLOWED_TRANSCRIBE_HOSTS = (
@@ -785,10 +840,12 @@ def _normalized_title(value: str | None) -> str:
 
 # ── Music dedup / prefetch helpers ────────────────────────────────────────────
 
-def _add_to_recent_titles(guild_id: int, title: str) -> None:
-	"""Push a track title into the per-guild recent-titles deque."""
-	q = guild_recent_titles.setdefault(guild_id, deque(maxlen=_RECENT_TITLES_LIMIT))
-	q.append(title)
+def _add_to_recent_titles(guild_id: int, title: str, web_url: str | None = None) -> None:
+	"""Push a track title (and video ID if available) into the per-guild recent deques."""
+	guild_recent_titles.setdefault(guild_id, deque(maxlen=_RECENT_TITLES_LIMIT)).append(title)
+	vid = _extract_yt_video_id(web_url)
+	if vid:
+		guild_recent_ids.setdefault(guild_id, deque(maxlen=_RECENT_TITLES_LIMIT)).append(vid)
 
 
 def _is_duplicate_track(title: str, recent: "deque") -> bool:
@@ -1515,7 +1572,7 @@ class PlaylistManageView(discord.ui.View):
 				_apply_bitrate(vc, first.get("tier", "basic"))
 				guild_last_activity[interaction.guild.id] = asyncio.get_event_loop().time()
 				guild_now_playing_track[interaction.guild.id] = first
-				_add_to_recent_titles(interaction.guild.id, first.get("title", ""))
+				_add_to_recent_titles(interaction.guild.id, first.get("title", ""), first.get("web_url"))
 				existing_queue.extend(tracks_to_queue[1:])
 				if guild_loop_mode.get(interaction.guild.id) == "queue":
 					guild_saved_queue[interaction.guild.id] = [dict(t) for t in tracks_to_queue]
@@ -1848,7 +1905,7 @@ class Codunot(commands.Cog):
 		# Record finished title for dedup
 		fi = guild_now_playing_track.get(guild_id, {})
 		if fi.get("title"):
-			_add_to_recent_titles(guild_id, fi["title"])
+			_add_to_recent_titles(guild_id, fi["title"], fi.get("web_url"))
 
 		queue = player.queue
 
@@ -2680,7 +2737,7 @@ class Codunot(commands.Cog):
 		_apply_bitrate(voice_client, tier)
 		guild_last_activity[interaction.guild.id] = asyncio.get_event_loop().time()
 		guild_now_playing_track[interaction.guild.id] = track_info
-		_add_to_recent_titles(interaction.guild.id, track_info.get("title", ""))
+		_add_to_recent_titles(interaction.guild.id, track_info.get("title", ""), track_info.get("web_url"))
 		asyncio.create_task(self._prefetch_next_track(interaction.guild.id))
 
 		embed = self._build_now_playing_embed_from_ytdl(info, interaction.user.mention, tier)
@@ -2739,7 +2796,7 @@ class Codunot(commands.Cog):
 		# Record finished title for dedup
 		finished = guild_now_playing_track.get(guild_id, {})
 		if finished.get("title"):
-			_add_to_recent_titles(guild_id, finished["title"])
+			_add_to_recent_titles(guild_id, finished["title"], finished.get("web_url"))
 
 		queue = guild_ytdl_queue.get(guild_id, [])
 		print(f"[AUTOPLAY DEBUG] queue length={len(queue)} after loop checks")
@@ -2758,45 +2815,70 @@ class Codunot(commands.Cog):
 
 				# Try pre-fetched candidate first (fastest path — ~0 s delay)
 				prefetched = guild_prefetched_autoplay.pop(guild_id, None)
-				print(f"[AUTOPLAY DEBUG] prefetched={prefetched.get('title') if prefetched else None}")
 				candidate  = None
 
-				if prefetched and not _is_duplicate_track(prefetched.get("title", ""), recent):
-					candidate = prefetched
-					print(f"[AUTOPLAY DEBUG] Using prefetched candidate: {prefetched.get('title')}")
-				else:
-					print(f"[AUTOPLAY DEBUG] No valid prefetch, searching yt-dlp for seed={seed!r}")
-					for _attempt in range(3):
+				# Build a set of ALL recently played video IDs — not just the last one
+				played_ids: set[str] = set(guild_recent_ids.get(guild_id, deque()))
+				finished_id = _extract_yt_video_id(finished.get("web_url"))
+				if finished_id:
+					played_ids.add(finished_id)
+				print(f"[AUTOPLAY] Excluding {len(played_ids)} already-played video IDs")
+
+				if prefetched:
+					p_id = _extract_yt_video_id(prefetched.get("webpage_url") or prefetched.get("web_url"))
+					if p_id not in played_ids:
+						candidate = prefetched
+						print(f"[AUTOPLAY] Using prefetched: {prefetched.get('title')}")
+
+				if not candidate:
+					# Strategy 1: YouTube Radio mix — gives genuinely related tracks
+					if finished_id:
+						print(f"[AUTOPLAY] Trying YT mix for video_id={finished_id}")
 						try:
-							c = await _ytdl_extract_different_track(
-								f"ytsearch8:{seed or 'top hits'}", "free", seed or ""
-							)
-							print(f"[AUTOPLAY DEBUG] search attempt {_attempt+1} result={c.get('title') if c else None}")
-							if c and not _is_duplicate_track(c.get("title", ""), recent):
+							c = await _ytdl_fetch_yt_mix(finished_id, "free", played_ids)
+							if c:
 								candidate = c
-								break
+								print(f"[AUTOPLAY] YT mix found: {c.get('title')}")
 						except Exception as e:
-							print(f"[YTDL AUTOPLAY] attempt {_attempt+1}: {e}")
+							print(f"[AUTOPLAY] YT mix failed: {e}")
+
+				if not candidate:
+					# Strategy 2: search by artist name only (avoids getting the same song back)
+					artist = ""
+					if seed and " - " in seed:
+						# "ARTIST - TITLE" → search by title part to find similar songs
+						parts = seed.split(" - ", 1)
+						artist = parts[0].strip()
+					fallback_query = f"ytsearch15:{artist} mix" if artist else f"ytsearch15:songs similar to {seed or 'top hits'}"
+					print(f"[AUTOPLAY] Fallback search: {fallback_query!r}")
+					try:
+						c = await _ytdl_extract_different_track(fallback_query, "free", seed or "")
+						if c:
+							c_id = _extract_yt_video_id(c.get("webpage_url") or c.get("url") or "")
+							if c_id not in played_ids:
+								candidate = c
+								print(f"[AUTOPLAY] Fallback found: {c.get('title')}")
+					except Exception as e:
+						print(f"[AUTOPLAY] Fallback search failed: {e}")
 
 				if candidate and candidate.get("url"):
-					print(f"[AUTOPLAY DEBUG] Candidate found: {candidate.get('title')} url={candidate.get('url','')[:60]}")
+					print(f"[AUTOPLAY] Playing next: {candidate.get('title')}")
 					queue.append({
 						"title":        candidate.get("title") or seed or "Unknown",
 						"web_url":      candidate.get("webpage_url") or candidate.get("url"),
 						"uploader":     candidate.get("uploader") or candidate.get("channel") or "Unknown",
 						"duration":     candidate.get("duration"),
 						"thumbnail":    candidate.get("thumbnail"),
-						"stream_url":   candidate.get("url"),   # full extraction → entry["url"] IS the stream URL
+						"stream_url":   candidate.get("url"),
 						"requested_by": "Autoplay",
 						"tier":         "free",
 						"filter":       guild_filters.get(guild_id, "normal"),
 					})
 				else:
-					print(f"[AUTOPLAY DEBUG] No candidate found (candidate={candidate}), going idle")
+					print(f"[AUTOPLAY] No candidate found after all strategies, going idle")
 					asyncio.create_task(self._start_idle_timer(guild_id))
 					return
 			else:
-				print(f"[AUTOPLAY DEBUG] Queue empty but autoplay is OFF, going idle")
 				asyncio.create_task(self._start_idle_timer(guild_id))
 				return
 
@@ -3587,14 +3669,36 @@ class Codunot(commands.Cog):
 		seed    = current.get("title")
 		if not seed:
 			return
-		recent = guild_recent_titles.get(guild_id, deque())
-		try:
-			c = await _ytdl_extract_different_track(f"ytsearch8:{seed}", "free", seed)
-			if c and not _is_duplicate_track(c.get("title", ""), recent):
+		recent     = guild_recent_titles.get(guild_id, deque())
+		video_id   = _extract_yt_video_id(current.get("web_url"))
+		played_ids: set[str] = set(guild_recent_ids.get(guild_id, deque()))
+		if video_id:
+			played_ids.add(video_id)
+
+		# Try YT mix first — most relevant related songs
+		c = None
+		if video_id:
+			try:
+				c = await _ytdl_fetch_yt_mix(video_id, "free", played_ids)
+				if c:
+					print(f"[PREFETCH] YT mix candidate: {c.get('title')}")
+			except Exception as e:
+				print(f"[PREFETCH] YT mix failed: {e}")
+
+		# Fall back to artist-mix search
+		if not c:
+			try:
+				artist = seed.split(" - ", 1)[0].strip() if " - " in seed else ""
+				fallback = f"ytsearch15:{artist} mix" if artist else f"ytsearch15:songs similar to {seed}"
+				c = await _ytdl_extract_different_track(fallback, "free", seed)
+			except Exception as e:
+				print(f"[PREFETCH] Fallback search failed: {e}")
+
+		if c:
+			c_id = _extract_yt_video_id(c.get("webpage_url") or c.get("url") or "")
+			if c_id not in played_ids and not _is_duplicate_track(c.get("title", ""), recent):
 				guild_prefetched_autoplay[guild_id] = c
 				print(f"[PREFETCH] Autoplay cached: {c.get('title')}")
-		except Exception as e:
-			print(f"[PREFETCH] Autoplay fetch failed: {e}")
 
 	def _build_playlist_browser_embed(self, guild_id: int) -> discord.Embed:
 		playlists = playlist_manager.get_guild_playlists(guild_id)
