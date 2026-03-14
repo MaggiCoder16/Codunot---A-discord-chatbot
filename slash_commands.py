@@ -1271,14 +1271,15 @@ class PlaylistCreateModal(discord.ui.Modal, title="🎵 Create New Playlist"):
 			await interaction.response.send_message("❌ No songs provided.", ephemeral=True)
 			return
 		await interaction.response.defer()
-		await interaction.edit_original_response(
-			content=f"🎵 Creating **{name}** — resolving {min(len(queries), 50)} song(s)…"
+		msg = await interaction.followup.send(
+			content=f"🎵 Creating **{name}** — resolving {min(len(queries), 50)} song(s)…",
+			wait=True,
 		)
 		pid, err = playlist_manager.create_playlist(
 			interaction.guild.id, name, interaction.user.id, str(interaction.user)
 		)
 		if err:
-			await interaction.edit_original_response(content=f"❌ {err}")
+			await msg.edit(content=f"❌ {err}")
 			return
 		tier     = get_tier_from_message(interaction)
 		resolved = await self.cog._resolve_songs(queries[:50], tier)
@@ -1295,7 +1296,7 @@ class PlaylistCreateModal(discord.ui.Modal, title="🎵 Create New Playlist"):
 			inline=False,
 		)
 		embed.set_footer(text=f"Playlist ID: {pid} • max {playlist_manager.MAX_TRACKS_PER_PLAYLIST} tracks")
-		await interaction.edit_original_response(content=None, embed=embed)
+		await msg.edit(content=None, embed=embed)
 
 
 class PlaylistAddSongsModal(discord.ui.Modal):
@@ -1324,16 +1325,19 @@ class PlaylistAddSongsModal(discord.ui.Modal):
 			await interaction.response.send_message("❌ Playlist not found.", ephemeral=True)
 			return
 		await interaction.response.defer()
-		await interaction.edit_original_response(content=f"🔍 Resolving {min(len(queries), 50)} song(s)…")
+		status = await interaction.followup.send(
+			content=f"🔍 Resolving {min(len(queries), 50)} song(s)…",
+			wait=True,
+		)
 		tier     = get_tier_from_message(interaction)
 		resolved = await self.cog._resolve_songs(queries[:50], tier)
 		added, skip = playlist_manager.add_tracks(self.guild_id, self.playlist_id, resolved)
 		pl    = playlist_manager.get_playlist(self.guild_id, self.playlist_id)
 		embed = self.cog._build_playlist_manage_embed(pl, self.playlist_id)
-		msg   = (f"✅ Added **{added}** track(s) to **{self.playlist_name}**."
-		         + (f"  {skip} skipped (limit reached)." if skip else ""))
+		result_msg = (f"✅ Added **{added}** track(s) to **{self.playlist_name}**."
+		              + (f"  {skip} skipped (limit reached)." if skip else ""))
 		view  = PlaylistManageView(self.cog, self.guild_id, interaction.user.id, self.playlist_id)
-		await interaction.edit_original_response(content=msg, embed=embed, view=view)
+		await status.edit(content=result_msg, embed=embed, view=view)
 
 
 # ── Playlist Views ────────────────────────────────────────────────────────────
