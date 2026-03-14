@@ -607,6 +607,43 @@ def _get_ffmpeg_options(filter_name: str = "normal") -> dict:
 		return {"before_options": FFMPEG_BEFORE_OPTIONS, "options": f"-vn -af {audio_filter}"}
 	return {"before_options": FFMPEG_BEFORE_OPTIONS, "options": "-vn"}
 
+# Boost level → maximum allowed bitrate (kbps)
+_BOOST_BITRATE_CAPS = {0: 96, 1: 128, 2: 256, 3: 384}
+
+def _get_target_bitrate(tier: str, voice_channel: discord.VoiceChannel) -> int:
+	"""
+	Return the Opus encoder bitrate (kbps) to use for this tier.
+	  Basic   → always 96 kbps
+	  Premium → always 128 kbps
+	  Gold    → channel bitrate (from server boost), capped at 384 kbps,
+	            never exceeding what the server's boost level actually allows
+	"""
+	tier_lower = tier.lower()
+	if tier_lower == "basic":
+		return 96
+	if tier_lower == "premium":
+		return 128
+	if tier_lower == "gold":
+		boost_level  = getattr(voice_channel.guild, "premium_tier", 0)
+		boost_cap    = _BOOST_BITRATE_CAPS.get(boost_level, 96)
+		channel_kbps = (getattr(voice_channel, "bitrate", 96000) or 96000) // 1000
+		return min(channel_kbps, boost_cap, 384)
+	# fallback for legacy "free" tier — same as Basic
+	return 96
+
+def _apply_bitrate(voice_client: discord.VoiceClient, tier: str) -> None:
+	"""Set the Opus encoder bitrate on the voice client right after vc.play()."""
+	channel = getattr(voice_client, "channel", None)
+	if not isinstance(channel, discord.VoiceChannel):
+		return
+	kbps = _get_target_bitrate(tier, channel)
+	try:
+		encoder = getattr(voice_client, "encoder", None)
+		if encoder is not None:
+			encoder.set_bitrate(kbps)
+	except Exception as e:
+		print(f"[BITRATE] Could not set encoder bitrate: {e}")
+
 async def _ytdl_extract(queries: list[str], tier: str) -> dict:
 	loop = asyncio.get_running_loop()
 	last_error: Exception | None = None
@@ -1483,6 +1520,7 @@ class PlaylistManageView(discord.ui.View):
 					volume=volume,
 				)
 				vc.play(src, after=_after_cb)
+				_apply_bitrate(vc, first.get("tier", "basic"))
 				guild_last_activity[interaction.guild.id] = asyncio.get_event_loop().time()
 				guild_now_playing_track[interaction.guild.id] = first
 				_add_to_recent_titles(interaction.guild.id, first.get("title", ""))
@@ -2567,6 +2605,7 @@ class Codunot(commands.Cog):
 				volume=volume,
 			)
 			voice_client.play(source, after=_after_playback)
+			_apply_bitrate(voice_client, tier)
 			guild_last_activity[interaction.guild.id] = asyncio.get_event_loop().time()
 			guild_now_playing_track[interaction.guild.id] = {
 				"title": first.get("title") or "Unknown",
@@ -2635,6 +2674,7 @@ class Codunot(commands.Cog):
 			volume=volume,
 		)
 		voice_client.play(source, after=_after_playback)
+		_apply_bitrate(voice_client, tier)
 		guild_last_activity[interaction.guild.id] = asyncio.get_event_loop().time()
 		guild_now_playing_track[interaction.guild.id] = track_info
 		_add_to_recent_titles(interaction.guild.id, track_info.get("title", ""))
@@ -2683,6 +2723,7 @@ class Codunot(commands.Cog):
 						volume=volume,
 					)
 					vc.play(src, after=_after_loop)
+					_apply_bitrate(vc, current.get("tier", "basic"))
 					guild_last_activity[guild_id] = asyncio.get_event_loop().time()
 					return
 				except Exception as e:
@@ -2729,17 +2770,18 @@ class Codunot(commands.Cog):
 						except Exception as e:
 							print(f"[YTDL AUTOPLAY] attempt {_attempt+1}: {e}")
 
-				if candidate and candidate.get("url"):
+				if candidate and (candidate.get("webpage_url") or candidate.get("url")):
 					queue.append({
-						"title":        candidate.get("title") or seed or "Unknown",
-						"web_url":      candidate.get("webpage_url") or candidate.get("url"),
-						"uploader":     candidate.get("uploader") or candidate.get("channel") or "Unknown",
-						"duration":     candidate.get("duration"),
-						"thumbnail":    candidate.get("thumbnail"),
-						"stream_url":   candidate.get("url"),
-						"requested_by": "Autoplay",
-						"tier":         "free",
-						"filter":       guild_filters.get(guild_id, "normal"),
+						"title":         candidate.get("title") or seed or "Unknown",
+						"web_url":       candidate.get("webpage_url") or candidate.get("url"),
+						"uploader":      candidate.get("uploader") or candidate.get("channel") or "Unknown",
+						"duration":      candidate.get("duration"),
+						"thumbnail":     candidate.get("thumbnail"),
+						"stream_url":    None,        # resolved by lazy-resolve below
+						"needs_resolve": True,        # search entries give page URLs, not stream URLs
+						"requested_by":  "Autoplay",
+						"tier":          "free",
+						"filter":        guild_filters.get(guild_id, "normal"),
 					})
 				else:
 					asyncio.create_task(self._start_idle_timer(guild_id))
@@ -2798,6 +2840,7 @@ class Codunot(commands.Cog):
 				volume=volume,
 			)
 			voice_client.play(source, after=_after_playback)
+			_apply_bitrate(voice_client, next_track.get("tier", "basic"))
 			guild_last_activity[guild_id] = asyncio.get_event_loop().time()
 			guild_now_playing_track[guild_id] = next_track
 			asyncio.create_task(self._prefetch_next_track(guild_id))
