@@ -1758,20 +1758,23 @@ class ModerationCog(commands.Cog, name="ModerationCog"):
     # ──────────────────────────────────────────────────────────────────────────
 
     @app_commands.command(name="ban", description="🔨 Ban a member from the server")
-    @app_commands.describe(user="Member to ban", reason="Reason", delete_days="Days of messages to delete (0–7)")
+    @app_commands.describe(user="Member to ban (works even if they already left)", reason="Reason", delete_days="Days of messages to delete (0–7)")
     async def ban_slash(self, interaction: discord.Interaction,
-                        user: discord.Member, reason: str = "No reason provided",
+                        user: discord.User, reason: str = "No reason provided",
                         delete_days: int = 0):
         if not await self._gate(interaction):
             return
-        if user.top_role >= interaction.user.top_role and interaction.guild.owner_id != interaction.user.id:
-            await interaction.response.send_message("❌ Can't ban someone with equal or higher role.", ephemeral=True)
-            return
+        # Role hierarchy check only applies if the user is still in the server
+        member = interaction.guild.get_member(user.id)
+        if member is not None:
+            if member.top_role >= interaction.user.top_role and interaction.guild.owner_id != interaction.user.id:
+                await interaction.response.send_message("❌ Can't ban someone with equal or higher role.", ephemeral=True)
+                return
         try: await user.send(f"🔨 You were **banned** from **{interaction.guild.name}**.\n**Reason:** {reason}")
         except Exception: pass
         try:
-            await user.ban(reason=f"{interaction.user}: {reason}",
-                           delete_message_days=max(0, min(7, delete_days)))
+            await interaction.guild.ban(user, reason=f"{interaction.user}: {reason}",
+                                        delete_message_days=max(0, min(7, delete_days)))
             case_n = self._add_case(interaction.guild.id, "ban", user.id, str(user),
                                     interaction.user.id, str(interaction.user), reason)
             e = discord.Embed(title="🔨 Member Banned", color=COLOR_DANGER,
@@ -1784,6 +1787,19 @@ class ModerationCog(commands.Cog, name="ModerationCog"):
             await self._log_guild(interaction.guild, e, interaction.channel.id)
         except discord.Forbidden:
             await interaction.response.send_message("❌ I don't have permission to ban this user.", ephemeral=True)
+        except discord.HTTPException as exc:
+            await interaction.response.send_message(f"❌ Ban failed: {exc.text}", ephemeral=True)
+
+    @ban_slash.error
+    async def ban_slash_error(self, interaction: discord.Interaction, error: app_commands.AppCommandError):
+        if isinstance(error, app_commands.TransformerError):
+            await interaction.response.send_message(
+                "❌ Could not find that user. They may have already left the server — "
+                "try passing their **user ID** directly instead.",
+                ephemeral=True,
+            )
+        else:
+            raise error
 
     @app_commands.command(name="unban", description="🔓 Unban a user by their Discord ID")
     @app_commands.describe(user_id="The Discord user ID to unban", reason="Reason")
@@ -1834,6 +1850,16 @@ class ModerationCog(commands.Cog, name="ModerationCog"):
             await self._log_guild(interaction.guild, e, interaction.channel.id)
         except discord.Forbidden:
             await interaction.response.send_message("❌ No permission to kick.", ephemeral=True)
+
+    @modkick_slash.error
+    async def modkick_slash_error(self, interaction: discord.Interaction, error: app_commands.AppCommandError):
+        if isinstance(error, app_commands.TransformerError):
+            await interaction.response.send_message(
+                "❌ That user is not in this server — they may have already been kicked or left on their own.",
+                ephemeral=True,
+            )
+        else:
+            raise error
 
     # ──────────────────────────────────────────────────────────────────────────
     # MUTE / UNMUTE
