@@ -13,7 +13,9 @@ import random
 import traceback
 import tempfile
 import re
+from datetime import datetime, timezone
 from typing import Optional
+from collections import deque
 from urllib.parse import urlparse, quote_plus
 
 from bs4 import BeautifulSoup
@@ -42,6 +44,7 @@ from usage_manager import (
 )
 
 from topgg_utils import has_voted
+import playlist_manager
 
 memory = None
 channel_modes = {}
@@ -485,6 +488,14 @@ guild_now_playing_track: dict[int, dict] = {}
 guild_last_activity = {}
 guild_autoplay: dict[int, bool] = {}
 
+# ── New music feature state ───────────────────────────────────────────────────
+guild_loop_mode:           dict[int, str]            = {}   # "off" | "song" | "queue"
+guild_saved_queue:         dict[int, list]           = {}   # snapshot for loop-queue
+guild_recent_titles:       dict[int, "deque"]        = {}   # last-N played titles (dedup)
+guild_prefetched_autoplay: dict[int, Optional[dict]] = {}   # pre-fetched autoplay track
+
+_RECENT_TITLES_LIMIT = 10
+
 MODEL_CHOICES = [
 	"openai/gpt-oss-120b",
 	"moonshotai/kimi-k2-instruct",
@@ -733,6 +744,50 @@ def _normalized_title(value: str | None) -> str:
 	text = re.sub(r"[^a-z0-9\s]", " ", text)
 	text = re.sub(r"\s+", " ", text)
 	return text.strip()
+
+
+# ── Music dedup / prefetch helpers ────────────────────────────────────────────
+
+def _add_to_recent_titles(guild_id: int, title: str) -> None:
+	"""Push a track title into the per-guild recent-titles deque."""
+	q = guild_recent_titles.setdefault(guild_id, deque(maxlen=_RECENT_TITLES_LIMIT))
+	q.append(title)
+
+
+def _is_duplicate_track(title: str, recent: "deque") -> bool:
+	"""
+	Return True if 'title' is too similar to any entry in 'recent'.
+	Checks direct substring containment and 70%+ word-overlap.
+	"""
+	if not title:
+		return False
+	title_lower = title.lower().strip()
+	title_norm  = _normalized_title(title)
+	t_words     = set(title_norm.split())
+
+	for recent_title in recent:
+		r = (recent_title or "").lower().strip()
+		if not r:
+			continue
+		if r in title_lower or title_lower in r:
+			return True
+		r_words = set(_normalized_title(recent_title).split())
+		if t_words and r_words:
+			overlap = len(t_words & r_words)
+			shorter = min(len(t_words), len(r_words))
+			if shorter >= 2 and overlap / shorter >= 0.70:
+				return True
+	return False
+
+
+def _fmt_duration(seconds: int | None) -> str:
+	"""Seconds → MM:SS or HH:MM:SS.  Returns '—' if None."""
+	if not seconds or seconds <= 0:
+		return "—"
+	s = int(seconds)
+	m, s = divmod(s, 60)
+	h, m = divmod(m, 60)
+	return f"{h}:{m:02d}:{s:02d}" if h else f"{m}:{s:02d}"
 
 
 # ── GIF / Meme data ───────────────────────────────────────────────────────────
@@ -1184,6 +1239,404 @@ async def fetch_url_content(url: str, max_chars: int = 2000) -> str:
 	return text
 
 
+# ── Playlist Modals ───────────────────────────────────────────────────────────
+
+class PlaylistCreateModal(discord.ui.Modal, title="🎵 Create New Playlist"):
+	name_field = discord.ui.TextInput(
+		label="Playlist name",
+		placeholder="e.g. Summer Vibes",
+		max_length=50,
+		required=True,
+	)
+	songs_field = discord.ui.TextInput(
+		label="Songs — one per line (URL or search query)",
+		style=discord.TextStyle.paragraph,
+		placeholder=(
+			"https://youtube.com/watch?v=...\n"
+			"Blinding Lights The Weeknd\n"
+			"Stay The Kid LAROI"
+		),
+		max_length=2000,
+		required=True,
+	)
+
+	def __init__(self, cog):
+		super().__init__()
+		self.cog = cog
+
+	async def on_submit(self, interaction: discord.Interaction):
+		name    = self.name_field.value.strip()
+		queries = [l.strip() for l in self.songs_field.value.splitlines() if l.strip()]
+		if not queries:
+			await interaction.response.send_message("❌ No songs provided.", ephemeral=True)
+			return
+		await interaction.response.defer()
+		await interaction.edit_original_response(
+			content=f"🎵 Creating **{name}** — resolving {min(len(queries), 50)} song(s)…"
+		)
+		pid, err = playlist_manager.create_playlist(
+			interaction.guild.id, name, interaction.user.id, str(interaction.user)
+		)
+		if err:
+			await interaction.edit_original_response(content=f"❌ {err}")
+			return
+		tier     = get_tier_from_message(interaction)
+		resolved = await self.cog._resolve_songs(queries[:50], tier)
+		added, skip = playlist_manager.add_tracks(interaction.guild.id, pid, resolved)
+		embed = discord.Embed(title="✅ Playlist Created", color=0x1DB954,
+		                      timestamp=datetime.now(timezone.utc))
+		embed.add_field(name="Name",         value=name,       inline=True)
+		embed.add_field(name="Tracks added", value=str(added), inline=True)
+		if skip:
+			embed.add_field(name="Skipped", value=f"{skip} (limit reached)", inline=True)
+		embed.add_field(
+			name="How to play",
+			value=f"Run `/playlist` → select **{name}** → press **▶ Play**",
+			inline=False,
+		)
+		embed.set_footer(text=f"Playlist ID: {pid} • max {playlist_manager.MAX_TRACKS_PER_PLAYLIST} tracks")
+		await interaction.edit_original_response(content=None, embed=embed)
+
+
+class PlaylistAddSongsModal(discord.ui.Modal):
+	songs_field = discord.ui.TextInput(
+		label="Songs — one per line (URL or search query)",
+		style=discord.TextStyle.paragraph,
+		placeholder="https://youtube.com/watch?v=...\nArtist – Song title",
+		max_length=2000,
+		required=True,
+	)
+
+	def __init__(self, cog, guild_id: int, playlist_id: str, playlist_name: str):
+		super().__init__(title=f"Add Songs to {playlist_name[:40]}")
+		self.cog          = cog
+		self.guild_id     = guild_id
+		self.playlist_id  = playlist_id
+		self.playlist_name = playlist_name
+
+	async def on_submit(self, interaction: discord.Interaction):
+		queries = [l.strip() for l in self.songs_field.value.splitlines() if l.strip()]
+		if not queries:
+			await interaction.response.send_message("❌ No songs provided.", ephemeral=True)
+			return
+		pl = playlist_manager.get_playlist(self.guild_id, self.playlist_id)
+		if not pl:
+			await interaction.response.send_message("❌ Playlist not found.", ephemeral=True)
+			return
+		await interaction.response.defer()
+		await interaction.edit_original_response(content=f"🔍 Resolving {min(len(queries), 50)} song(s)…")
+		tier     = get_tier_from_message(interaction)
+		resolved = await self.cog._resolve_songs(queries[:50], tier)
+		added, skip = playlist_manager.add_tracks(self.guild_id, self.playlist_id, resolved)
+		pl    = playlist_manager.get_playlist(self.guild_id, self.playlist_id)
+		embed = self.cog._build_playlist_manage_embed(pl, self.playlist_id)
+		msg   = (f"✅ Added **{added}** track(s) to **{self.playlist_name}**."
+		         + (f"  {skip} skipped (limit reached)." if skip else ""))
+		view  = PlaylistManageView(self.cog, self.guild_id, interaction.user.id, self.playlist_id)
+		await interaction.edit_original_response(content=msg, embed=embed, view=view)
+
+
+# ── Playlist Views ────────────────────────────────────────────────────────────
+
+class PlaylistBrowserView(discord.ui.View):
+	def __init__(self, cog, guild_id: int, user_id: int):
+		super().__init__(timeout=120)
+		self.cog      = cog
+		self.guild_id = guild_id
+		self.user_id  = user_id
+		self._build_select()
+
+	def _build_select(self):
+		playlists = playlist_manager.get_guild_playlists(self.guild_id)
+		if not playlists:
+			return
+		options = []
+		for pid, pl in list(playlists.items())[:25]:
+			tc       = len(pl.get("tracks", []))
+			dur_secs = sum(t.get("duration") or 0 for t in pl.get("tracks", []))
+			dur_str  = _fmt_duration(dur_secs)
+			options.append(discord.SelectOption(
+				label=pl["name"][:100],
+				value=pid,
+				description=f"{tc} track{'s' if tc != 1 else ''} · {dur_str} · by {pl['creator_name'][:40]}",
+			))
+		sel = discord.ui.Select(placeholder="Choose a playlist to manage…", options=options, row=0)
+		sel.callback = self._on_select
+		self.add_item(sel)
+
+	async def _on_select(self, interaction: discord.Interaction):
+		if interaction.user.id != self.user_id:
+			await interaction.response.send_message("This menu isn't for you.", ephemeral=True)
+			return
+		pid = interaction.data["values"][0]
+		pl  = playlist_manager.get_playlist(self.guild_id, pid)
+		if not pl:
+			await interaction.response.send_message("❌ Playlist not found.", ephemeral=True)
+			return
+		embed = self.cog._build_playlist_manage_embed(pl, pid)
+		view  = PlaylistManageView(self.cog, self.guild_id, self.user_id, pid)
+		await interaction.response.edit_message(embed=embed, view=view)
+
+
+class PlaylistManageView(discord.ui.View):
+	def __init__(self, cog, guild_id: int, user_id: int, playlist_id: str):
+		super().__init__(timeout=120)
+		self.cog         = cog
+		self.guild_id    = guild_id
+		self.user_id     = user_id
+		self.playlist_id = playlist_id
+		self._add_switch_select()
+
+	def _add_switch_select(self):
+		playlists = playlist_manager.get_guild_playlists(self.guild_id)
+		if len(playlists) <= 1:
+			return
+		options = []
+		for pid, pl in list(playlists.items())[:25]:
+			tc = len(pl.get("tracks", []))
+			options.append(discord.SelectOption(
+				label=pl["name"][:100], value=pid,
+				description=f"{tc} tracks", default=(pid == self.playlist_id),
+			))
+		sel = discord.ui.Select(placeholder="Switch playlist…", options=options, row=1)
+		sel.callback = self._on_switch
+		self.add_item(sel)
+
+	async def _on_switch(self, interaction: discord.Interaction):
+		if interaction.user.id != self.user_id:
+			await interaction.response.send_message("Not your menu.", ephemeral=True)
+			return
+		pid = interaction.data["values"][0]
+		pl  = playlist_manager.get_playlist(self.guild_id, pid)
+		if not pl:
+			await interaction.response.send_message("❌ Playlist not found.", ephemeral=True)
+			return
+		embed = self.cog._build_playlist_manage_embed(pl, pid)
+		view  = PlaylistManageView(self.cog, self.guild_id, self.user_id, pid)
+		await interaction.response.edit_message(embed=embed, view=view)
+
+	async def interaction_check(self, interaction: discord.Interaction) -> bool:
+		if interaction.user.id != self.user_id:
+			await interaction.response.send_message("Not your command.", ephemeral=True)
+			return False
+		return True
+
+	@discord.ui.button(label="Play", style=discord.ButtonStyle.success, emoji="▶️", row=0)
+	async def play_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+		if not interaction.guild:
+			await interaction.response.send_message("Server only.", ephemeral=True)
+			return
+		if not interaction.user.voice or not interaction.user.voice.channel:
+			await interaction.response.send_message("Join a voice channel first.", ephemeral=True)
+			return
+		pl = playlist_manager.get_playlist(self.guild_id, self.playlist_id)
+		if not pl or not pl.get("tracks"):
+			await interaction.response.send_message("This playlist is empty.", ephemeral=True)
+			return
+		await interaction.response.defer()
+		channel = interaction.user.voice.channel
+		vc      = interaction.guild.voice_client
+		if not vc or not vc.is_connected():
+			vc = await channel.connect()
+		elif hasattr(vc, "channel") and vc.channel.id != channel.id:
+			await interaction.followup.send(f"I'm already in {vc.channel.mention}.", ephemeral=True)
+			return
+		guild_last_text_channel[interaction.guild.id] = interaction.channel.id
+		tier = get_tier_from_message(interaction)
+		tracks_to_queue = [
+			{
+				"title":        t.get("title") or "Unknown",
+				"web_url":      t.get("web_url"),
+				"uploader":     t.get("uploader") or "Unknown",
+				"duration":     t.get("duration"),
+				"thumbnail":    t.get("thumbnail"),
+				"needs_resolve": True,
+				"requested_by": interaction.user.mention,
+				"tier":         tier,
+				"filter":       "normal",
+			}
+			for t in pl["tracks"]
+		]
+		existing_queue = guild_ytdl_queue.setdefault(interaction.guild.id, [])
+		if not (getattr(vc, "is_playing", lambda: False)() or getattr(vc, "is_paused", lambda: False)()):
+			first = tracks_to_queue[0]
+			try:
+				info = await _ytdl_extract([first["web_url"]], tier)
+				first["stream_url"]    = info.get("url")
+				first["needs_resolve"] = False
+
+				def _after_cb(error):
+					if error:
+						print(f"[PLAYLIST PLAY] {error}")
+					asyncio.run_coroutine_threadsafe(
+						self.cog._ytdl_auto_advance(interaction.guild.id),
+						self.cog.bot.loop,
+					)
+
+				volume = guild_volume.get(interaction.guild.id, 100) / 100
+				src    = discord.PCMVolumeTransformer(
+					discord.FFmpegPCMAudio(first["stream_url"], **_get_ffmpeg_options("normal")),
+					volume=volume,
+				)
+				vc.play(src, after=_after_cb)
+				guild_last_activity[interaction.guild.id] = asyncio.get_event_loop().time()
+				guild_now_playing_track[interaction.guild.id] = first
+				_add_to_recent_titles(interaction.guild.id, first.get("title", ""))
+				existing_queue.extend(tracks_to_queue[1:])
+				if guild_loop_mode.get(interaction.guild.id) == "queue":
+					guild_saved_queue[interaction.guild.id] = [dict(t) for t in tracks_to_queue]
+				np_embed = self.cog._build_now_playing_embed_from_ytdl(
+					{"title": first["title"], "webpage_url": first["web_url"],
+					 "uploader": first["uploader"], "duration": first["duration"],
+					 "thumbnail": first["thumbnail"]},
+					first["requested_by"], tier,
+				)
+				np_embed.add_field(name="Playlist", value=pl["name"], inline=True)
+				if len(tracks_to_queue) > 1:
+					np_embed.add_field(name="Queued", value=f"{len(tracks_to_queue)-1} more", inline=True)
+				controls = MusicControls(self.cog, interaction.guild.id)
+				msg = await interaction.followup.send(embed=np_embed, view=controls, wait=True)
+				guild_now_message[interaction.guild.id] = {
+					"channel_id": msg.channel.id, "message_id": msg.id,
+					"title":      np_embed.description or "Unknown",
+				}
+				asyncio.create_task(self.cog._prefetch_next_track(interaction.guild.id))
+			except Exception as e:
+				print(f"[PLAYLIST PLAY] {e}")
+				await interaction.followup.send(f"❌ Couldn't play the first track: {e}")
+		else:
+			existing_queue.extend(tracks_to_queue)
+			await interaction.followup.send(
+				f"✅ Queued **{len(tracks_to_queue)}** tracks from **{pl['name']}**."
+			)
+
+	@discord.ui.button(label="Add songs", style=discord.ButtonStyle.secondary, emoji="➕", row=0)
+	async def add_songs_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+		pl = playlist_manager.get_playlist(self.guild_id, self.playlist_id)
+		if not pl:
+			await interaction.response.send_message("❌ Playlist not found.", ephemeral=True)
+			return
+		await interaction.response.send_modal(
+			PlaylistAddSongsModal(self.cog, self.guild_id, self.playlist_id, pl["name"])
+		)
+
+	@discord.ui.button(label="View tracks", style=discord.ButtonStyle.secondary, emoji="📋", row=0)
+	async def view_tracks_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+		pl = playlist_manager.get_playlist(self.guild_id, self.playlist_id)
+		if not pl:
+			await interaction.response.send_message("❌ Playlist not found.", ephemeral=True)
+			return
+		embed = self.cog._build_tracks_embed(pl, page=0)
+		view  = PlaylistTracksView(self.cog, self.guild_id, self.user_id, self.playlist_id, page=0)
+		await interaction.response.edit_message(embed=embed, view=view)
+
+	@discord.ui.button(label="Delete", style=discord.ButtonStyle.danger, emoji="🗑️", row=0)
+	async def delete_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+		pl = playlist_manager.get_playlist(self.guild_id, self.playlist_id)
+		if not pl:
+			await interaction.response.send_message("❌ Playlist not found.", ephemeral=True)
+			return
+		embed = discord.Embed(
+			title="⚠️ Delete Playlist?",
+			description=(
+				f"Are you sure you want to delete **{pl['name']}** "
+				f"({len(pl.get('tracks', []))} tracks)?\n\n**This cannot be undone.**"
+			),
+			color=0xED4245,
+		)
+		view = PlaylistConfirmDeleteView(self.cog, self.guild_id, self.user_id, self.playlist_id)
+		await interaction.response.edit_message(embed=embed, view=view)
+
+
+class PlaylistTracksView(discord.ui.View):
+	TRACKS_PER_PAGE = 10
+
+	def __init__(self, cog, guild_id: int, user_id: int, playlist_id: str, page: int = 0):
+		super().__init__(timeout=120)
+		self.cog         = cog
+		self.guild_id    = guild_id
+		self.user_id     = user_id
+		self.playlist_id = playlist_id
+		self.page        = page
+		pl               = playlist_manager.get_playlist(guild_id, playlist_id)
+		total            = len(pl.get("tracks", [])) if pl else 0
+		self.total_pages = max(1, (total + self.TRACKS_PER_PAGE - 1) // self.TRACKS_PER_PAGE)
+		self.prev_btn.disabled = page <= 0
+		self.next_btn.disabled = page >= self.total_pages - 1
+
+	async def interaction_check(self, interaction: discord.Interaction) -> bool:
+		if interaction.user.id != self.user_id:
+			await interaction.response.send_message("Not your menu.", ephemeral=True)
+			return False
+		return True
+
+	@discord.ui.button(label="Prev", style=discord.ButtonStyle.secondary, emoji="⬅️", row=0)
+	async def prev_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+		pl = playlist_manager.get_playlist(self.guild_id, self.playlist_id)
+		if not pl:
+			await interaction.response.send_message("Playlist not found.", ephemeral=True)
+			return
+		embed = self.cog._build_tracks_embed(pl, self.page - 1)
+		view  = PlaylistTracksView(self.cog, self.guild_id, self.user_id, self.playlist_id, self.page - 1)
+		await interaction.response.edit_message(embed=embed, view=view)
+
+	@discord.ui.button(label="Next", style=discord.ButtonStyle.secondary, emoji="➡️", row=0)
+	async def next_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+		pl = playlist_manager.get_playlist(self.guild_id, self.playlist_id)
+		if not pl:
+			await interaction.response.send_message("Playlist not found.", ephemeral=True)
+			return
+		embed = self.cog._build_tracks_embed(pl, self.page + 1)
+		view  = PlaylistTracksView(self.cog, self.guild_id, self.user_id, self.playlist_id, self.page + 1)
+		await interaction.response.edit_message(embed=embed, view=view)
+
+	@discord.ui.button(label="Back", style=discord.ButtonStyle.primary, row=0)
+	async def back_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+		pl = playlist_manager.get_playlist(self.guild_id, self.playlist_id)
+		if not pl:
+			await interaction.response.send_message("Playlist not found.", ephemeral=True)
+			return
+		embed = self.cog._build_playlist_manage_embed(pl, self.playlist_id)
+		view  = PlaylistManageView(self.cog, self.guild_id, self.user_id, self.playlist_id)
+		await interaction.response.edit_message(embed=embed, view=view)
+
+
+class PlaylistConfirmDeleteView(discord.ui.View):
+	def __init__(self, cog, guild_id: int, user_id: int, playlist_id: str):
+		super().__init__(timeout=60)
+		self.cog         = cog
+		self.guild_id    = guild_id
+		self.user_id     = user_id
+		self.playlist_id = playlist_id
+
+	async def interaction_check(self, interaction: discord.Interaction) -> bool:
+		if interaction.user.id != self.user_id:
+			await interaction.response.send_message("Not your command.", ephemeral=True)
+			return False
+		return True
+
+	@discord.ui.button(label="Yes, delete it", style=discord.ButtonStyle.danger, emoji="🗑️")
+	async def confirm_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+		pl   = playlist_manager.get_playlist(self.guild_id, self.playlist_id)
+		name = pl["name"] if pl else "Unknown"
+		playlist_manager.delete_playlist(self.guild_id, self.playlist_id)
+		await interaction.response.edit_message(
+			content=f"🗑️ **{name}** has been deleted.", embed=None, view=None,
+		)
+
+	@discord.ui.button(label="Cancel", style=discord.ButtonStyle.secondary)
+	async def cancel_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+		pl = playlist_manager.get_playlist(self.guild_id, self.playlist_id)
+		if not pl:
+			await interaction.response.edit_message(
+				content="Playlist no longer exists.", embed=None, view=None
+			)
+			return
+		embed = self.cog._build_playlist_manage_embed(pl, self.playlist_id)
+		view  = PlaylistManageView(self.cog, self.guild_id, self.user_id, self.playlist_id)
+		await interaction.response.edit_message(embed=embed, view=view)
+
+
 # ── Code Test Modal ───────────────────────────────────────────────────────────
 
 class CodeTestModal(discord.ui.Modal, title="🧪 Test Your Python Code"):
@@ -1330,57 +1783,111 @@ class Codunot(commands.Cog):
 			await self._wavelink_auto_advance(guild_id, player)
 
 	async def _wavelink_auto_advance(self, guild_id: int, player: wavelink.Player):
+		loop_mode = guild_loop_mode.get(guild_id, "off")
+
+		# ── Loop song: re-play current track ──────────────────────────────────
+		if loop_mode == "song":
+			current_info = guild_now_playing_track.get(guild_id, {})
+			seed         = current_info.get("title")
+			url          = current_info.get("web_url") or seed
+			if url:
+				try:
+					results = await wavelink.Playable.search(url)
+					if results:
+						track = results[0] if isinstance(results, list) else results
+						await player.play(track)
+						guild_now_playing_track[guild_id] = {
+							"title":    track.title or seed,
+							"uploader": track.author or "Unknown",
+							"web_url":  current_info.get("web_url"),
+						}
+						embed = self._build_now_playing_embed_from_wl(track, guild_id)
+						embed.add_field(name="Loop", value="🔂 Song", inline=True)
+						view  = MusicControls(self, guild_id)
+						await self._post_now_playing(guild_id, embed, view)
+						return
+				except Exception as e:
+					print(f"[WAVELINK LOOP SONG] {e}, falling through")
+
 		await self._mark_now_playing_as_ended(guild_id)
+
+		# Record finished title for dedup
+		fi = guild_now_playing_track.get(guild_id, {})
+		if fi.get("title"):
+			_add_to_recent_titles(guild_id, fi["title"])
+
 		queue = player.queue
+
+		# ── Loop queue: rebuild from snapshot when empty ───────────────────
+		if loop_mode == "queue" and queue.is_empty:
+			saved = guild_saved_queue.get(guild_id, [])
+			for t_info in saved:
+				url = t_info.get("web_url") or t_info.get("title", "")
+				try:
+					results = await wavelink.Playable.search(url)
+					if results:
+						t = results[0] if isinstance(results, list) else results
+						queue.put(t)
+				except Exception:
+					pass
+
+		# ── Autoplay when queue is still empty ────────────────────────────
 		if queue.is_empty:
 			if guild_autoplay.get(guild_id, False):
-				current_info = guild_now_playing_track.get(guild_id, {})
-				seed = current_info.get("title")
-				if seed:
-					try:
-						results = await wavelink.Playable.search(seed)
-						if results:
-							if isinstance(results, list):
-								current_norm = _normalized_title(seed)
-								next_track = None
-								for candidate in results:
-									candidate_norm = _normalized_title(getattr(candidate, "title", ""))
-									if candidate_norm and candidate_norm != current_norm:
-										next_track = candidate
-										break
-								if next_track is None:
-									print(f"[WAVELINK] Autoplay couldn't find a different track for seed={seed!r}")
-									next_track = None
-							else:
-								next_track = results
-							if next_track is None:
-								raise Exception("No different autoplay track found.")
-							next_track = results[0] if isinstance(results, list) else results
-							await player.play(next_track)
-							guild_now_playing_track[guild_id] = {
-								"title": next_track.title or seed,
-								"uploader": next_track.author or "Unknown",
-							}
-							embed = self._build_now_playing_embed_from_wl(next_track, guild_id)
-							view = MusicControls(self, guild_id)
-							await self._post_now_playing(guild_id, embed, view)
-							return
-					except Exception as e:
-						print(f"[WAVELINK] Autoplay fetch failed: {e}")
+				seed   = fi.get("title")
+				recent = guild_recent_titles.get(guild_id, deque())
+
+				# Try pre-fetched candidate first (fastest path)
+				prefetched = guild_prefetched_autoplay.pop(guild_id, None)
+				search_url = None
+				if prefetched and not _is_duplicate_track(prefetched.get("title", ""), recent):
+					search_url = prefetched.get("web_url") or prefetched.get("title", seed or "top hits")
+				else:
+					search_url = seed or "top hits"
+
+				try:
+					results = await wavelink.Playable.search(search_url)
+					if results:
+						candidates = results if isinstance(results, list) else [results]
+						next_track = None
+						for c in candidates:
+							if not _is_duplicate_track(getattr(c, "title", ""), recent):
+								next_track = c
+								break
+						if next_track is None:
+							next_track = candidates[0]
+						await player.play(next_track)
+						guild_now_playing_track[guild_id] = {
+							"title":    next_track.title or (seed or "Unknown"),
+							"uploader": next_track.author or "Unknown",
+						}
+						embed = self._build_now_playing_embed_from_wl(next_track, guild_id)
+						view  = MusicControls(self, guild_id)
+						await self._post_now_playing(guild_id, embed, view)
+						asyncio.create_task(self._prefetch_next_track(guild_id))
+						return
+				except Exception as e:
+					print(f"[WAVELINK] Autoplay dedup failed: {e}")
+
 			print(f"[WAVELINK] Queue empty, going idle for guild {guild_id}")
 			guild_last_activity[guild_id] = asyncio.get_event_loop().time()
 			asyncio.create_task(self._start_idle_timer(guild_id))
 			return
+
 		next_track = queue.get()
 		try:
 			await player.play(next_track)
 			guild_now_playing_track[guild_id] = {
-				"title": next_track.title or "Unknown",
+				"title":    next_track.title or "Unknown",
 				"uploader": next_track.author or "Unknown",
 			}
 			embed = self._build_now_playing_embed_from_wl(next_track, guild_id)
+			lm    = guild_loop_mode.get(guild_id, "off")
+			if lm != "off":
+				embed.add_field(name="Loop", value={"song": "🔂 Song", "queue": "🔁 Queue"}.get(lm, lm), inline=True)
 			view = MusicControls(self, guild_id)
 			await self._post_now_playing(guild_id, embed, view)
+			asyncio.create_task(self._prefetch_next_track(guild_id))
 		except Exception as e:
 			print(f"[WAVELINK] Auto-advance error: {e}")
 
@@ -2126,6 +2633,8 @@ class Codunot(commands.Cog):
 		voice_client.play(source, after=_after_playback)
 		guild_last_activity[interaction.guild.id] = asyncio.get_event_loop().time()
 		guild_now_playing_track[interaction.guild.id] = track_info
+		_add_to_recent_titles(interaction.guild.id, track_info.get("title", ""))
+		asyncio.create_task(self._prefetch_next_track(interaction.guild.id))
 
 		embed = self._build_now_playing_embed_from_ytdl(info, interaction.user.mention, tier)
 		view = MusicControls(self, interaction.guild.id)
@@ -2136,44 +2645,124 @@ class Codunot(commands.Cog):
 		}
 
 	async def _ytdl_auto_advance(self, guild_id: int):
-		"""yt-dlp fallback auto-advance — plays next track from yt-dlp queue."""
+		"""yt-dlp fallback auto-advance with loop, dedup, prefetch, and lazy playlist resolve."""
+		loop_mode = guild_loop_mode.get(guild_id, "off")
+
+		# ── Loop song: re-stream current track ────────────────────────────────
+		if loop_mode == "song":
+			current = guild_now_playing_track.get(guild_id, {})
+			if current and current.get("web_url"):
+				guild = self.bot.get_guild(guild_id)
+				if not guild:
+					return
+				vc = guild.voice_client
+				if not vc or not vc.is_connected():
+					return
+				try:
+					info       = await _ytdl_extract([current["web_url"]], current.get("tier", "free"))
+					stream_url = info.get("url")
+					if not stream_url:
+						raise ValueError("No stream URL")
+					current["stream_url"] = stream_url
+
+					def _after_loop(err):
+						if err:
+							print(f"[YTDL LOOP SONG] {err}")
+						asyncio.run_coroutine_threadsafe(
+							self._ytdl_auto_advance(guild_id), self.bot.loop
+						)
+
+					sel_filter = guild_filters.get(guild_id, "normal")
+					volume     = guild_volume.get(guild_id, 100) / 100
+					src = discord.PCMVolumeTransformer(
+						discord.FFmpegPCMAudio(stream_url, **_get_ffmpeg_options(sel_filter)),
+						volume=volume,
+					)
+					vc.play(src, after=_after_loop)
+					guild_last_activity[guild_id] = asyncio.get_event_loop().time()
+					return
+				except Exception as e:
+					print(f"[YTDL LOOP SONG] Re-play failed ({e}), falling through")
+
 		await self._mark_now_playing_as_ended(guild_id)
 		guild_now_message.pop(guild_id, None)
 
+		# Record finished title for dedup
+		finished = guild_now_playing_track.get(guild_id, {})
+		if finished.get("title"):
+			_add_to_recent_titles(guild_id, finished["title"])
+
 		queue = guild_ytdl_queue.get(guild_id, [])
+
+		# ── Loop queue: reload from snapshot when empty ────────────────────
+		if loop_mode == "queue" and not queue:
+			saved = guild_saved_queue.get(guild_id, [])
+			if saved:
+				guild_ytdl_queue[guild_id] = [dict(t) for t in saved]
+				queue = guild_ytdl_queue[guild_id]
+
+		# ── Autoplay when queue still empty ───────────────────────────────
 		if not queue:
 			if guild_autoplay.get(guild_id, False):
-				current = guild_now_playing_track.get(guild_id, {})
-				seed = current.get("title")
-				if seed:
-					try:
-						info = await _ytdl_extract_different_track(f"ytsearch8:{seed}", "free", seed)
-						if info is None:
-							info = await _ytdl_extract_different_track(f"scsearch8:{seed}", "free", seed)
-						if info is None:
-							info = await _ytdl_extract(_build_query_candidates(seed), "free")
-						if info and info.get("url"):
-							queue.append({
-								"title": info.get("title") or seed,
-								"web_url": info.get("webpage_url") or info.get("url"),
-								"uploader": info.get("uploader") or info.get("channel") or "Unknown",
-								"duration": info.get("duration"),
-								"thumbnail": info.get("thumbnail"),
-								"stream_url": info.get("url"),
-								"requested_by": "Autoplay",
-								"tier": "free",
-								"filter": guild_filters.get(guild_id, "normal"),
-							})
-						else:
-							print(f"[YTDL] Autoplay couldn't find a different track for seed={seed!r}")
-					except Exception as e:
-						print(f"[YTDL] Autoplay fetch failed: {e}")
+				seed   = finished.get("title")
+				recent = guild_recent_titles.get(guild_id, deque())
+
+				# Try pre-fetched candidate first (fastest path — ~0 s delay)
+				prefetched = guild_prefetched_autoplay.pop(guild_id, None)
+				candidate  = None
+
+				if prefetched and not _is_duplicate_track(prefetched.get("title", ""), recent):
+					candidate = prefetched
+				else:
+					for _attempt in range(3):
+						try:
+							c = await _ytdl_extract_different_track(
+								f"ytsearch8:{seed or 'top hits'}", "free", seed or ""
+							)
+							if c and not _is_duplicate_track(c.get("title", ""), recent):
+								candidate = c
+								break
+						except Exception as e:
+							print(f"[YTDL AUTOPLAY] attempt {_attempt+1}: {e}")
+
+				if candidate and candidate.get("url"):
+					queue.append({
+						"title":        candidate.get("title") or seed or "Unknown",
+						"web_url":      candidate.get("webpage_url") or candidate.get("url"),
+						"uploader":     candidate.get("uploader") or candidate.get("channel") or "Unknown",
+						"duration":     candidate.get("duration"),
+						"thumbnail":    candidate.get("thumbnail"),
+						"stream_url":   candidate.get("url"),
+						"requested_by": "Autoplay",
+						"tier":         "free",
+						"filter":       guild_filters.get(guild_id, "normal"),
+					})
+				else:
+					asyncio.create_task(self._start_idle_timer(guild_id))
+					return
+			else:
+				asyncio.create_task(self._start_idle_timer(guild_id))
+				return
 
 		if not queue:
 			asyncio.create_task(self._start_idle_timer(guild_id))
 			return
 
 		next_track = queue.pop(0)
+
+		# ── Lazy resolve for playlist tracks ──────────────────────────────
+		if next_track.get("needs_resolve") and next_track.get("web_url"):
+			try:
+				info = await _ytdl_extract([next_track["web_url"]], next_track.get("tier", "free"))
+				next_track["stream_url"]    = info.get("url")
+				next_track["needs_resolve"] = False
+				if not next_track.get("title") and info.get("title"):
+					next_track["title"] = info["title"]
+			except Exception as e:
+				print(f"[YTDL LAZY RESOLVE] {e} — skipping track")
+				asyncio.create_task(self._ytdl_auto_advance(guild_id))
+				return
+
 		stream_url = next_track.get("stream_url")
 		if not stream_url:
 			asyncio.create_task(self._ytdl_auto_advance(guild_id))
@@ -2196,26 +2785,32 @@ class Codunot(commands.Cog):
 			)
 
 		try:
-			selected_filter = "normal" if next_track.get("requested_by") == "Autoplay" else (next_track.get("filter") or guild_filters.get(guild_id, "normal"))
+			sel_filter = next_track.get("filter") or guild_filters.get(guild_id, "normal")
+			if next_track.get("requested_by") == "Autoplay":
+				sel_filter = "normal"
 			volume = guild_volume.get(guild_id, 100) / 100
 			source = discord.PCMVolumeTransformer(
-				discord.FFmpegPCMAudio(stream_url, **_get_ffmpeg_options(selected_filter)),
+				discord.FFmpegPCMAudio(stream_url, **_get_ffmpeg_options(sel_filter)),
 				volume=volume,
 			)
 			voice_client.play(source, after=_after_playback)
 			guild_last_activity[guild_id] = asyncio.get_event_loop().time()
 			guild_now_playing_track[guild_id] = next_track
+			asyncio.create_task(self._prefetch_next_track(guild_id))
 
 			info = {
-				"title": next_track.get("title"),
+				"title":       next_track.get("title"),
 				"webpage_url": next_track.get("web_url"),
-				"uploader": next_track.get("uploader"),
-				"duration": next_track.get("duration"),
-				"thumbnail": next_track.get("thumbnail"),
+				"uploader":    next_track.get("uploader"),
+				"duration":    next_track.get("duration"),
+				"thumbnail":   next_track.get("thumbnail"),
 			}
 			embed = self._build_now_playing_embed_from_ytdl(
 				info, next_track.get("requested_by", "Unknown"), next_track.get("tier", "free")
 			)
+			lm = guild_loop_mode.get(guild_id, "off")
+			if lm != "off":
+				embed.add_field(name="Loop", value={"song": "🔂 Song", "queue": "🔁 Queue"}.get(lm, lm), inline=True)
 			view = MusicControls(self, guild_id)
 			await self._post_now_playing(guild_id, embed, view)
 		except Exception as e:
@@ -2878,6 +3473,203 @@ class Codunot(commands.Cog):
 	async def test_code_slash(self, interaction: discord.Interaction):
 		"""Open a modal for code input"""
 		await interaction.response.send_modal(CodeTestModal())
+
+	# ── Playlist helpers ──────────────────────────────────────────────────────
+
+	async def _resolve_songs(self, queries: list[str], tier: str) -> list[dict]:
+		"""Resolve search queries / URLs into track dicts concurrently (max 5 parallel)."""
+		sem = asyncio.Semaphore(5)
+
+		async def _one(q: str) -> Optional[dict]:
+			async with sem:
+				try:
+					candidates = _build_query_candidates(q)
+					info = await _ytdl_extract(candidates, tier)
+					return {
+						"title":    info.get("title") or q,
+						"uploader": info.get("uploader") or info.get("channel") or "Unknown",
+						"duration": info.get("duration"),
+						"thumbnail": info.get("thumbnail"),
+						"web_url":  info.get("webpage_url") or info.get("url"),
+					}
+				except Exception as e:
+					print(f"[PLAYLIST RESOLVE] {q!r}: {e}")
+					return None
+
+		raw = await asyncio.gather(*[_one(q) for q in queries], return_exceptions=True)
+		return [r for r in raw if isinstance(r, dict) and r]
+
+	async def _prefetch_next_track(self, guild_id: int) -> None:
+		"""
+		20 s after a track starts, pre-resolve the next queued track (if it still
+		needs a stream URL) or fetch an autoplay candidate so it's ready immediately
+		when the current song ends.
+		"""
+		await asyncio.sleep(20)
+		if guild_loop_mode.get(guild_id) == "song":
+			return
+		queue = guild_ytdl_queue.get(guild_id, [])
+		if queue and queue[0].get("needs_resolve") and queue[0].get("web_url"):
+			try:
+				info = await _ytdl_extract([queue[0]["web_url"]], queue[0].get("tier", "free"))
+				queue[0]["stream_url"]    = info.get("url")
+				queue[0]["needs_resolve"] = False
+				print(f"[PREFETCH] Queue head resolved: {queue[0].get('title')}")
+			except Exception as e:
+				print(f"[PREFETCH] Queue head resolve failed: {e}")
+			return
+		if not guild_autoplay.get(guild_id, False):
+			return
+		current = guild_now_playing_track.get(guild_id, {})
+		seed    = current.get("title")
+		if not seed:
+			return
+		recent = guild_recent_titles.get(guild_id, deque())
+		try:
+			c = await _ytdl_extract_different_track(f"ytsearch8:{seed}", "free", seed)
+			if c and not _is_duplicate_track(c.get("title", ""), recent):
+				guild_prefetched_autoplay[guild_id] = c
+				print(f"[PREFETCH] Autoplay cached: {c.get('title')}")
+		except Exception as e:
+			print(f"[PREFETCH] Autoplay fetch failed: {e}")
+
+	def _build_playlist_browser_embed(self, guild_id: int) -> discord.Embed:
+		playlists = playlist_manager.get_guild_playlists(guild_id)
+		count     = len(playlists)
+		embed     = discord.Embed(title="🎵 Server Playlists", color=0x1DB954,
+		                          timestamp=datetime.now(timezone.utc))
+		if not playlists:
+			embed.description = "No playlists yet.  Use `/playlistcreate` to make one."
+			return embed
+		embed.description = f"**{count}** playlist{'s' if count != 1 else ''} saved in this server"
+		lines = []
+		for pid, pl in list(playlists.items()):
+			tc       = len(pl.get("tracks", []))
+			dur_secs = sum(t.get("duration") or 0 for t in pl.get("tracks", []))
+			dur_str  = _fmt_duration(dur_secs)
+			lines.append(
+				f"**{pl['name']}**  ·  {tc} track{'s' if tc!=1 else ''}  ·  {dur_str}  ·  by {pl['creator_name']}"
+			)
+		embed.add_field(name="Playlists", value="\n".join(lines[:10]), inline=False)
+		embed.set_footer(text="Select a playlist below to manage it")
+		return embed
+
+	def _build_playlist_manage_embed(self, pl: dict, playlist_id: str) -> discord.Embed:
+		tracks   = pl.get("tracks", [])
+		tc       = len(tracks)
+		dur_secs = sum(t.get("duration") or 0 for t in tracks)
+		embed    = discord.Embed(title=f"🎵 {pl['name']}", color=0x1DB954,
+		                         timestamp=datetime.now(timezone.utc))
+		embed.description = f"Created by **{pl['creator_name']}**"
+		embed.add_field(name="Tracks",   value=str(tc),            inline=True)
+		embed.add_field(name="Duration", value=_fmt_duration(dur_secs), inline=True)
+		embed.add_field(name="ID",       value=playlist_id,        inline=True)
+		if tracks:
+			preview = []
+			for i, t in enumerate(tracks[:5], 1):
+				d = _fmt_duration(t.get("duration"))
+				preview.append(f"`{i}.` {t.get('title','?')} — {t.get('uploader','?')} `{d}`")
+			if tc > 5:
+				preview.append(f"*… and {tc-5} more*")
+			embed.add_field(name="Tracks preview", value="\n".join(preview), inline=False)
+		embed.set_footer(text="Use the buttons below to play, edit, or delete")
+		return embed
+
+	def _build_tracks_embed(self, pl: dict, page: int) -> discord.Embed:
+		tracks  = pl.get("tracks", [])
+		total   = len(tracks)
+		per_p   = PlaylistTracksView.TRACKS_PER_PAGE
+		pages   = max(1, (total + per_p - 1) // per_p)
+		page    = max(0, min(page, pages - 1))
+		start   = page * per_p
+		chunk   = tracks[start:start + per_p]
+		dur_all = sum(t.get("duration") or 0 for t in tracks)
+		embed   = discord.Embed(title=f"📋 {pl['name']} — Track list", color=0x1DB954,
+		                        timestamp=datetime.now(timezone.utc))
+		embed.description = (
+			f"Page {page+1} of {pages}  ·  {total} tracks total  ·  {_fmt_duration(dur_all)}"
+		)
+		lines = []
+		for i, t in enumerate(chunk, start + 1):
+			d = _fmt_duration(t.get("duration"))
+			lines.append(f"`{i:>2}.` **{t.get('title','?')}**\n      {t.get('uploader','?')} · `{d}`")
+		embed.add_field(name="\u200b", value="\n".join(lines) or "Empty", inline=False)
+		embed.set_footer(text=f"Total: {_fmt_duration(dur_all)} · {total} tracks")
+		return embed
+
+	# ── New slash commands ────────────────────────────────────────────────────
+
+	@app_commands.command(
+		name="playlistcreate",
+		description="🎵 Create a new server playlist from song URLs or search queries",
+	)
+	async def playlistcreate_slash(self, interaction: discord.Interaction):
+		if interaction.guild is None:
+			await interaction.response.send_message("❌ Server only.", ephemeral=True)
+			return
+		await interaction.response.send_modal(PlaylistCreateModal(self))
+
+	@app_commands.command(
+		name="playlist",
+		description="🎵 Browse, play, and manage server playlists",
+	)
+	async def playlist_slash(self, interaction: discord.Interaction):
+		if interaction.guild is None:
+			await interaction.response.send_message("❌ Server only.", ephemeral=True)
+			return
+		playlists = playlist_manager.get_guild_playlists(interaction.guild.id)
+		if not playlists:
+			embed = discord.Embed(
+				title="🎵 Server Playlists",
+				description="No playlists saved yet.\n\nUse `/playlistcreate` to create your first playlist!",
+				color=0x1DB954,
+			)
+			await interaction.response.send_message(embed=embed)
+			return
+		embed = self._build_playlist_browser_embed(interaction.guild.id)
+		view  = PlaylistBrowserView(self, interaction.guild.id, interaction.user.id)
+		await interaction.response.send_message(embed=embed, view=view)
+
+	@app_commands.command(name="loop", description="🔁 Set loop mode: off · song · queue")
+	@app_commands.describe(mode="off = normal | song = repeat current track | queue = loop whole queue")
+	@app_commands.choices(mode=[
+		app_commands.Choice(name="off — normal playback",        value="off"),
+		app_commands.Choice(name="song — repeat current track",  value="song"),
+		app_commands.Choice(name="queue — loop the whole queue", value="queue"),
+	])
+	async def loop_slash(self, interaction: discord.Interaction, mode: app_commands.Choice[str]):
+		if interaction.guild is None:
+			await interaction.response.send_message("❌ Server only.", ephemeral=True)
+			return
+		guild_id = interaction.guild.id
+		prev     = guild_loop_mode.get(guild_id, "off")
+		guild_loop_mode[guild_id] = mode.value
+
+		if mode.value == "queue":
+			current   = guild_now_playing_track.get(guild_id, {})
+			queue_now = list(guild_ytdl_queue.get(guild_id, []))
+			snapshot  = ([dict(current)] if current else []) + queue_now
+			guild_saved_queue[guild_id] = snapshot
+
+		labels   = {"off": "⏹ Off", "song": "🔂 Song", "queue": "🔁 Queue"}
+		colors   = {"off": 0x5C5C5C, "song": 0xF0B232, "queue": 0x1DB954}
+		desc_map = {
+			"off":   "Playback will stop when the queue is empty.",
+			"song":  "The current track will repeat indefinitely.",
+			"queue": (
+				"The queue will restart from the beginning when it ends.\n"
+				f"Snapshot saved: **{len(guild_saved_queue.get(guild_id, []))}** track(s)."
+			),
+		}
+		embed = discord.Embed(
+			title=f"Loop mode set to {labels[mode.value]}",
+			description=desc_map[mode.value],
+			color=colors[mode.value],
+			timestamp=datetime.now(timezone.utc),
+		)
+		embed.add_field(name="Previous", value=labels.get(prev, prev), inline=True)
+		embed.add_field(name="Current",  value=labels[mode.value],     inline=True)
+		await interaction.response.send_message(embed=embed)
 
 	# ── URL Browser ───────────────────────────────────────────────────────────
 
