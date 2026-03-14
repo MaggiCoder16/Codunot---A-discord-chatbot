@@ -987,14 +987,6 @@ class MusicControls(discord.ui.View):
 	async def next_button(self, interaction: discord.Interaction, button: discord.ui.Button):
 		await self.cog._music_next(interaction)
 
-	@discord.ui.button(emoji="🔉", style=discord.ButtonStyle.secondary)
-	async def volume_down_button(self, interaction: discord.Interaction, button: discord.ui.Button):
-		await self.cog._music_adjust_volume(interaction, -10)
-
-	@discord.ui.button(emoji="🔊", style=discord.ButtonStyle.secondary)
-	async def volume_up_button(self, interaction: discord.Interaction, button: discord.ui.Button):
-		await self.cog._music_adjust_volume(interaction, 10)
-
 	@discord.ui.button(emoji="⏹️", style=discord.ButtonStyle.danger)
 	async def stop_button(self, interaction: discord.Interaction, button: discord.ui.Button):
 		await self.cog._music_stop(interaction)
@@ -2172,6 +2164,17 @@ class Codunot(commands.Cog):
 		status = "enabled ✅" if enabled else "disabled ⏹️"
 		await interaction.response.send_message(f"🔁 Autoplay is now **{status}**.", ephemeral=False)
 
+		# If the user just enabled autoplay and the bot is connected but idle
+		# (queue empty, nothing playing), kick the advance loop immediately —
+		# otherwise autoplay only fires on the *next* song end, not right now.
+		if enabled:
+			guild_id = interaction.guild.id
+			vc = interaction.guild.voice_client
+			queue_empty = not guild_ytdl_queue.get(guild_id)
+			bot_idle = not vc or not (vc.is_playing() or vc.is_paused())
+			if vc and vc.is_connected() and queue_empty and bot_idle:
+				asyncio.create_task(self._ytdl_auto_advance(guild_id))
+
 	@app_commands.command(name="lyrics", description="📝 Show full lyrics for the current track")
 	async def lyrics_slash(self, interaction: discord.Interaction):
 		if interaction.guild is None:
@@ -2770,18 +2773,17 @@ class Codunot(commands.Cog):
 						except Exception as e:
 							print(f"[YTDL AUTOPLAY] attempt {_attempt+1}: {e}")
 
-				if candidate and (candidate.get("webpage_url") or candidate.get("url")):
+				if candidate and candidate.get("url"):
 					queue.append({
-						"title":         candidate.get("title") or seed or "Unknown",
-						"web_url":       candidate.get("webpage_url") or candidate.get("url"),
-						"uploader":      candidate.get("uploader") or candidate.get("channel") or "Unknown",
-						"duration":      candidate.get("duration"),
-						"thumbnail":     candidate.get("thumbnail"),
-						"stream_url":    None,        # resolved by lazy-resolve below
-						"needs_resolve": True,        # search entries give page URLs, not stream URLs
-						"requested_by":  "Autoplay",
-						"tier":          "free",
-						"filter":        guild_filters.get(guild_id, "normal"),
+						"title":        candidate.get("title") or seed or "Unknown",
+						"web_url":      candidate.get("webpage_url") or candidate.get("url"),
+						"uploader":     candidate.get("uploader") or candidate.get("channel") or "Unknown",
+						"duration":     candidate.get("duration"),
+						"thumbnail":    candidate.get("thumbnail"),
+						"stream_url":   candidate.get("url"),   # full extraction → entry["url"] IS the stream URL
+						"requested_by": "Autoplay",
+						"tier":         "free",
+						"filter":       guild_filters.get(guild_id, "normal"),
 					})
 				else:
 					asyncio.create_task(self._start_idle_timer(guild_id))
