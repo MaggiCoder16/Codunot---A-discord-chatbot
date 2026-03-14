@@ -82,6 +82,7 @@ jobs:
           [ -f vote_unlocks.json ] || echo '{}' > vote_unlocks.json
           [ -f guild_chat_config.json ] || echo '{}' > guild_chat_config.json
           [ -f mod_data.json ] || echo '{"guilds":{},"warns":{},"cases":{},"notes":{},"pending_unbans":{}}' > mod_data.json
+          [ -f playlists.json ] || echo '{"playlists":{}}' > playlists.json
           echo "=== Current usage data ==="
           cat daily_usage.json
           cat total_usage.json
@@ -89,6 +90,8 @@ jobs:
           cat guild_chat_config.json
           echo "=== Current mod data ==="
           cat mod_data.json
+          echo "=== Current playlists ==="
+          cat playlists.json
      
       - name: Run Codunot Bot
         env:
@@ -125,8 +128,10 @@ jobs:
           cat guild_chat_config.json || echo "guild_chat_config.json missing"
           echo "=== Updated mod data ==="
           cat mod_data.json || echo "mod_data.json missing"
+          echo "=== Updated playlists ==="
+          cat playlists.json || echo "playlists.json missing"
      
-      - name: Persist JSON data (usage + votes + guild config + mod data)
+      - name: Persist JSON data (usage + votes + guild config + mod data + playlists)
         if: always()
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -137,7 +142,7 @@ jobs:
           git fetch origin main
           git merge origin/main --no-edit || true
          
-          git add daily_usage.json total_usage.json vote_unlocks.json guild_chat_config.json mod_data.json
+          git add daily_usage.json total_usage.json vote_unlocks.json guild_chat_config.json mod_data.json playlists.json
          
           if ! git diff --cached --quiet; then
             git commit -m "Update persisted bot data [skip ci]"
