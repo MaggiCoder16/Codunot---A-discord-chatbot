@@ -34,6 +34,8 @@ from typing import Optional
 from topgg_utils import has_voted
 import json
 
+from encryption import save_encrypted, load_encrypted
+
 from guild_access_config import (
 	load_guild_chat_config,
 	save_guild_chat_config,
@@ -70,7 +72,7 @@ OWNER_IDS = {int(os.environ.get("OWNER_ID", 0)), 1220934047794987048, 1167443519
 OWNER_IDS.discard(0)
 BYPASS_IDS = {1220934047794987048, 1167443519070290051}
 VOTE_DURATION = 12 * 60 * 60
-MAX_MEMORY = 20
+MAX_MEMORY = 15
 RATE_LIMIT = 30
 MAX_IMAGE_BYTES = 2_000_000  # 2 MB
 VOTE_FILE = "vote_unlocks.json"
@@ -92,7 +94,7 @@ intents.members = True
 # --- ENABLE SHARDING ---
 bot = commands.AutoShardedBot(command_prefix="!", intents=intents, owner_ids=set(OWNER_IDS))
 
-memory = MemoryManager(limit=60, file_path="codunot_memory.json")
+memory = MemoryManager(limit=15, file_path="codunot_memory.json")
 chess_engine = OnlineChessEngine()
 IMAGE_PROCESSING_CHANNELS = set()
 
@@ -671,20 +673,17 @@ def load_vote_unlocks():
 	if not os.path.exists(VOTE_FILE):
 		user_vote_unlocks = {}
 		return
-
 	try:
-		with open(VOTE_FILE, "r") as f:
-			data = json.load(f)
-			# convert keys back to int
-			user_vote_unlocks = {int(k): v for k, v in data.items()}
+		raw = load_encrypted(VOTE_FILE)
+		data = json.loads(raw)
+		user_vote_unlocks = {int(k): v for k, v in data.items()}
 	except Exception as e:
 		print(f"[VOTE] Failed to load vote unlocks: {e}")
 		user_vote_unlocks = {}
 
 def save_vote_unlocks():
 	try:
-		with open(VOTE_FILE, "w") as f:
-			json.dump(user_vote_unlocks, f)
+		save_encrypted(VOTE_FILE, json.dumps(user_vote_unlocks))
 	except Exception as e:
 		print(f"[VOTE] Failed to save vote unlocks: {e}")
 
