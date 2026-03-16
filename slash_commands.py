@@ -1133,6 +1133,7 @@ def _build_vote_embed() -> discord.Embed:
 		"• 🖌️ **Edit Images** — send image + instruction\n"
 		"• 🖼️ **Merge Images** — attach 2+ images + say merge\n"
 		"• 🎬 **Generate Video** — `/generate_video`\n"
+		"• 📝 **Video to Text** — `/transcribe` (YT/Twitch/X/Kick, max 30 mins)\n"
 		"• 🔊 **Text-to-Speech** — `/generate_tts` (voice & language)\n"
 		"• 🎵 **Play Music** — `/play [song/URL]` in voice channels"
 	), inline=False)

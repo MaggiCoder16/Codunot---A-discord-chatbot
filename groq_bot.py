@@ -291,8 +291,18 @@ async def help_command(ctx: commands.Context):
 			"• 🖐️ Slap — `/slap @user`\n"
 			"• 🌅 Good Morning — `/wish_goodmorning @user`\n"
 			"• 🪙 Coin Flip Bet — `/bet [heads/tails]`\n"
-			"• 😂 Random Meme — `/meme`\n\n"
+			"• 😂 Random Meme — `/meme`\n• 🖼️ Image Search — `/image_search`\n\n"
 			"Each command sends a random GIF with custom text!"
+		),
+		inline=False
+	)
+
+	embed.add_field(
+		name="Utilities (No Vote Needed)",
+		value=(
+			"• 🧠 Model Switch — `/model`\n"
+			"• 📚 Model List — `/models`\n"
+			"• 🧪 Code Tester — `/test_code`"
 		),
 		inline=False
 	)
@@ -737,6 +747,7 @@ async def require_vote(message) -> None:
 		value=(
 			"🎨 Image Generation — `/generate_image`\n"
 			"🎬 Video Generation — `/generate_video`\n"
+			"📝 Video to Text — `/transcribe` (YT/Twitch/X/Kick, max 30 mins)\n"
 			"🔊 Text-to-Speech — `/generate_tts` (voice & language)\n"
 			"🎵 Play Music — `/play [song/URL]`\n"
 			"🖌️ Edit Images (send image + instruction)\n"
@@ -752,7 +763,7 @@ async def require_vote(message) -> None:
 		value=(
 			"🤗 `/hug @user` · 💋 `/kiss @user` · 🥋 `/kick @user`\n"
 			"🖐️ `/slap @user` · 🌅 `/wish_goodmorning @user`\n"
-			"🪙 `/bet heads/tails` · 😂 `/meme`"
+			"🪙 `/bet heads/tails` · 😂 `/meme` · 🖼️ `/image_search`"
 		),
 		inline=False
 	)
