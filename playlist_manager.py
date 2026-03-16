@@ -3,6 +3,7 @@ import os
 import uuid
 from datetime import datetime, timezone
 from typing import Optional
+from encryption import save_encrypted, load_encrypted
 
 PLAYLIST_FILE = "playlists.json"
 MAX_TRACKS_PER_PLAYLIST = 50
@@ -10,14 +11,15 @@ MAX_PLAYLISTS_PER_GUILD = 20
 
 _data: dict = {"playlists": {}}
 
+
 def load() -> None:
     global _data
     if not os.path.exists(PLAYLIST_FILE):
         _data = {"playlists": {}}
         return
     try:
-        with open(PLAYLIST_FILE, "r", encoding="utf-8") as f:
-            _data = json.load(f)
+        raw = load_encrypted(PLAYLIST_FILE)
+        _data = json.loads(raw)
         _data.setdefault("playlists", {})
     except Exception as e:
         print(f"[PLAYLIST] Load error: {e}")
@@ -26,10 +28,10 @@ def load() -> None:
 
 def save() -> None:
     try:
-        with open(PLAYLIST_FILE, "w", encoding="utf-8") as f:
-            json.dump(_data, f, indent=2, ensure_ascii=False)
+        save_encrypted(PLAYLIST_FILE, json.dumps(_data, indent=2, ensure_ascii=False))
     except Exception as e:
         print(f"[PLAYLIST] Save error: {e}")
+
 
 def get_guild_playlists(guild_id: int) -> dict[str, dict]:
     return _data["playlists"].get(str(guild_id), {})
@@ -37,6 +39,7 @@ def get_guild_playlists(guild_id: int) -> dict[str, dict]:
 
 def get_playlist(guild_id: int, playlist_id: str) -> Optional[dict]:
     return _data["playlists"].get(str(guild_id), {}).get(playlist_id)
+
 
 def create_playlist(
     guild_id: int,
@@ -46,14 +49,11 @@ def create_playlist(
 ) -> tuple[Optional[str], Optional[str]]:
     gid = str(guild_id)
     guild_pls = _data["playlists"].setdefault(gid, {})
-
     if len(guild_pls) >= MAX_PLAYLISTS_PER_GUILD:
         return None, f"Maximum of {MAX_PLAYLISTS_PER_GUILD} playlists per server reached."
-
     for pl in guild_pls.values():
         if pl["name"].lower() == name.strip().lower():
             return None, f"A playlist named **{name}** already exists in this server."
-
     pid = str(uuid.uuid4())[:8]
     guild_pls[pid] = {
         "name": name.strip(),
@@ -71,12 +71,10 @@ def add_tracks(
     playlist_id: str,
     tracks: list[dict],
 ) -> tuple[int, int]:
-
     gid = str(guild_id)
     pl = _data["playlists"].get(gid, {}).get(playlist_id)
     if not pl:
         return 0, len(tracks)
-
     available = MAX_TRACKS_PER_PLAYLIST - len(pl["tracks"])
     to_add = tracks[:available]
     skipped = len(tracks) - len(to_add)
@@ -105,5 +103,6 @@ def remove_track(guild_id: int, playlist_id: str, index: int) -> bool:
     tracks.pop(index)
     save()
     return True
+
 
 load()
