@@ -44,7 +44,7 @@ def _generate_image_bytes(prompt, aspect_ratio="16:9"):
             response = requests.post(
                 f"{BASE_URL}/flux2max",
                 headers={"X-API-Key": api_key, "Content-Type": "application/json"},
-                json={"prompt": prompt, "width": width, "height": height, "safety_tolerance": 5},
+                json={"prompt": prompt, "width": width, "height": height, "safety_tolerance": 3},
                 timeout=REQUEST_TIMEOUT,
             )
             if response.status_code != 200:
