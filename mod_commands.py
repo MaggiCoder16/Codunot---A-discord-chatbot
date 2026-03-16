@@ -6,6 +6,7 @@ from datetime import datetime, timedelta, timezone
 from collections import defaultdict, deque
 from typing import Literal, Optional
 from dataclasses import dataclass, field
+from encryption import save_encrypted, load_encrypted
 
 MOD_DATA_FILE = "mod_data.json"
 
@@ -14,8 +15,8 @@ def load_mod_data() -> dict:
     if not os.path.exists(MOD_DATA_FILE):
         return default
     try:
-        with open(MOD_DATA_FILE) as f:
-            data = json.load(f)
+        raw = load_encrypted(MOD_DATA_FILE)
+        data = json.loads(raw)
         for k, v in default.items():
             data.setdefault(k, v)
         return data
@@ -25,8 +26,7 @@ def load_mod_data() -> dict:
 
 def save_mod_data(data: dict):
     try:
-        with open(MOD_DATA_FILE, "w") as f:
-            json.dump(data, f, indent=2)
+        save_encrypted(MOD_DATA_FILE, json.dumps(data, indent=2))
     except Exception as e:
         print(f"[MOD] Save error: {e}")
 
