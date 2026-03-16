@@ -616,6 +616,60 @@
       "anti_raid": false,
       "raid_joins": 10,
       "raid_seconds": 10
+    },
+    "734928199083098190": {
+      "setup_complete": false,
+      "automod_enabled": false,
+      "bad_words": [],
+      "automod_exempt_roles": [],
+      "log_channels": [],
+      "log_everywhere": false,
+      "mod_roles": [],
+      "links_allowed_server": true,
+      "link_allowed_channels": [],
+      "link_allowed_roles": [],
+      "anti_spam": false,
+      "spam_messages": 5,
+      "spam_seconds": 5,
+      "anti_raid": false,
+      "raid_joins": 10,
+      "raid_seconds": 10
+    },
+    "1085961105593090139": {
+      "setup_complete": false,
+      "automod_enabled": false,
+      "bad_words": [],
+      "automod_exempt_roles": [],
+      "log_channels": [],
+      "log_everywhere": false,
+      "mod_roles": [],
+      "links_allowed_server": true,
+      "link_allowed_channels": [],
+      "link_allowed_roles": [],
+      "anti_spam": false,
+      "spam_messages": 5,
+      "spam_seconds": 5,
+      "anti_raid": false,
+      "raid_joins": 10,
+      "raid_seconds": 10
+    },
+    "1477702969473372211": {
+      "setup_complete": false,
+      "automod_enabled": false,
+      "bad_words": [],
+      "automod_exempt_roles": [],
+      "log_channels": [],
+      "log_everywhere": false,
+      "mod_roles": [],
+      "links_allowed_server": true,
+      "link_allowed_channels": [],
+      "link_allowed_roles": [],
+      "anti_spam": false,
+      "spam_messages": 5,
+      "spam_seconds": 5,
+      "anti_raid": false,
+      "raid_joins": 10,
+      "raid_seconds": 10
     }
   },
   "warns": {
@@ -633,7 +687,7 @@
   },
   "cases": {
     "1470038794274209815": {
-      "next_case": 6,
+      "next_case": 7,
       "by_number": {
         "1": {
           "type": "mute",
@@ -689,6 +743,16 @@
           "moderator": "aarav_2022",
           "reason": "No reason provided",
           "timestamp": "2026-03-14T09:50:35.107820+00:00",
+          "extra": {}
+        },
+        "6": {
+          "type": "kick",
+          "user_id": 1287768730771783753,
+          "user": "alexy0079",
+          "moderator_id": 1220934047794987048,
+          "moderator": "aarav_2022",
+          "reason": "No reason provided",
+          "timestamp": "2026-03-16T03:54:39.644915+00:00",
           "extra": {}
         }
       }
