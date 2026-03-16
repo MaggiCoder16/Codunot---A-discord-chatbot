@@ -488,12 +488,11 @@ guild_now_playing_track: dict[int, dict] = {}
 guild_last_activity = {}
 guild_autoplay: dict[int, bool] = {}
 
-# ── New music feature state ───────────────────────────────────────────────────
-guild_loop_mode:           dict[int, str]            = {}   # "off" | "song" | "queue"
-guild_saved_queue:         dict[int, list]           = {}   # snapshot for loop-queue
-guild_recent_titles:       dict[int, "deque"]        = {}   # last-N played titles (dedup)
-guild_recent_ids:          dict[int, "deque"]        = {}   # last-N played video IDs (dedup)
-guild_prefetched_autoplay: dict[int, Optional[dict]] = {}   # pre-fetched autoplay track
+guild_loop_mode:           dict[int, str]            = {}
+guild_saved_queue:         dict[int, list]           = {}
+guild_recent_titles:       dict[int, "deque"]        = {}
+guild_recent_ids:          dict[int, "deque"]        = {}
+guild_prefetched_autoplay: dict[int, Optional[dict]] = {}
 
 _RECENT_TITLES_LIMIT = 10
 
@@ -558,27 +557,22 @@ def _init_cookie_file() -> str:
 COOKIE_PATH: str = _init_cookie_file()
 
 YTDL_OPTIONS = {
-	# Prefer direct HTTPS audio over HLS manifests — FFmpeg handles direct URLs instantly.
-	"format": "bestaudio[protocol!=m3u8_native][protocol!=m3u8]/bestaudio/best",
-	"noplaylist": True,
-	"quiet": True,
-	"nocheckcertificate": True,
-	"default_search": "ytsearch",
-	"source_address": "0.0.0.0",
-	"socket_timeout": 10,
-	# ios: fast, no PO Token needed, works with cookies.
-	# Skip mweb/web (need PO Token) and tv_embedded (slower fallback).
-	"extractor_args": {
-		"youtube": {
-			"player_client": ["ios"],
-			"player_skip": ["mweb", "web", "tv_embedded"],
-		}
-	},
+    "format": "bestaudio[protocol!=m3u8_native][protocol!=m3u8]/bestaudio/best",
+    "noplaylist": True,
+    "quiet": True,
+    "nocheckcertificate": True,
+    "default_search": "ytsearch",
+    "source_address": "0.0.0.0",
+    "socket_timeout": 10,
+    "extractor_args": {
+        "youtube": {
+            "player_client": ["ios", "web"],
+            "player_skip": ["mweb", "tv_embedded"],
+        }
+    },
 }
 
-# Tracks whether the cookie file is still valid.
 _COOKIES_VALID: bool = bool(os.getenv("YTDL_COOKIE_CONTENT", "").strip() or os.getenv("YTDL_COOKIES_TXT", "").strip())
-# Protocol whitelist covers both direct HTTPS and HLS/m3u8 fallback streams.
 FFMPEG_BEFORE_OPTIONS = (
 	"-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5 "
 	"-protocol_whitelist file,http,https,tcp,tls,crypto,m3u8,hls"
@@ -610,16 +604,28 @@ def _find_node_path() -> str | None:
 
 _NODE_PATH = _find_node_path()
 
+def _pick_best_entry(entries: list[dict]) -> dict:
+    for entry in entries:
+        if entry.get("url") and entry.get("title"):
+            return entry
+    return entries[0]
+
 def _get_ytdl_options(tier: str, allow_playlist: bool = False, with_cookies: bool = True) -> dict:
-	options = dict(YTDL_OPTIONS)
-	options["format"] = "bestaudio/best" if tier in {"premium", "gold"} else "bestaudio[abr<=192]/bestaudio/best"
-	if allow_playlist:
-		options["noplaylist"] = False
-	if with_cookies and _COOKIES_VALID and COOKIE_PATH:
-		options["cookiefile"] = COOKIE_PATH
-	if _NODE_PATH:
-		options["js_runtimes"] = {"node": {"path": _NODE_PATH}}
-	return options
+    options = dict(YTDL_OPTIONS)
+    options["format"] = "bestaudio/best" if tier in {"premium", "gold"} else "bestaudio[abr<=192]/bestaudio/best"
+    if allow_playlist:
+        options["noplaylist"] = False
+    if with_cookies and _COOKIES_VALID and COOKIE_PATH:
+        options["cookiefile"] = COOKIE_PATH
+        options["extractor_args"] = {
+            "youtube": {
+                "player_client": ["web", "ios"],
+                "player_skip": ["mweb", "tv_embedded"],
+            }
+        }
+    if _NODE_PATH:
+        options["js_runtimes"] = {"node": {"path": _NODE_PATH}}
+    return options
 
 def _get_quality_label(tier: str) -> str:
 	return "320kbps" if tier in {"premium", "gold"} else "HD"
