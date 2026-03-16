@@ -3459,14 +3459,22 @@ class Codunot(commands.Cog):
 		await interaction.edit_original_response(content="🧠 **Analyzing...**")
 		joined_messages = "\n".join(f"- {line}" for line in recent_messages)
 		prompt = (
-			"You estimate an approximate age range from message-writing style only. "
-			"Never claim certainty and keep it strictly as a moderation insight.\n\n"
-			"Return ONLY strict JSON:\n"
-			"{\n  \"age_range\": \"13-18\",\n  \"exact_guess\": 16,\n  \"confidence\": \"low|medium|high\",\n"
-			"  \"reasoning\": [\"reason 1\", \"reason 2\", \"reason 3\"]\n}\n\n"
+			"You are an expert at estimating someone's age from how they write online.\n"
+			"Analyze the writing style, vocabulary, slang, topics, and tone of the messages below.\n"
+			"Be precise — do NOT default to 16 or 13-18. Most people online are NOT teenagers.\n"
+			"Consider the full age spectrum: the person could be anywhere from 12 to 50+.\n"
+			"If messages show maturity, work topics, complex language, or adult references, guess higher.\n"
+			"If messages show clear teen slang, school topics, or childish tone, guess lower.\n\n"
+			"Return ONLY valid JSON with NO example values — fill in YOUR actual estimate:\n"
+			"{\n"
+			"  \"age_range\": \"<your estimated range e.g. 18-24>\",\n"
+			"  \"exact_guess\": <your single best integer guess>,\n"
+			"  \"confidence\": \"<low or medium or high>\",\n"
+			"  \"reasoning\": [\"<specific observation 1>\", \"<specific observation 2>\", \"<specific observation 3>\"]\n"
+			"}\n\n"
 			f"Sample count: {sample_count}\n\nUser messages:\n{joined_messages}"
 		)
-		result_text = await call_google_ai_studio(prompt=prompt, temperature=0.2)
+		result_text = await call_google_ai_studio(prompt=prompt, temperature=0.7)
 		payload = self._safe_json_parse(result_text or "")
 		if not payload:
 			await interaction.followup.send("🤔 Couldn't parse AI output. Try again.")
