@@ -557,19 +557,13 @@ def _init_cookie_file() -> str:
 COOKIE_PATH: str = _init_cookie_file()
 
 YTDL_OPTIONS = {
-    "format": "bestaudio[protocol!=m3u8_native][protocol!=m3u8]/bestaudio/best",
+    "format": "bestaudio/best",
     "noplaylist": True,
     "quiet": True,
     "nocheckcertificate": True,
     "default_search": "ytsearch",
     "source_address": "0.0.0.0",
     "socket_timeout": 10,
-	"extractor_args": {
-	    "youtube": {
-	        "player_client": ["ios"],
-	        "player_skip": ["mweb", "web", "tv_embedded"],
-	    }
-	}
 }
 
 _COOKIES_VALID: bool = bool(os.getenv("YTDL_COOKIE_CONTENT", "").strip() or os.getenv("YTDL_COOKIES_TXT", "").strip())
@@ -612,7 +606,7 @@ def _pick_best_entry(entries: list[dict]) -> dict:
 
 def _get_ytdl_options(tier: str, allow_playlist: bool = False, with_cookies: bool = True) -> dict:
     options = dict(YTDL_OPTIONS)
-    options["format"] = "bestaudio/best" if tier in {"premium", "gold"} else "bestaudio[abr<=192]/bestaudio/best"
+    options["format"] = "bestaudio/best"
     if allow_playlist:
         options["noplaylist"] = False
     if with_cookies and _COOKIES_VALID and COOKIE_PATH:
