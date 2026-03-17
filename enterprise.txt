@@ -1,7 +1,6 @@
-# Enterprise overrides
 # Use ServerID for guild usage, or ChannelID for DM usage.
-ServerID (or ChannelID for dms): 123456789012345678
-Name: "Client Name"
+ServerID (or ChannelID for dms): 1470038794274209815
+Name: "Codunot Support"
 
 DailyLimits:
 "messages": unlimited
