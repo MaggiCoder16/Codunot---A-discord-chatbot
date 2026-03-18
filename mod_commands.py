@@ -1479,6 +1479,34 @@ class ModerationCog(commands.Cog, name="ModerationCog"):
 
         cfg = self._cfg(message.guild.id)
 
+        # AI moderation for Enterprise tier (opt-in)
+        try:
+            from usage_manager import get_tier_from_message
+            tier = get_tier_from_message(message)
+        except Exception:
+            tier = "basic"
+        if tier == "enterprise" and cfg.get("ai_moderation_enabled", False):
+            try:
+                from groq_client import call_groq
+                result = await call_groq(message.content)
+                if result and result.get("flagged", False):
+                    await message.delete()
+                    await message.channel.send(
+                        f"🧠 {message.author.mention} your message was flagged by AI moderation.", delete_after=6
+                    )
+                    e = discord.Embed(
+                        title="🧠 AI Moderation Flagged Message",
+                        color=COLOR_DANGER,
+                        timestamp=datetime.now(timezone.utc)
+                    )
+                    e.add_field(name="User", value=f"{message.author} (`{message.author.id}`)")
+                    e.add_field(name="Channel", value=message.channel.mention)
+                    e.add_field(name="Reason", value=result.get("reason", "Flagged"))
+                    await self._log_guild(message.guild, e, message.channel.id)
+                    return
+            except Exception as ex:
+                print(f"[AI MODERATION] {ex}")
+
         if cfg.get("shadowban_enabled") and message.author.id in cfg.get("shadowbanned_users", []):
             try:
                 await message.delete()
